@@ -49,11 +49,21 @@ if (-not (Have node))   { throw "node not found on PATH" }
 if (-not (Have tauri-driver)) {
   throw "tauri-driver not found. Install with: cargo install tauri-driver --locked"
 }
-if (-not (Have msedgedriver)) {
-  Write-Warning ("msedgedriver not on PATH. tauri-driver needs it on Windows " +
-    "(match your Edge / WebView2 version): " +
-    "https://developer.microsoft.com/microsoft-edge/tools/webdriver/  " +
-    "Or set `$env:E2E_NATIVE_DRIVER to its full path.")
+# Resolve the native WebDriver (msedgedriver) up front so we fail fast with a
+# fix instead of timing out inside the suite when it is missing.
+if (-not $env:E2E_NATIVE_DRIVER) {
+  $localDriver = Join-Path $repo ".tools/msedgedriver.exe"
+  if (Have msedgedriver) {
+    # already on PATH - tauri-driver will find it
+  } elseif (Test-Path $localDriver) {
+    $env:E2E_NATIVE_DRIVER = $localDriver
+    Write-Host "Using msedgedriver from .tools/" -ForegroundColor DarkGray
+  } else {
+    throw ("msedgedriver not found - tauri-driver needs the Edge WebDriver on Windows.`n" +
+      "  Fix: ./scripts/install-msedgedriver.ps1   (downloads the matching version into .tools/)`n" +
+      "  Or:  install it manually and add to PATH / set `$env:E2E_NATIVE_DRIVER`n" +
+      "       https://developer.microsoft.com/microsoft-edge/tools/webdriver/")
+  }
 }
 
 $exe = "mumble-tauri.exe"
@@ -93,7 +103,7 @@ if ($LASTEXITCODE) { throw "docker compose up failed" }
 $code = 0
 try {
   Step "Running e2e suite (headed - a window will open)"
-  $testArgs = @("--import", "tsx", "--test", "--test-isolation=none")
+  $testArgs = @("--import", "tsx", "--test", "--test-isolation=none", "--test-concurrency=1")
   if ($Grep) { $testArgs += @("--test-name-pattern", $Grep) }
   $testArgs += "src/tests/**/*.test.ts"
   node @testArgs
