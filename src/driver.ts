@@ -73,11 +73,37 @@ export async function buildWebDriver(port: number, appBin: string): Promise<WebD
   const client = new http.HttpClient(`http://127.0.0.1:${port}`, agent);
   const executor = new http.Executor(Promise.resolve(client));
 
+  // The session POST can hang indefinitely when tauri-driver can't reach the
+  // native driver (e.g. msedgedriver/WebView2 version mismatch on Windows).
+  // Bound it so we fail fast with an actionable message instead of hanging
+  // until the test runner cancels with an opaque error.
+  const timeout = new Promise<never>((_, reject) => {
+    const t = setTimeout(
+      () =>
+        reject(
+          new Error(
+            `WebDriver session creation timed out after ${config.sessionTimeout}ms on port ${port}. ` +
+              `tauri-driver could not establish a session with the native driver. On Windows this is ` +
+              `usually an msedgedriver/WebView2 version mismatch - reinstall via ` +
+              `scripts/install-msedgedriver.ps1 (it now matches the WebView2 Runtime).`,
+          ),
+        ),
+      config.sessionTimeout,
+    );
+    t.unref?.();
+  });
+
+  // createSession returns the driver synchronously and establishes the session
+  // lazily; getSession() forces and awaits the actual NEW_SESSION handshake so
+  // the timeout above can bound it.
+  const driver = WebDriver.createSession(executor, caps);
   try {
-    return await WebDriver.createSession(executor, caps);
+    await Promise.race([driver.getSession(), timeout]);
+    return driver;
   } catch (e) {
     // node:test can swallow before-hook rejections, so log the real cause.
     console.error(`[tauri-driver] WebDriver session creation failed on port ${port}:`, e);
+    void driver.quit().catch(() => {});
     throw e;
   }
 }

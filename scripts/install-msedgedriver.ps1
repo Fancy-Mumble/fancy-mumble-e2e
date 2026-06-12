@@ -23,6 +23,22 @@ $toolsDir = Join-Path $repo ".tools"
 New-Item -ItemType Directory -Force -Path $toolsDir | Out-Null
 $dest = Join-Path $toolsDir "msedgedriver.exe"
 
+# The Tauri app renders in the Evergreen WebView2 Runtime, NOT the Edge browser,
+# and msedgedriver must match the WebView2 Runtime version. They are usually the
+# same, but not always - a mismatch is the classic cause of tauri-driver's
+# "connection closed before message completed" flood on Windows. Prefer the
+# WebView2 Runtime version; fall back to the Edge browser version.
+function Get-WebView2Version {
+  $guid = '{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}' # Evergreen WebView2 Runtime
+  foreach ($key in @(
+      "HKLM:\SOFTWARE\WOW6432Node\Microsoft\EdgeUpdate\Clients\$guid",
+      "HKLM:\SOFTWARE\Microsoft\EdgeUpdate\Clients\$guid",
+      "HKCU:\SOFTWARE\Microsoft\EdgeUpdate\Clients\$guid")) {
+    try { $v = (Get-ItemProperty $key -ErrorAction Stop).pv; if ($v) { return $v } } catch {}
+  }
+  return $null
+}
+
 function Get-EdgeVersion {
   foreach ($key in @(
       'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Edge\BLBeacon',
@@ -38,11 +54,17 @@ function Get-EdgeVersion {
   return $null
 }
 
-if (-not $Version) { $Version = Get-EdgeVersion }
 if (-not $Version) {
-  throw "Could not detect the installed Edge version. Pass -Version <x.y.z.w> (see edge://settings/help)."
+  $Version = Get-WebView2Version
+  if ($Version) { Write-Host "WebView2 Runtime version: $Version" -ForegroundColor Cyan }
 }
-Write-Host "Edge version: $Version" -ForegroundColor Cyan
+if (-not $Version) {
+  $Version = Get-EdgeVersion
+  if ($Version) { Write-Host "Edge browser version (WebView2 Runtime not found): $Version" -ForegroundColor Cyan }
+}
+if (-not $Version) {
+  throw "Could not detect WebView2 Runtime or Edge version. Pass -Version <x.y.z.w> (see edge://settings/help)."
+}
 
 $zip = Join-Path $env:TEMP "edgedriver_win64_$Version.zip"
 $urls = @(
