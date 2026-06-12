@@ -63,8 +63,9 @@ trap cleanup EXIT
 
 step "Running e2e suite (headed - a window will open)"
 glob="src/tests/**/*.test.ts"
+base=(--import tsx --test --test-isolation=none --test-concurrency=1)
 if [ -n "$GREP" ]; then
-  node --import tsx --test --test-isolation=none --test-name-pattern "$GREP" "$glob"
+  node "${base[@]}" --test-name-pattern "$GREP" "$glob"
 else
-  node --import tsx --test --test-isolation=none "$glob"
+  node "${base[@]}" "$glob"
 fi

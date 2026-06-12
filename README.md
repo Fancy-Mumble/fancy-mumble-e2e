@@ -113,9 +113,18 @@ the suite headed (visible window), and tear down:
 ./scripts/run-local.sh --grep "voice"
 ```
 
-Extra prerequisite for headed runs: the native WebDriver must be on `PATH` —
+Extra prerequisite for headed runs: the native WebDriver must be available —
 `msedgedriver` (Windows, matching your Edge/WebView2 version) or
 `WebKitWebDriver` (Linux). macOS isn't supported by tauri-driver.
+
+On Windows, grab the matching `msedgedriver` once:
+
+```powershell
+./scripts/install-msedgedriver.ps1   # downloads it into .tools/ (auto-used by run-local.ps1)
+```
+
+`run-local.ps1` fails fast with this hint if the driver is missing, and uses
+`.tools/msedgedriver.exe` or `$env:E2E_NATIVE_DRIVER` when present.
 
 ### Configuration (env vars)
 

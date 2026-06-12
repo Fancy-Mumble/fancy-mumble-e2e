@@ -32,9 +32,29 @@ export async function startTauriDriver(
     );
   });
 
-  // tauri-driver exposes a standard WebDriver server; /status returns 200
-  // once it (and its native driver) are ready to accept sessions.
-  await waitForHttp(`http://127.0.0.1:${port}/status`, 20000);
+  // tauri-driver exposes a standard WebDriver server; /status returns 200 once
+  // it (and its native driver) are ready. If it dies early - almost always a
+  // missing native driver (msedgedriver / WebKitWebDriver) - fail fast with an
+  // actionable message instead of waiting out the HTTP timeout.
+  const ready = waitForHttp(`http://127.0.0.1:${port}/status`, 20000);
+  const earlyExit = new Promise<never>((_, reject) => {
+    proc.once("exit", (code, signal) =>
+      reject(
+        new Error(
+          `tauri-driver exited early (code=${code}, signal=${signal}) before the ` +
+            `WebDriver endpoint came up. The native WebDriver is almost certainly ` +
+            `missing: Windows needs msedgedriver on PATH (or set E2E_NATIVE_DRIVER); ` +
+            `Linux needs WebKitWebDriver (apt-get install webkit2gtk-driver).`,
+        ),
+      ),
+    );
+  });
+  try {
+    await Promise.race([ready, earlyExit]);
+  } catch (e) {
+    proc.removeAllListeners("exit");
+    throw e;
+  }
   return proc;
 }
 
