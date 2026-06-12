@@ -1,0 +1,42 @@
+# Fancy Mumble server for the e2e suite.
+#
+# Defaults to the pre-built multi-feature image published by the `docker`
+# submodule's CI (file-server, live-doc, pchat, plugins all built in). To test
+# local server changes instead, build the image from the submodule:
+#
+#   docker build -t fancy-mumble-server:e2e vendor/docker
+#   E2E_SERVER_IMAGE=fancy-mumble-server:e2e docker compose -f fixtures/docker-compose.e2e.yml up -d --wait
+#
+# Usage:
+#   docker compose -f fixtures/docker-compose.e2e.yml up -d --wait
+#   npm run test:e2e
+#   docker compose -f fixtures/docker-compose.e2e.yml down -v
+services:
+  mumble-server:
+    image: ${E2E_SERVER_IMAGE:-ghcr.io/setzero/mumble-server:latest}
+    container_name: fancy-e2e-mumble
+    hostname: fancy-e2e-mumble
+    restart: "no"
+    ports:
+      - "${E2E_SERVER_PORT:-64738}:64738/tcp" # Mumble voice + control
+      - "${E2E_SERVER_PORT:-64738}:64738/udp"
+      - "${E2E_FILESERVER_PORT:-64739}:64739/tcp" # File-server plugin (uploads)
+      - "${E2E_LIVEDOC_PORT:-64740}:64740/tcp" # Live-doc plugin (collab WS)
+    environment:
+      # SuperUser password for admin-driven scenarios (create/delete channel,
+      # register users for pchat/file ownership).
+      MUMBLE_SUPERUSER_PASSWORD: "testpassword"
+      # plugin.* keys cannot be set via MUMBLE_CONFIG_* env, so we mount a full
+      # ini and point the entrypoint at it (all MUMBLE_CONFIG_* are then ignored).
+      MUMBLE_CUSTOM_CONFIG_FILE: /data/mumble-server.ini
+      MUMBLE_ACCEPT_UNKNOWN_SETTINGS: "true"
+      MUMBLE_VERBOSE: "true"
+    volumes:
+      - ./mumble-server.ini:/data/mumble-server.ini:ro
+    healthcheck:
+      # The control port accepting TCP is a good readiness signal.
+      test: ["CMD-SHELL", "bash -c 'echo > /dev/tcp/127.0.0.1/64738' 2>/dev/null"]
+      interval: 3s
+      timeout: 5s
+      retries: 30
+      start_period: 20s
