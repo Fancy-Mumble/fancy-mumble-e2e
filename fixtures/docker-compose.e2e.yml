@@ -1,9 +1,13 @@
 # Fancy Mumble server for the e2e suite.
 #
-# Defaults to the pre-built multi-feature image published by the `docker`
-# submodule's CI (file-server, live-doc, pchat, plugins all built in). To test
-# local server changes instead, build the image from the submodule:
+# Uses the public Fancy server image (built + published by the docker submodule's
+# CI). Configured via MUMBLE_CONFIG_* env for the core surface every current
+# scenario needs (connect, messaging, presence, voice UI state). Persistent chat
+# is on; the file-server (:64739) and live-doc (:64740) plugins stay off until
+# Phase 4 enables them via a custom ini (plugin.* keys can't be set via env) -
+# see fixtures/mumble-server.ini and mount it with MUMBLE_CUSTOM_CONFIG_FILE.
 #
+# Build the image locally instead of pulling:
 #   docker build -t fancy-mumble-server:e2e vendor/docker
 #   E2E_SERVER_IMAGE=fancy-mumble-server:e2e docker compose -f fixtures/docker-compose.e2e.yml up -d --wait
 #
@@ -13,28 +17,41 @@
 #   docker compose -f fixtures/docker-compose.e2e.yml down -v
 services:
   mumble-server:
-    image: ${E2E_SERVER_IMAGE:-ghcr.io/setzero/mumble-server:latest}
+    image: ${E2E_SERVER_IMAGE:-ghcr.io/fancy-mumble/mumble-server:latest}
     container_name: fancy-e2e-mumble
     hostname: fancy-e2e-mumble
     restart: "no"
     ports:
       - "${E2E_SERVER_PORT:-64738}:64738/tcp" # Mumble voice + control
       - "${E2E_SERVER_PORT:-64738}:64738/udp"
-      - "${E2E_FILESERVER_PORT:-64739}:64739/tcp" # File-server plugin (uploads)
-      - "${E2E_LIVEDOC_PORT:-64740}:64740/tcp" # Live-doc plugin (collab WS)
+      # Carry traffic only once their plugins are enabled (Phase 4); harmless now.
+      - "${E2E_FILESERVER_PORT:-64739}:64739/tcp" # file-server plugin
+      - "${E2E_LIVEDOC_PORT:-64740}:64740/tcp" # live-doc plugin
     environment:
-      # SuperUser password for admin-driven scenarios (create/delete channel,
-      # register users for pchat/file ownership).
+      # SuperUser password for admin-driven scenarios (channel create/delete,
+      # registering users) in later phases.
       MUMBLE_SUPERUSER_PASSWORD: "testpassword"
-      # plugin.* keys cannot be set via MUMBLE_CONFIG_* env, so we mount a full
-      # ini and point the entrypoint at it (all MUMBLE_CONFIG_* are then ignored).
-      MUMBLE_CUSTOM_CONFIG_FILE: /data/mumble-server.ini
+      # Don't fail startup on a config key this image doesn't recognise.
       MUMBLE_ACCEPT_UNKNOWN_SETTINGS: "true"
-      MUMBLE_VERBOSE: "true"
-    volumes:
-      - ./mumble-server.ini:/data/mumble-server.ini:ro
+      # Anonymous connects: no client cert, no server password.
+      MUMBLE_CONFIG_certrequired: "false"
+      MUMBLE_CONFIG_serverpassword: ""
+      # Relaxed + deterministic limits for tests.
+      MUMBLE_CONFIG_textmessagelength: "131072"
+      MUMBLE_CONFIG_imagemessagelength: "10485760"
+      MUMBLE_CONFIG_allowhtml: "true"
+      MUMBLE_CONFIG_opusthreshold: "0"
+      # Disable auto-ban so rapid connect/disconnect cycles aren't blocked.
+      MUMBLE_CONFIG_autobanAttempts: "0"
+      MUMBLE_CONFIG_autobanTimeframe: "0"
+      MUMBLE_CONFIG_autobanTime: "0"
+      MUMBLE_CONFIG_users: "100"
+      MUMBLE_CONFIG_bandwidth: "320000"
+      # Persistent chat (Fancy feature) - server stores history.
+      MUMBLE_CONFIG_pchatenabled: "true"
+      MUMBLE_CONFIG_welcometext: "<b>Fancy Mumble e2e test server</b>"
     healthcheck:
-      # The control port accepting TCP is a good readiness signal.
+      # Control port accepting TCP is a good readiness signal.
       test: ["CMD-SHELL", "bash -c 'echo > /dev/tcp/127.0.0.1/64738' 2>/dev/null"]
       interval: 3s
       timeout: 5s

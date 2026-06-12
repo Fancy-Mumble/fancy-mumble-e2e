@@ -62,4 +62,9 @@ cleanup() {
 trap cleanup EXIT
 
 step "Running e2e suite (headed - a window will open)"
-if [ -n "$GREP" ]; then npx mocha --grep "$GREP"; else npx mocha; fi
+glob="src/tests/**/*.test.ts"
+if [ -n "$GREP" ]; then
+  node --import tsx --test --test-isolation=none --test-name-pattern "$GREP" "$glob"
+else
+  node --import tsx --test --test-isolation=none "$glob"
+fi

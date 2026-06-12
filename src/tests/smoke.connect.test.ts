@@ -1,3 +1,4 @@
+import { describe, it, before, after } from "node:test";
 import { TauriApp } from "../app";
 import { config } from "../config";
 
@@ -7,9 +8,7 @@ import { config } from "../config";
  * top of it. Launch the real app, connect to the Docker server, reach the chat
  * view, and round-trip a text message through the server back into the UI.
  */
-describe("smoke: connect + chat", function () {
-  this.timeout(240000);
-
+describe("smoke: connect + chat", () => {
   let app: TauriApp;
 
   before(async () => {
