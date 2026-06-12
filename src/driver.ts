@@ -1,5 +1,7 @@
 import { spawn, type ChildProcess } from "node:child_process";
-import { Builder, Capabilities, type WebDriver } from "selenium-webdriver";
+import { Agent } from "node:http";
+import { Capabilities, WebDriver } from "selenium-webdriver";
+import * as http from "selenium-webdriver/http";
 import { config } from "./config";
 import { waitForHttp } from "./util/wait";
 
@@ -63,8 +65,19 @@ export async function buildWebDriver(port: number, appBin: string): Promise<WebD
   const caps = new Capabilities();
   caps.set("tauri:options", { application: appBin });
   caps.setBrowserName("wry");
-  return await new Builder()
-    .usingServer(`http://127.0.0.1:${port}/`)
-    .withCapabilities(caps)
-    .build();
+
+  // tauri-driver mishandles HTTP keep-alive: selenium's default keep-alive
+  // agent triggers a flood of "connection closed before message completed"
+  // errors and flaky/failed sessions. Use a fresh connection per request.
+  const agent = new Agent({ keepAlive: false });
+  const client = new http.HttpClient(`http://127.0.0.1:${port}`, agent);
+  const executor = new http.Executor(Promise.resolve(client));
+
+  try {
+    return await WebDriver.createSession(executor, caps);
+  } catch (e) {
+    // node:test can swallow before-hook rejections, so log the real cause.
+    console.error(`[tauri-driver] WebDriver session creation failed on port ${port}:`, e);
+    throw e;
+  }
 }
