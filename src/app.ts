@@ -68,13 +68,24 @@ export class TauriApp {
     const env = makeIsolatedEnv(dataDir);
 
     const proc = await startTauriDriver(port, env);
-    const driver = await buildWebDriver(port, config.appBin);
-    const app = new TauriApp(driver, proc, dataDir);
-
-    await app.waitDomReady();
-    await app.applyTestMode();
-    await app.connect.waitReady(config.connectTimeout);
-    return app;
+    try {
+      const driver = await buildWebDriver(port, config.appBin);
+      const app = new TauriApp(driver, proc, dataDir);
+      await app.waitDomReady();
+      await app.applyTestMode();
+      await app.connect.waitReady(config.connectTimeout);
+      return app;
+    } catch (e) {
+      // Don't orphan tauri-driver (and its held port) when launch fails - that
+      // would cascade into the next suite that reuses the same port.
+      killTree(proc.pid);
+      try {
+        rmSync(dataDir, { recursive: true, force: true });
+      } catch {
+        /* best effort */
+      }
+      throw e;
+    }
   }
 
   private async waitDomReady(timeout = 30000): Promise<void> {

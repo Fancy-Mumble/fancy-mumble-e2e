@@ -39,4 +39,7 @@ export const config = {
 
   /** How long to wait for connect + post-connect bootstrap to finish (ms). */
   connectTimeout: Number(process.env.E2E_CONNECT_TIMEOUT ?? "45000"),
+
+  /** How long to wait for the WebDriver session (app launch) before failing. */
+  sessionTimeout: Number(process.env.E2E_SESSION_TIMEOUT ?? "30000"),
 } as const;
