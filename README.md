@@ -117,13 +117,30 @@ only relaxes non-functional UX; it never changes connection/protocol behaviour.
 Selectors come from the client's shared `data-testid` registry (imported in
 `src/selectors.ts`), never from translated text or hashed CSS-module classes.
 
+## Enabling CI
+
+The headless Linux workflow is **parked at [`ci/e2e.yml`](ci/e2e.yml)** rather
+than `.github/workflows/` because the account that created this repo lacks the
+GitHub `workflow` token scope (pushing a workflow file is then rejected). To
+activate it, move it into place:
+
+```bash
+mkdir -p .github/workflows && git mv ci/e2e.yml .github/workflows/e2e.yml
+git commit -m "ci: activate e2e workflow" && git push
+```
+
+This requires a token with `workflow` scope (`gh auth refresh -s workflow`), or
+just create the file through the GitHub web UI (Actions → new workflow) by
+pasting `ci/e2e.yml`.
+
 ## Roadmap
 
 - [x] **Phase 1** – harness + connect/chat **smoke test** (de-risk tauri-driver)
+- [x] **Phase 3 (partial)** – **multi-client** presence + bidirectional messaging
 - [ ] **Phase 2** – publish/pin the server image; verify file-server/live-doc ini keys
-- [ ] **Phase 3** – core scenarios: cert connect, channels, **multi-client** messaging, presence, voice-UI state (mute/deafen, talking indicators)
+- [ ] **Phase 3 (rest)** – cert connect, channels, voice-UI state (mute/deafen, talking indicators)
 - [ ] **Phase 4** – Fancy features: pchat history, file-server upload, live-doc sync, reactions
-- [ ] **Phase 5** – headless CI (`.github/workflows/e2e.yml`) once the client branch is pushed
+- [ ] **Phase 5** – activate the parked CI workflow (see above) and get it green
 
 Voice **fidelity** is intentionally out of scope (covered by the client's
 `mumble-protocol` integration + `audio_quality` tests); the suite asserts voice
