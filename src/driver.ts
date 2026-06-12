@@ -1,7 +1,7 @@
 import { spawn, type ChildProcess } from "node:child_process";
-import { Agent } from "node:http";
-import { Capabilities, WebDriver } from "selenium-webdriver";
-import * as http from "selenium-webdriver/http";
+import { openSync, mkdirSync } from "node:fs";
+import path from "node:path";
+import { Builder, Capabilities, type WebDriver } from "selenium-webdriver";
 import { config } from "./config";
 import { waitForHttp } from "./util/wait";
 
@@ -16,14 +16,29 @@ import { waitForHttp } from "./util/wait";
  */
 export async function startTauriDriver(
   port: number,
+  nativePort: number,
   env: NodeJS.ProcessEnv,
 ): Promise<ChildProcess> {
-  const args = ["--port", String(port)];
+  // --native-port MUST differ from --port: tauri-driver listens on `port` and
+  // hands the native driver (msedgedriver) `nativePort`. Its default native
+  // port is 4445, so if `port` is left at 4445 the native driver fails to bind
+  // (WSAEADDRINUSE) and the session floods with connection errors.
+  const args = ["--port", String(port), "--native-port", String(nativePort)];
   if (config.nativeDriver) args.push("--native-driver", config.nativeDriver);
+
+  // Route tauri-driver's (and the native driver's) noisy output to a log file
+  // so the console isn't flooded with "connection closed" lines and the real
+  // session error stays readable. Inspect .tmp/tauri-driver-<port>.log on
+  // failure.
+  const logDir = path.join(process.cwd(), ".tmp");
+  mkdirSync(logDir, { recursive: true });
+  const logPath = path.join(logDir, `tauri-driver-${port}.log`);
+  const logFd = openSync(logPath, "w");
+  console.error(`[tauri-driver] :${port} -> logging to ${logPath}`);
 
   const proc = spawn(config.tauriDriverBin, args, {
     env,
-    stdio: "inherit",
+    stdio: ["ignore", logFd, logFd],
     // Own process group on POSIX so killTree() can signal the whole tree.
     detached: process.platform !== "win32",
   });
@@ -66,26 +81,17 @@ export async function buildWebDriver(port: number, appBin: string): Promise<WebD
   caps.set("tauri:options", { application: appBin });
   caps.setBrowserName("wry");
 
-  // tauri-driver mishandles HTTP keep-alive: selenium's default keep-alive
-  // agent triggers a flood of "connection closed before message completed"
-  // errors and flaky/failed sessions. Use a fresh connection per request.
-  const agent = new Agent({ keepAlive: false });
-  const client = new http.HttpClient(`http://127.0.0.1:${port}`, agent);
-  const executor = new http.Executor(Promise.resolve(client));
-
   // The session POST can hang indefinitely when tauri-driver can't reach the
-  // native driver (e.g. msedgedriver/WebView2 version mismatch on Windows).
-  // Bound it so we fail fast with an actionable message instead of hanging
-  // until the test runner cancels with an opaque error.
+  // native driver. Bound it so we fail fast with an actionable message instead
+  // of hanging until the test runner cancels with an opaque error.
   const timeout = new Promise<never>((_, reject) => {
     const t = setTimeout(
       () =>
         reject(
           new Error(
             `WebDriver session creation timed out after ${config.sessionTimeout}ms on port ${port}. ` +
-              `tauri-driver could not establish a session with the native driver. On Windows this is ` +
-              `usually an msedgedriver/WebView2 version mismatch - reinstall via ` +
-              `scripts/install-msedgedriver.ps1 (it now matches the WebView2 Runtime).`,
+              `tauri-driver could not establish a session with the native driver - check ` +
+              `.tmp/tauri-driver-${port}.log (e.g. msedgedriver bind/port errors).`,
           ),
         ),
       config.sessionTimeout,
@@ -93,10 +99,15 @@ export async function buildWebDriver(port: number, appBin: string): Promise<WebD
     t.unref?.();
   });
 
-  // createSession returns the driver synchronously and establishes the session
-  // lazily; getSession() forces and awaits the actual NEW_SESSION handshake so
-  // the timeout above can bound it.
-  const driver = WebDriver.createSession(executor, caps);
+  // Default keep-alive client (reuses one connection); a non-keep-alive client
+  // churns a fresh socket per request and can exhaust the Windows ephemeral
+  // port pool (WSAENOBUFS / 10055). build() establishes the session lazily;
+  // getSession() forces and awaits the NEW_SESSION handshake so the timeout
+  // above can bound it.
+  const driver = new Builder()
+    .usingServer(`http://127.0.0.1:${port}/`)
+    .withCapabilities(caps)
+    .build();
   try {
     await Promise.race([driver.getSession(), timeout]);
     return driver;
