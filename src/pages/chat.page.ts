@@ -1,7 +1,20 @@
-import { By, until, type WebDriver } from "selenium-webdriver";
+import { By, until, type WebDriver, type WebElement } from "selenium-webdriver";
 import { byTid, TID } from "../selectors";
 import { xpathLiteral } from "../util/xpath";
 import { delay } from "../util/wait";
+
+/** Self-mute / self-deafen flags as reflected in the UI. */
+export interface VoiceFlags {
+  readonly muted: boolean;
+  readonly deaf: boolean;
+}
+
+async function readVoiceFlags(el: WebElement): Promise<VoiceFlags> {
+  return {
+    muted: (await el.getAttribute("data-muted")) === "true",
+    deaf: (await el.getAttribute("data-deaf")) === "true",
+  };
+}
 
 /** Page object for the main chat view (ChatPage.tsx / ChatComposer.tsx). */
 export class ChatPage {
@@ -99,6 +112,82 @@ export class ChatPage {
   async waitForMemberDeaf(name: string, timeout = 20000): Promise<void> {
     await this.ensureMembersTab();
     await this.d.wait(until.elementLocated(this.memberRow(name, '[data-deaf="true"]')), timeout);
+  }
+
+  /** Single click of the mute control (cycles inactive -> active -> muted). */
+  async tapMute(): Promise<void> {
+    await this.clickTid(TID.toggleMute);
+  }
+
+  /** Single click of the deafen control. */
+  async tapDeafen(): Promise<void> {
+    await this.clickTid(TID.toggleDeafen);
+  }
+
+  /**
+   * Read the local user's own voice flags from the sidebar self row. That row
+   * is the only `member-item` carrying `data-clickable="true"` (isSelf), so it
+   * uniquely identifies "me" regardless of name collisions.
+   */
+  async selfVoiceFlags(): Promise<VoiceFlags> {
+    const el = await this.d.wait(
+      until.elementLocated(By.css(`[data-testid="${TID.memberItem}"][data-clickable="true"]`)),
+      10000,
+    );
+    return readVoiceFlags(el);
+  }
+
+  /** Read a peer's voice flags as shown to this client in the Members tab. */
+  async peerVoiceFlags(name: string): Promise<VoiceFlags> {
+    await this.ensureMembersTab();
+    const el = await this.d.wait(until.elementLocated(this.memberRow(name)), 15000);
+    return readVoiceFlags(el);
+  }
+
+  /** Wait until the peer's row reflects the expected voice flags (or throw). */
+  async waitForPeerVoice(name: string, expected: VoiceFlags, timeout = 15000): Promise<void> {
+    await this.ensureMembersTab();
+    const row = this.memberRow(name);
+    await this.d.wait(async () => {
+      const els = await this.d.findElements(row);
+      if (els.length === 0) return false;
+      const f = await readVoiceFlags(els[0]);
+      return f.muted === expected.muted && f.deaf === expected.deaf;
+    }, timeout);
+  }
+
+  /** Click the sidebar Disconnect button (returns to the connect page). */
+  async disconnect(): Promise<void> {
+    const btn = await this.d.wait(
+      until.elementLocated(By.xpath("//button[contains(normalize-space(.), 'Disconnect')]")),
+      10000,
+    );
+    await btn.click();
+  }
+
+  /** Wait until the local self row reports the expected muted state. */
+  async waitSelfMuted(muted: boolean, timeout = 10000): Promise<void> {
+    await this.d.wait(async () => (await this.selfVoiceFlags()).muted === muted, timeout);
+  }
+
+  /** Tap mute until the self row reports muted (max a few cycles). */
+  async ensureMuted(): Promise<void> {
+    for (let i = 0; i < 5; i++) {
+      if ((await this.selfVoiceFlags()).muted) return;
+      await this.tapMute();
+      await delay(500);
+    }
+  }
+
+  /** Tap deafen/mute until the self row reports unmuted and undeafened. */
+  async ensureUnmuted(): Promise<void> {
+    for (let i = 0; i < 6; i++) {
+      const f = await this.selfVoiceFlags();
+      if (!f.muted && !f.deaf) return;
+      if (f.deaf) await this.tapDeafen();
+      else await this.tapMute();
+      await delay(500);
+    }
   }
 
   /** CSS locator for a member row, optionally narrowed by a state attribute. */
