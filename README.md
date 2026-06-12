@@ -94,6 +94,29 @@ xvfb-run -a npm run test:e2e        # Linux headless
 docker compose -f fixtures/docker-compose.e2e.yml down -v
 ```
 
+### Headed (local) run — watch it drive the real window
+
+The suite is never headless by itself; headlessness is purely environmental
+(CI wraps it in `xvfb-run`). For a local run with a **visible** app window, use
+the helper scripts, which build the binary if needed, bring the server up, run
+mocha headed, and tear down:
+
+```powershell
+# Windows (PowerShell) — drives the Edge WebView2 window via msedgedriver
+./scripts/run-local.ps1 -Build           # build + run everything
+./scripts/run-local.ps1 -Grep "smoke"    # just the smoke test, reusing an existing build
+```
+
+```bash
+# Linux/macOS — Linux shows a real window when $DISPLAY is set (no xvfb)
+./scripts/run-local.sh --build
+./scripts/run-local.sh --grep "voice"
+```
+
+Extra prerequisite for headed runs: the native WebDriver must be on `PATH` —
+`msedgedriver` (Windows, matching your Edge/WebView2 version) or
+`WebKitWebDriver` (Linux). macOS isn't supported by tauri-driver.
+
 ### Configuration (env vars)
 
 | Var | Default | Purpose |
