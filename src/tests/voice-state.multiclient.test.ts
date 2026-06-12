@@ -1,3 +1,4 @@
+import { describe, it, before, after } from "node:test";
 import { TauriApp } from "../app";
 import { config } from "../config";
 
@@ -11,9 +12,7 @@ import { config } from "../config";
  * that is covered by the client's mumble-protocol integration/audio_quality
  * tests.
  */
-describe("multi-client: voice UI state", function () {
-  this.timeout(360000);
-
+describe("multi-client: voice UI state", () => {
   let alice: TauriApp;
   let bob: TauriApp;
   const aliceName = `e2e-Alice-${Date.now() % 100000}`;

@@ -5,17 +5,15 @@
   "description": "End-to-end (Selenium + tauri-driver) tests driving the FancyMumble desktop client against a real Fancy Mumble server.",
   "type": "module",
   "scripts": {
-    "test:e2e": "mocha",
+    "test:e2e": "node --import tsx --test --test-isolation=none \"src/tests/**/*.test.ts\"",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "selenium-webdriver": "^4.27.0"
   },
   "devDependencies": {
-    "@types/mocha": "^10.0.9",
     "@types/node": "^22.10.0",
     "@types/selenium-webdriver": "^4.1.28",
-    "mocha": "^10.8.2",
     "tsx": "^4.19.2",
     "typescript": "^5.6.0"
   }

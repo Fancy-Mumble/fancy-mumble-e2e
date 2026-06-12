@@ -1,3 +1,4 @@
+import { describe, it, before, after } from "node:test";
 import { TauriApp } from "../app";
 import { config } from "../config";
 
@@ -9,9 +10,7 @@ import { config } from "../config";
  * This is the scenario that validates the per-client data-dir + per-port
  * isolation in TauriApp.launch({ instance }).
  */
-describe("multi-client: presence + messaging", function () {
-  this.timeout(360000);
-
+describe("multi-client: presence + messaging", () => {
   let alice: TauriApp;
   let bob: TauriApp;
   const aliceName = `e2e-Alice-${Date.now() % 100000}`;

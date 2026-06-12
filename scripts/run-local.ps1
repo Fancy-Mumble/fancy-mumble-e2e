@@ -93,9 +93,10 @@ if ($LASTEXITCODE) { throw "docker compose up failed" }
 $code = 0
 try {
   Step "Running e2e suite (headed - a window will open)"
-  $mochaArgs = @()
-  if ($Grep) { $mochaArgs += @("--grep", $Grep) }
-  npx mocha @mochaArgs
+  $testArgs = @("--import", "tsx", "--test", "--test-isolation=none")
+  if ($Grep) { $testArgs += @("--test-name-pattern", $Grep) }
+  $testArgs += "src/tests/**/*.test.ts"
+  node @testArgs
   $code = $LASTEXITCODE
 } finally {
   if ($KeepServer) {

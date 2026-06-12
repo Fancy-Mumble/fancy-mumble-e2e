@@ -29,7 +29,7 @@ under test are pulled in as git submodules:
        │ WebDriver                  │ WebDriver
  ┌─ tauri-driver :4445 ─┐     ┌─ tauri-driver :4446 ─┐
  └──────────▲───────────┘     └──────────▲───────────┘
-        └──────── Mocha + selenium-webdriver (src/) ────────┘
+        └─────── node:test + selenium-webdriver (src/) ──────┘
 ```
 
 ## Layout
@@ -99,7 +99,7 @@ docker compose -f fixtures/docker-compose.e2e.yml down -v
 The suite is never headless by itself; headlessness is purely environmental
 (CI wraps it in `xvfb-run`). For a local run with a **visible** app window, use
 the helper scripts, which build the binary if needed, bring the server up, run
-mocha headed, and tear down:
+the suite headed (visible window), and tear down:
 
 ```powershell
 # Windows (PowerShell) — drives the Edge WebView2 window via msedgedriver
@@ -126,7 +126,7 @@ Extra prerequisite for headed runs: the native WebDriver must be on `PATH` —
 | `E2E_NATIVE_DRIVER` | _(auto)_ | Explicit WebKitWebDriver/msedgedriver path |
 | `E2E_DRIVER_PORT` | `4445` | Base WebDriver port (instance N → base+N) |
 | `E2E_SERVER_HOST` / `E2E_SERVER_PORT` | `127.0.0.1` / `64738` | Server to connect to |
-| `E2E_SERVER_IMAGE` | `ghcr.io/setzero/mumble-server:latest` | Server image for the compose fixture |
+| `E2E_SERVER_IMAGE` | `ghcr.io/fancy-mumble/mumble-server:latest` | Server image for the compose fixture |
 | `E2E_CONNECT_TIMEOUT` | `45000` | Connect + bootstrap timeout (ms) |
 
 ## How test mode works

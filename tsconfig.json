@@ -11,7 +11,7 @@
     "resolveJsonModule": true,
     "skipLibCheck": true,
     "allowImportingTsExtensions": true,
-    "types": ["node", "mocha"],
+    "types": ["node"],
     "noEmit": true
   },
   "include": ["src/**/*.ts", "vendor/client/crates/mumble-tauri/ui/src/testids.ts"]
