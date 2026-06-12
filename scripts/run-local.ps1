@@ -94,6 +94,12 @@ if ($Build -or -not (Test-Path $binPath)) {
 }
 if (-not (Test-Path $binPath)) { throw "Client binary missing at $binPath (use -Build or -Bin)" }
 
+# -- clear stale drivers ----------------------------------------------------
+# A previous interrupted run can orphan tauri-driver/msedgedriver, which then
+# hold the WebDriver ports and make every later run fail. Clear them first.
+Get-Process tauri-driver, msedgedriver -ErrorAction SilentlyContinue |
+  ForEach-Object { taskkill /PID $_.Id /T /F 2>&1 | Out-Null }
+
 # -- server up --------------------------------------------------------------
 $compose = "fixtures/docker-compose.e2e.yml"
 Step "Starting Mumble test server"

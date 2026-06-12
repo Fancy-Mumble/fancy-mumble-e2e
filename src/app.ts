@@ -63,11 +63,14 @@ export class TauriApp {
 
   static async launch(opts: LaunchOptions = {}): Promise<TauriApp> {
     const instance = opts.instance ?? 0;
-    const port = config.driverPort + instance;
+    // Two ports per instance: tauri-driver listens on `port`, msedgedriver/
+    // WebKitWebDriver binds `nativePort`. They must not overlap across instances.
+    const port = config.driverPort + instance * 2;
+    const nativePort = port + 1;
     const dataDir = mkdtempSync(path.join(os.tmpdir(), "fancy-e2e-"));
     const env = makeIsolatedEnv(dataDir);
 
-    const proc = await startTauriDriver(port, env);
+    const proc = await startTauriDriver(port, nativePort, env);
     try {
       const driver = await buildWebDriver(port, config.appBin);
       const app = new TauriApp(driver, proc, dataDir);
@@ -91,7 +94,16 @@ export class TauriApp {
   private async waitDomReady(timeout = 30000): Promise<void> {
     await this.driver.wait(async () => {
       try {
-        return (await this.driver.executeScript("return document.readyState")) === "complete";
+        // The webview briefly reports about:blank before the app's custom-
+        // protocol page loads; wait for the real app URL AND a mounted React
+        // root so getCurrentUrl()/navigation in applyTestMode are reliable.
+        const url = await this.driver.getCurrentUrl();
+        if (!/^https?:\/\//.test(url)) return false;
+        return (
+          (await this.driver.executeScript(
+            "return document.readyState === 'complete' && !!document.getElementById('root') && document.getElementById('root').childElementCount > 0",
+          )) === true
+        );
       } catch {
         return false;
       }
@@ -106,13 +118,30 @@ export class TauriApp {
    * so the flags take effect.
    */
   private async applyTestMode(): Promise<void> {
+    // Relocate the Tauri plugin-store into an isolated dir so the app starts
+    // from fresh/mock settings (no real saved servers, default preferences).
+    const storeDir = path.join(this.dataDir, "store");
+    mkdirSync(storeDir, { recursive: true });
     await this.driver.executeScript(
       `try {
          window.localStorage.setItem('fancy-e2e', '1');
          window.localStorage.setItem('mumble-language', 'en');
-       } catch (e) { /* ignore */ }
-       window.location.assign('/');`,
+         window.localStorage.setItem('fancy-e2e-data-dir', arguments[0]);
+       } catch (e) { /* ignore */ }`,
+      storeDir.replace(/\\/g, "/"),
     );
+    // Navigate to the app root so the flags take effect and we leave any
+    // first-run /welcome route. Resolve the root in Node and use WebDriver's
+    // get() rather than an in-page location.assign('/') (which the Tauri
+    // webview rejects with "'' is not a valid URL").
+    const current = await this.driver.getCurrentUrl();
+    let root = current;
+    try {
+      root = new URL("/", current).href;
+    } catch {
+      /* fall back to reloading the current URL */
+    }
+    await this.driver.get(root);
     await this.waitDomReady();
   }
 

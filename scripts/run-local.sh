@@ -47,6 +47,10 @@ if [ "$BUILD" = 1 ] || [ ! -x "$bin_path" ]; then
 fi
 [ -x "$bin_path" ] || { echo "Client binary missing at $bin_path (use --build or --bin)" >&2; exit 1; }
 
+# Clear stale drivers from a previous interrupted run (they hold the ports).
+pkill -f tauri-driver 2>/dev/null || true
+pkill -f WebKitWebDriver 2>/dev/null || true
+
 compose="fixtures/docker-compose.e2e.yml"
 step "Starting Mumble test server"
 docker compose -f "$compose" up -d --wait
