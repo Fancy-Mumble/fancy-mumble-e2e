@@ -103,7 +103,7 @@ if ($LASTEXITCODE) { throw "docker compose up failed" }
 $code = 0
 try {
   Step "Running e2e suite (headed - a window will open)"
-  $testArgs = @("--import", "tsx", "--test", "--test-isolation=none", "--test-concurrency=1")
+  $testArgs = @("--import", "tsx", "--test", "--test-concurrency=1")
   if ($Grep) { $testArgs += @("--test-name-pattern", $Grep) }
   $testArgs += "src/tests/**/*.test.ts"
   node @testArgs

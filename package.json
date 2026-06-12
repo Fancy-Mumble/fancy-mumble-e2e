@@ -5,7 +5,7 @@
   "description": "End-to-end (Selenium + tauri-driver) tests driving the FancyMumble desktop client against a real Fancy Mumble server.",
   "type": "module",
   "scripts": {
-    "test:e2e": "node --import tsx --test --test-isolation=none --test-concurrency=1 \"src/tests/**/*.test.ts\"",
+    "test:e2e": "node --import tsx --test --test-concurrency=1 \"src/tests/**/*.test.ts\"",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
