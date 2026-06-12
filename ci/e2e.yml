@@ -1,8 +1,9 @@
 # Headless e2e on Linux (WebKitWebDriver + xvfb).
 #
-# DRAFT: this requires the client submodule's `feature/e2e-testability` branch
-# to be pushed to GitHub so `submodules: recursive` can resolve the pinned
-# commit. Until the suite is proven stable it is marked continue-on-error.
+# Only the `vendor/client` submodule is checked out: CI builds the client
+# binary from it and runs the server from the prebuilt ghcr image, so the
+# server/docker submodule sources are never needed. Marked continue-on-error
+# until the suite is proven green & stable.
 name: e2e
 
 on:
@@ -18,8 +19,11 @@ jobs:
     continue-on-error: true # flip to false once green & stable
     steps:
       - uses: actions/checkout@v4
-        with:
-          submodules: recursive
+
+      # Only the client submodule is needed (built to a binary). Init it over
+      # HTTPS using the checkout-persisted token credential.
+      - name: Check out client submodule
+        run: git submodule update --init vendor/client
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
