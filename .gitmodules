@@ -1,6 +1,6 @@
 [submodule "vendor/client"]
 	path = vendor/client
-	url = https://github.com/Fancy-Mumble/FancyMumbleNext.git
+	url = https://github.com/Fancy-Mumble/FancyMumble.git
 	branch = feature/e2e-testability
 [submodule "vendor/server"]
 	path = vendor/server
