@@ -1,0 +1,82 @@
+# Headless e2e on Linux (WebKitWebDriver + xvfb).
+#
+# DRAFT: this requires the client submodule's `feature/e2e-testability` branch
+# to be pushed to GitHub so `submodules: recursive` can resolve the pinned
+# commit. Until the suite is proven stable it is marked continue-on-error.
+name: e2e
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  e2e:
+    name: e2e (linux, headless)
+    runs-on: ubuntu-latest
+    continue-on-error: true # flip to false once green & stable
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: vendor/client
+
+      - name: Install Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      # Client (Tauri) system deps + WebKitWebDriver + xvfb for headless.
+      - name: Install Linux system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf \
+            libasound2-dev libgtk-3-dev libsoup-3.0-dev libjavascriptcoregtk-4.1-dev \
+            protobuf-compiler webkit2gtk-driver xvfb
+
+      - name: Install Tauri CLI + tauri-driver
+        uses: taiki-e/install-action@v2
+        with:
+          tool: tauri-cli, tauri-driver
+
+      - name: Build client frontend
+        working-directory: vendor/client/crates/mumble-tauri/ui
+        run: npm ci && npm run build
+
+      - name: Build client binary
+        working-directory: vendor/client
+        run: cargo tauri build --no-bundle
+
+      - name: Install e2e deps
+        run: npm ci
+
+      - name: Start Mumble test server
+        run: docker compose -f fixtures/docker-compose.e2e.yml up -d --wait
+
+      - name: Run e2e suite (headless)
+        env:
+          E2E_APP_BIN: vendor/client/target/release/mumble-tauri
+        run: xvfb-run -a npm run test:e2e
+
+      - name: Stop Mumble test server
+        if: always()
+        run: docker compose -f fixtures/docker-compose.e2e.yml down -v
+
+      - name: Upload artifacts on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-artifacts
+          path: |
+            screenshots/
+            test-results/
+          if-no-files-found: ignore

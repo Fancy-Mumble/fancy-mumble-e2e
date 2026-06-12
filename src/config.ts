@@ -1,0 +1,42 @@
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+
+const thisDir = path.dirname(fileURLToPath(import.meta.url));
+/** Repo root (fancy-mumble-e2e/). `src/` is one level down. */
+const repoRoot = path.resolve(thisDir, "..");
+
+const exe = process.platform === "win32" ? "mumble-tauri.exe" : "mumble-tauri";
+
+/**
+ * Runtime configuration for the e2e suite. Everything is overridable via
+ * environment variables so the same harness runs locally and in CI.
+ */
+export const config = {
+  /**
+   * Path to the built FancyMumble binary. Must be a build with embedded
+   * assets (the `custom-protocol` feature / `cargo tauri build`), not the
+   * Vite dev server. Defaults to the client submodule's release output.
+   */
+  appBin: process.env.E2E_APP_BIN ??
+    path.join(repoRoot, "vendor", "client", "target", "release", exe),
+
+  /** `tauri-driver` executable (on PATH after `cargo install tauri-driver`). */
+  tauriDriverBin: process.env.E2E_TAURI_DRIVER ?? "tauri-driver",
+
+  /**
+   * Optional explicit native WebDriver for tauri-driver to proxy to
+   * (`WebKitWebDriver` on Linux, `msedgedriver` on Windows). When unset,
+   * tauri-driver resolves one from PATH.
+   */
+  nativeDriver: process.env.E2E_NATIVE_DRIVER,
+
+  /** Base port for the first tauri-driver instance; instance N uses base+N. */
+  driverPort: Number(process.env.E2E_DRIVER_PORT ?? "4445"),
+
+  /** Mumble server the client connects to (the Docker fixture). */
+  serverHost: process.env.E2E_SERVER_HOST ?? "127.0.0.1",
+  serverPort: Number(process.env.E2E_SERVER_PORT ?? "64738"),
+
+  /** How long to wait for connect + post-connect bootstrap to finish (ms). */
+  connectTimeout: Number(process.env.E2E_CONNECT_TIMEOUT ?? "45000"),
+} as const;
