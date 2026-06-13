@@ -286,23 +286,49 @@ export class ChatPage {
     await this.d.wait(async () => (await this.selfVoiceFlags()).muted === muted, timeout);
   }
 
-  /** Tap mute until the self row reports muted (max a few cycles). */
+  /**
+   * The backend's authoritative voice state ("inactive" | "active" | "muted").
+   * Unlike the self-mute INDICATOR (data-muted, which reflects the server-echoed
+   * self_mute and lags a round-trip), this updates immediately, so driving the
+   * mute controls off it avoids a tap-until-detected loop oscillating on the lag.
+   */
+  async voiceState(): Promise<string> {
+    return this.d.executeAsyncScript<string>(`
+      const cb = arguments[arguments.length - 1];
+      const inv = window.__TAURI_INTERNALS__ && window.__TAURI_INTERNALS__.invoke;
+      if (!inv) { cb('no-invoke'); return; }
+      inv('get_voice_state').then((r) => cb(String(r))).catch(() => cb('err'));
+    `);
+  }
+
+  /** Drive the local user into the backend "muted" voice state (mic off, can hear). */
   async ensureMuted(): Promise<void> {
-    for (let i = 0; i < 5; i++) {
-      if ((await this.selfVoiceFlags()).muted) return;
+    // Cycle is inactive -> active -> muted. Decide from the authoritative voice
+    // state and wait for each tap to land before tapping again.
+    for (let i = 0; i < 6; i++) {
+      const vs = await this.voiceState();
+      if (vs === "muted") {
+        await this.waitSelfMuted(true, 8000).catch(() => undefined); // let the indicator catch up
+        return;
+      }
       await this.tapMute();
-      await delay(500);
+      await this.d.wait(async () => (await this.voiceState()) !== vs, 6000).catch(() => undefined);
     }
   }
 
-  /** Tap deafen/mute until the self row reports unmuted and undeafened. */
+  /** Drive the local user into the "active" (voice on, unmuted, undeafened) state. */
   async ensureUnmuted(): Promise<void> {
     for (let i = 0; i < 6; i++) {
-      const f = await this.selfVoiceFlags();
-      if (!f.muted && !f.deaf) return;
-      if (f.deaf) await this.tapDeafen();
+      const vs = await this.voiceState();
+      if (vs === "active") {
+        await this.waitSelfMuted(false, 8000).catch(() => undefined);
+        return;
+      }
+      // Undeafen first if needed (deaf implies muted); otherwise tap mute to
+      // move muted/inactive -> active.
+      if ((await this.selfVoiceFlags()).deaf) await this.tapDeafen();
       else await this.tapMute();
-      await delay(500);
+      await this.d.wait(async () => (await this.voiceState()) !== vs, 6000).catch(() => undefined);
     }
   }
 
