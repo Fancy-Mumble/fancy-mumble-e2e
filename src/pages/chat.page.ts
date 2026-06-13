@@ -98,6 +98,48 @@ export class ChatPage {
   }
 
   /**
+   * Upload a file via the composer's "File" attach option (the file-server
+   * plugin path). The native file picker (`plugin:dialog|open`) is intercepted
+   * in the webview to return `hostFilePath` so Selenium never faces a native
+   * dialog, then the FileShareDialog is submitted with its defaults ("session"
+   * access, default TTL). Requires the SHARE_FILES permission, so the attach
+   * "File" option is only present for an authorised user (e.g. SuperUser).
+   */
+  async uploadFileViaAttach(hostFilePath: string): Promise<void> {
+    await this.d.executeScript(
+      `window.__e2eAttachPath = arguments[0];
+       if (!window.__e2eDialogMocked) {
+         const inv = window.__TAURI_INTERNALS__.invoke;
+         window.__TAURI_INTERNALS__.invoke = function (cmd, args, opts) {
+           if (cmd === 'plugin:dialog|open') return Promise.resolve(window.__e2eAttachPath);
+           return inv.call(this, cmd, args, opts);
+         };
+         window.__e2eDialogMocked = true;
+       }`,
+      hostFilePath,
+    );
+    // Open the attach menu (its tooltip only reads "...or file" once the
+    // file-server capabilities are loaded and upload is permitted) and pick File.
+    const attachBtn = await this.d.wait(
+      until.elementLocated(By.xpath("//button[@title='Attach image or file']")),
+      20000,
+    );
+    await attachBtn.click();
+    const fileItem = await this.d.wait(
+      until.elementLocated(By.xpath("//button[@role='menuitem' and normalize-space(.)='File']")),
+      8000,
+    );
+    await fileItem.click();
+    // FileShareDialog: submit with defaults.
+    const uploadBtn = await this.d.wait(
+      until.elementLocated(By.xpath("//*[@role='dialog']//button[normalize-space(.)='Upload']")),
+      10000,
+    );
+    await this.d.wait(until.elementIsEnabled(uploadBtn), 8000);
+    await uploadBtn.click();
+  }
+
+  /**
    * Right-click a message (located by its text) and pick a quick-reaction
    * emoji from the context menu. The message must carry a message_id (pchat)
    * for the context menu to be wired; otherwise the wrapper has no
