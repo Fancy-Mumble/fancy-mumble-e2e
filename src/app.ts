@@ -27,6 +27,14 @@ export interface LaunchOptions {
  */
 function makeIsolatedEnv(dataDir: string): NodeJS.ProcessEnv {
   const env: NodeJS.ProcessEnv = { ...process.env };
+  // Isolate the Rust-side app data root (certs, identities, pchat seeds, signal
+  // state). Tauri's app_data_dir() ignores APPDATA/HOME on Windows (OS
+  // known-folder API), so without this every instance would share ONE cert /
+  // Signal identity. The client's e2e_data_dir() reads this env var. Use the
+  // same dir the JS plugin-store shim isolates into (see applyTestMode).
+  const appDataRoot = path.join(dataDir, "store");
+  mkdirSync(appDataRoot, { recursive: true });
+  env.FANCY_E2E_DATA_DIR = appDataRoot;
   if (process.platform === "win32") {
     env.APPDATA = path.join(dataDir, "Roaming");
     env.LOCALAPPDATA = path.join(dataDir, "Local");
@@ -69,6 +77,25 @@ export class TauriApp {
     return path.join(this.dataDir, "store");
   }
 
+  /**
+   * Generate this instance's "default" client certificate in its isolated data
+   * dir. With per-instance FANCY_E2E_DATA_DIR isolation the dir starts empty, so
+   * without this the client connects cert-less and has NO Signal identity
+   * (empty cert hash) - breaking signal_v1 key distribution. generate_certificate
+   * is idempotent, so reconnects keep the same identity.
+   */
+  async ensureDefaultCert(): Promise<void> {
+    const result = await this.driver.executeAsyncScript<string>(`
+      const cb = arguments[arguments.length - 1];
+      const inv = window.__TAURI_INTERNALS__ && window.__TAURI_INTERNALS__.invoke;
+      if (!inv) { cb('no-invoke'); return; }
+      inv('generate_certificate', { label: 'default' }).then(() => cb('ok')).catch((e) => cb('err:' + e));
+    `);
+    if (result !== "ok") {
+      throw new Error(`ensureDefaultCert failed: ${result}`);
+    }
+  }
+
   static async launch(opts: LaunchOptions = {}): Promise<TauriApp> {
     const instance = opts.instance ?? 0;
     // Two ports per instance: tauri-driver listens on `port`, msedgedriver/
@@ -84,6 +111,7 @@ export class TauriApp {
       const app = new TauriApp(driver, proc, dataDir);
       await app.waitDomReady();
       await app.applyTestMode();
+      await app.ensureDefaultCert();
       await app.connect.waitReady(config.connectTimeout);
       return app;
     } catch (e) {

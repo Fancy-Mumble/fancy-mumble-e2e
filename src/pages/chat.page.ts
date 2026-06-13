@@ -63,6 +63,40 @@ export class ChatPage {
     await this.d.wait(until.elementLocated(xp), timeout);
   }
 
+  /** Whether `text` is currently rendered anywhere (no waiting). */
+  async hasText(text: string): Promise<boolean> {
+    const xp = By.xpath(`//*[contains(normalize-space(string(.)), ${xpathLiteral(text)})]`);
+    return (await this.d.findElements(xp)).length > 0;
+  }
+
+  /**
+   * Approve pending key-share consent dialogs ("Share Key"). Sharing an
+   * encryption key with a peer is gated behind explicit user consent (the
+   * KeyShareWarningDialog), so a peer can only decrypt once the key holder
+   * approves. Dialogs appear asynchronously as peers announce their keys, so
+   * poll for the whole window and approve each as it shows. Returns the count.
+   */
+  async approveKeyShares(maxWaitMs = 15000): Promise<number> {
+    const shareBtn = By.xpath("//*[@role='dialog']//button[normalize-space(.)='Share Key']");
+    let approved = 0;
+    const deadline = Date.now() + maxWaitMs;
+    while (Date.now() < deadline) {
+      const btns = await this.d.findElements(shareBtn);
+      if (btns.length > 0) {
+        try {
+          await btns[0].click();
+          approved++;
+          await delay(700);
+          continue;
+        } catch {
+          /* dialog re-rendered; re-poll */
+        }
+      }
+      await delay(800);
+    }
+    return approved;
+  }
+
   /**
    * Right-click a message (located by its text) and pick a quick-reaction
    * emoji from the context menu. The message must carry a message_id (pchat)
