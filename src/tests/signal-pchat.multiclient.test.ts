@@ -27,8 +27,8 @@ import { delay } from "../util/wait";
  * Convention: SuperUser (admin, instance 0) creates the signal channel; bob and
  * carol are anonymous participants on instances 1 and 2.
  *
- * NOTE: requires a server built with the late-joiner SKDM fix. Point the suite
- * at it with E2E_SERVER_IMAGE (the default ghcr image predates the fix).
+ * The late-joiner SKDM fix is in the published server image, so this runs green
+ * against the default ghcr image (no E2E_SERVER_IMAGE override needed).
  */
 
 async function connectAnon(instance: number, name: string): Promise<TauriApp> {
