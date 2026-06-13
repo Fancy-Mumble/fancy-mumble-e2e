@@ -30,9 +30,14 @@ export class SidebarPage {
   /**
    * Create a sub-channel under the channel with `parentId` (0 = root) via the
    * right-click context menu and the channel editor dialog. Resolves once the
-   * dialog has closed.
+   * dialog has closed. Pass `pchatProtocol` (e.g. "fancy_v1_full_archive" or
+   * "signal_v1") to enable persistent chat on the new channel.
    */
-  async createSubChannel(parentId: number, name: string): Promise<void> {
+  async createSubChannel(
+    parentId: number,
+    name: string,
+    opts: { pchatProtocol?: string } = {},
+  ): Promise<void> {
     const parent = await this.d.wait(until.elementLocated(this.byChannelId(parentId)), 15000);
     await this.d.actions().contextClick(parent).perform();
     // The context menu + editor dialog animate in; located-but-not-yet-
@@ -52,6 +57,11 @@ export class SidebarPage {
     await this.d.wait(until.elementIsVisible(nameInput), 5000);
     await nameInput.clear();
     await nameInput.sendKeys(name);
+
+    if (opts.pchatProtocol) {
+      const select = await this.d.findElement(By.css("#ch-ed-pchat"));
+      await select.findElement(By.css(`option[value="${opts.pchatProtocol}"]`)).click();
+    }
 
     const createBtn = await this.d.wait(
       until.elementLocated(By.xpath("//*[@role='dialog']//button[normalize-space(.)='Create']")),
