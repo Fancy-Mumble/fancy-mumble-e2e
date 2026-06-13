@@ -31,16 +31,7 @@ describe("persistent chat: history replay in a pchat channel", () => {
     await admin?.close();
   });
 
-  // SKIP (deferred - deeper pchat behavior to sort out separately):
-  //  - Persistence is per-channel; root has no pchat protocol, so a full-archive
-  //    channel is created first (createSubChannel + pchatProtocol).
-  //  - But the message sent after joinChannel never reappears, and the SERVER
-  //    logs show NO join to the new channel (only the initial root join) and no
-  //    archived message - i.e. joinChannel (double-click) isn't moving the user
-  //    in, and/or the send targets a different channel than the view.
-  //  - Needs a reliable "move into channel" action + the send-vs-view-vs-current
-  //    channel model clarified, then confirm full-archive replay on reconnect.
-  it.skip("replays a message after disconnect + reconnect", async () => {
+  it("replays a message after disconnect + reconnect", async () => {
     await admin.sidebar.createSubChannel(0, channelName, {
       pchatProtocol: "fancy_v1_full_archive",
     });
