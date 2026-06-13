@@ -77,10 +77,39 @@ export class SidebarPage {
     );
   }
 
-  /** Double-click a channel to join it (move the local user into it). */
+  /**
+   * Double-click a channel to MOVE the local user into it (membership), not just
+   * select it for viewing. The double-click can land as a select-only (the two
+   * clicks race the re-render), so retry until the self row confirms membership.
+   */
   async joinChannel(name: string): Promise<void> {
-    const el = await this.d.wait(until.elementLocated(this.byChannelName(name)), 15000);
-    await this.d.actions().doubleClick(el).perform();
+    for (let attempt = 0; attempt < 4; attempt++) {
+      const el = await this.d.wait(until.elementLocated(this.byChannelName(name)), 15000);
+      await this.d.actions().doubleClick(el).perform();
+      try {
+        await this.waitForMembership(name, 4000);
+        return;
+      } catch {
+        /* select-only landed; retry the double-click */
+      }
+    }
+    throw new Error(`failed to move into channel "${name}" (membership not confirmed)`);
+  }
+
+  /**
+   * Wait until the local user is a MEMBER of `name`. The sidebar self row
+   * (the only member-item with data-clickable=true) carries a channel chip
+   * showing the channel the user is currently in.
+   */
+  async waitForMembership(name: string, timeout = 12000): Promise<void> {
+    await this.d.wait(async () => {
+      const rows = await this.d.findElements(
+        By.css(`[data-testid="${TID.memberItem}"][data-clickable="true"]`),
+      );
+      if (rows.length === 0) return false;
+      const text = await rows[0].getText().catch(() => "");
+      return text.includes(name);
+    }, timeout);
   }
 }
 
