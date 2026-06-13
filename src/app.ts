@@ -61,6 +61,11 @@ export class TauriApp {
     this.chat = new ChatPage(driver);
   }
 
+  /** The isolated plugin-store directory for this client (diagnostics/tests). */
+  get storeDir(): string {
+    return path.join(this.dataDir, "store");
+  }
+
   static async launch(opts: LaunchOptions = {}): Promise<TauriApp> {
     const instance = opts.instance ?? 0;
     // Two ports per instance: tauri-driver listens on `port`, msedgedriver/
