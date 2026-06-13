@@ -63,6 +63,46 @@ export class ChatPage {
     await this.d.wait(until.elementLocated(xp), timeout);
   }
 
+  /**
+   * Right-click a message (located by its text) and pick a quick-reaction
+   * emoji from the context menu. The message must carry a message_id (pchat)
+   * for the context menu to be wired; otherwise the wrapper has no
+   * data-msg-id / onContextMenu.
+   */
+  async reactToMessage(messageText: string, emoji: string): Promise<void> {
+    const wrapper = await this.d.wait(
+      until.elementLocated(
+        By.xpath(`//*[@data-msg-id][contains(normalize-space(.), ${xpathLiteral(messageText)})]`),
+      ),
+      15000,
+    );
+    // Hovering reveals the per-message action bar and right-click opens the
+    // context menu; both expose the same quick-reaction emoji buttons (and the
+    // action bar's copy is always in the DOM but hidden). Click whichever
+    // matching emoji button is actually visible.
+    await this.d.actions().move({ origin: wrapper }).perform();
+    await this.d.actions().contextClick(wrapper).perform();
+    await delay(500);
+    const candidates = await this.d.findElements(
+      By.xpath(`//button[normalize-space(.)=${xpathLiteral(emoji)}]`),
+    );
+    for (const btn of candidates) {
+      if (await btn.isDisplayed()) {
+        await btn.click();
+        return;
+      }
+    }
+    throw new Error(`No visible '${emoji}' quick-reaction button after opening message actions`);
+  }
+
+  /** Wait for a reaction pill to appear (its aria-label starts with the emoji). */
+  async waitForReaction(emoji: string, timeout = 15000): Promise<void> {
+    await this.d.wait(
+      until.elementLocated(By.xpath(`//button[starts-with(@aria-label, ${xpathLiteral(emoji)})]`)),
+      timeout,
+    );
+  }
+
   /** Wait for a member row with the given display name to appear in the list. */
   async waitForMember(name: string, timeout = 20000): Promise<void> {
     await this.ensureMembersTab();
