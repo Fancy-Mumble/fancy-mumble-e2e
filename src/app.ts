@@ -8,6 +8,7 @@ import { startTauriDriver, buildWebDriver } from "./driver";
 import { killTree } from "./util/proc";
 import { ConnectPage } from "./pages/connect.page";
 import { ChatPage } from "./pages/chat.page";
+import { SidebarPage } from "./pages/sidebar.page";
 
 export interface LaunchOptions {
   /**
@@ -51,6 +52,7 @@ function makeIsolatedEnv(dataDir: string): NodeJS.ProcessEnv {
 export class TauriApp {
   readonly connect: ConnectPage;
   readonly chat: ChatPage;
+  readonly sidebar: SidebarPage;
 
   private constructor(
     readonly driver: WebDriver,
@@ -59,6 +61,7 @@ export class TauriApp {
   ) {
     this.connect = new ConnectPage(driver);
     this.chat = new ChatPage(driver);
+    this.sidebar = new SidebarPage(driver);
   }
 
   /** The isolated plugin-store directory for this client (diagnostics/tests). */
