@@ -76,9 +76,39 @@ if (-not (Test-Path (Join-Path $repo "node_modules"))) {
   npm ci; if ($LASTEXITCODE) { throw "npm ci failed" }
 }
 
-# -- build the client binary (visible-window build is the normal release) ---
-if ($Build -or -not (Test-Path $binPath)) {
-  if ($Bin) { throw "No binary at -Bin path: $Bin" }
+# -- refresh client submodule + (re)build when it changed -------------------
+# The app binary comes from the vendor/client submodule. Keep that checkout in
+# sync with the pinned revision and rebuild whenever it changed since the binary
+# was last built, so a submodule bump (or a never-built tree) can never silently
+# run a stale app. The commit a binary was built from is stamped next to it.
+# Skipped when an explicit -Bin was given.
+$needBuild = [bool]$Build
+$stampFile = $null
+$clientCommit = ""
+
+if ($Bin) {
+  if (-not (Test-Path $binPath)) { throw "No binary at -Bin path: $Bin" }
+} else {
+  $clientDir = Join-Path $repo "vendor/client"
+  Step "Syncing vendor/client submodule"
+  git -C $repo submodule update --init vendor/client
+  if ($LASTEXITCODE) { Write-Warning "git submodule update failed; using the current vendor/client checkout" }
+
+  $clientCommit = "$(git -C $clientDir rev-parse HEAD)".Trim()
+  $stampFile = Join-Path $clientDir "target/release/.e2e-built-commit"
+  $builtCommit = if (Test-Path $stampFile) { (Get-Content $stampFile -Raw).Trim() } else { "" }
+
+  if (-not (Test-Path $binPath)) {
+    Write-Host "Client binary missing - building." -ForegroundColor DarkGray
+    $needBuild = $true
+  } elseif ($clientCommit -and ($clientCommit -ne $builtCommit)) {
+    Write-Host "vendor/client changed since last build ($builtCommit -> $clientCommit) - rebuilding." -ForegroundColor DarkGray
+    $needBuild = $true
+  }
+}
+
+if ($needBuild) {
+  if ($Bin) { throw "Refusing to rebuild over an explicit -Bin binary." }
   Step "Building client frontend (this takes a few minutes)"
   Push-Location (Join-Path $repo "vendor/client/crates/mumble-tauri/ui")
   try {
@@ -91,6 +121,13 @@ if ($Build -or -not (Test-Path $binPath)) {
   try {
     cargo tauri build --no-bundle; if ($LASTEXITCODE) { throw "cargo tauri build failed" }
   } finally { Pop-Location }
+
+  # Stamp the binary with the commit it was built from so the next run detects a
+  # submodule bump and rebuilds.
+  if ($stampFile) {
+    New-Item -ItemType Directory -Force -Path (Split-Path $stampFile) | Out-Null
+    Set-Content -Path $stampFile -Value $clientCommit -Encoding ascii
+  }
 }
 if (-not (Test-Path $binPath)) { throw "Client binary missing at $binPath (use -Build or -Bin)" }
 
