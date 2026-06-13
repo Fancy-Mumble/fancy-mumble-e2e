@@ -84,34 +84,34 @@ describe("voice-state sync: mute/unmute combinations + reconnect", () => {
     await assertConsistent("undeafened");
   });
 
-  // SKIP (known issue, under investigation - the suspected real client bug):
-  // the saved MUTED state is not reliably restored after reconnect.
-  //  - NOT a fixed-delay timing flake: a 20s poll still saw self_mute=false in
-  //    one run, while a separate run restored it - inconsistent across runs.
-  //  - voiceOnReconnect / voiceMutedOnReconnect read as `undefined` from the
-  //    e2e preferences.json, so either the restore prefs aren't persisted (the
-  //    reconnect restore would then never fire) or the store structure differs
-  //    from what was inspected - needs confirming in preferencesStorage.
-  //  - The restore re-creates the audio output pipeline (enable_voice_muted),
-  //    which is inherently fragile in automated runs without stable audio.
-  // Re-enable once the muted reconnect-restore is confirmed reliable.
-  it.skip("reconnect restores a saved MUTED state, in sync", async () => {
-    await alice.chat.ensureMuted();
-    await assertConsistent("muted before reconnect");
+  // The muted reconnect-restore is intermittent (a single pass does NOT mean it
+  // works), so repeat the disconnect -> reconnect -> assert-muted cycle and fail
+  // on the FIRST iteration that doesn't restore. This is a deliberate flakiness
+  // probe: it must be reliably green across all iterations before we call the
+  // reconnect muted-restore fixed. Override the count with E2E_RECONNECT_ITERS.
+  it("reliably restores a saved MUTED state across repeated reconnects", async () => {
+    const iterations = Number(process.env.E2E_RECONNECT_ITERS ?? "5");
+    for (let i = 1; i <= iterations; i++) {
+      await alice.chat.ensureMuted();
+      await assertConsistent(`muted before reconnect #${i}`);
 
-    await alice.chat.disconnect();
-    await alice.connect.waitReady(config.connectTimeout);
-    await alice.connect.connect(config.serverHost, aliceName, { port: config.serverPort });
-    await alice.chat.waitLoaded();
+      await alice.chat.disconnect();
+      await alice.connect.waitReady(config.connectTimeout);
+      await alice.connect.connect(config.serverHost, aliceName, { port: config.serverPort });
+      await alice.chat.waitLoaded();
 
-    // Poll for the restore to land (its SetSelfMute round-trips back as a
-    // UserState) instead of a fixed delay, which flaked under full-suite load.
-    // A fresh reconnect starts unmuted, so waiting for muted=true cannot pass on
-    // a connect-time transient; assertConsistent then cross-checks the peer.
-    await alice.chat.waitSelfMuted(true, 20000).catch(() => undefined);
-    const local = await alice.chat.selfVoiceFlags();
-    assert.equal(local.muted, true, "saved MUTED state should be restored after reconnect");
-    await assertConsistent("after reconnect (saved muted)");
+      // Poll for the restore to land (SetSelfMute round-trips back as a
+      // UserState). A fresh reconnect starts unmuted, so waiting for muted=true
+      // cannot pass on a connect-time transient.
+      await alice.chat.waitSelfMuted(true, 20000).catch(() => undefined);
+      const local = await alice.chat.selfVoiceFlags();
+      assert.equal(
+        local.muted,
+        true,
+        `MUTED state not restored after reconnect (iteration ${i}/${iterations})`,
+      );
+      await assertConsistent(`after reconnect #${i} (saved muted)`);
+    }
   });
 
   it("reconnect restores a saved UNMUTED state, in sync", async () => {
