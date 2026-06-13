@@ -1,0 +1,2 @@
+Fancy Mumble e2e file-server upload fixture.
+This file is uploaded by the file-server upload test via the composer attach menu.
