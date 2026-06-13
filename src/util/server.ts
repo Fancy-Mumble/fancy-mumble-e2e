@@ -1,7 +1,9 @@
 import { execFileSync } from "node:child_process";
 
 const CONTAINER = process.env.E2E_SERVER_CONTAINER ?? "fancy-e2e-mumble";
-const INI = process.env.E2E_SERVER_INI ?? "/data/mumble_server_config.ini";
+// The compose mounts our config here (MUMBLE_CUSTOM_CONFIG_FILE); --set-su-pw
+// needs an ini that points at the right database to update the SuperUser hash.
+const INI = process.env.E2E_SERVER_INI ?? "/config/mumble-server.ini";
 
 /**
  * Set the server's SuperUser password on the running container.
