@@ -47,8 +47,10 @@ services:
       MUMBLE_CONFIG_autobanTime: "0"
       MUMBLE_CONFIG_users: "100"
       MUMBLE_CONFIG_bandwidth: "320000"
-      # Persistent chat (Fancy feature) - server stores history.
+      # Persistent chat (Fancy feature) - server stores + replays history.
+      # pchatrequireregistration=false so anonymous test users get history too.
       MUMBLE_CONFIG_pchatenabled: "true"
+      MUMBLE_CONFIG_pchatrequireregistration: "false"
       MUMBLE_CONFIG_welcometext: "<b>Fancy Mumble e2e test server</b>"
     healthcheck:
       # Control port accepting TCP is a good readiness signal.
