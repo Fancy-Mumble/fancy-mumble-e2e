@@ -93,11 +93,12 @@ describe("voice-state sync: mute/unmute combinations + reconnect", () => {
     await alice.connect.connect(config.serverHost, aliceName, { port: config.serverPort });
     await alice.chat.waitLoaded();
 
-    // The voice restore (enableVoice + toggleMute) runs async in the post-connect
-    // bootstrap; poll so a slow restore isn't mistaken for a broken one.
-    await alice.chat
-      .waitSelfMuted(true, 12000)
-      .catch(() => assert.fail("saved MUTED state was not restored after reconnect"));
+    // Let the async voice restore (enableVoice + toggleMute) settle, then assert
+    // the FINAL state - the connect-time state is muted, so we must not pass on
+    // that transient.
+    await delay(6000);
+    const local = await alice.chat.selfVoiceFlags();
+    assert.equal(local.muted, true, "saved MUTED state should be restored after reconnect");
     await assertConsistent("after reconnect (saved muted)");
   });
 
@@ -110,9 +111,9 @@ describe("voice-state sync: mute/unmute combinations + reconnect", () => {
     await alice.connect.connect(config.serverHost, aliceName, { port: config.serverPort });
     await alice.chat.waitLoaded();
 
-    await alice.chat
-      .waitSelfMuted(false, 12000)
-      .catch(() => assert.fail("saved UNMUTED state was not restored after reconnect"));
+    await delay(6000);
+    const local = await alice.chat.selfVoiceFlags();
+    assert.equal(local.muted, false, "saved UNMUTED state should be restored after reconnect");
     await assertConsistent("after reconnect (saved unmuted)");
   });
 });
