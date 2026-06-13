@@ -1,4 +1,4 @@
-import { By, until, type WebDriver, type WebElement } from "selenium-webdriver";
+import { By, Key, until, type WebDriver, type WebElement } from "selenium-webdriver";
 import { byTid, TID } from "../selectors";
 import { delay } from "../util/wait";
 
@@ -7,6 +7,12 @@ export interface ConnectOptions {
   port?: number;
   /** Use "Connect & Save" (persist the server) instead of "Quick connect". */
   save?: boolean;
+  /**
+   * Server/user password. When set, the connect attempt is expected to raise
+   * the password dialog (e.g. connecting as SuperUser); it is filled and
+   * submitted automatically.
+   */
+  password?: string;
 }
 
 /** Page object for the connect wizard (ConnectPage.tsx). */
@@ -51,6 +57,22 @@ export class ConnectPage {
     // final action buttons appear.
     await this.advanceToFinalStep();
     await this.clickEnabled(opts.save ? TID.connectAndSave : TID.quickConnect);
+
+    if (opts.password !== undefined) await this.submitPassword(opts.password);
+  }
+
+  /**
+   * Fill and submit the password dialog (e.g. SuperUser). Resolves once the
+   * dialog closes, which only happens when the server accepts the password.
+   */
+  private async submitPassword(password: string): Promise<void> {
+    const input = await this.d.wait(until.elementLocated(By.css("#pw-dialog-input")), 15000);
+    await input.clear();
+    await input.sendKeys(password, Key.ENTER);
+    await this.d.wait(
+      async () => (await this.d.findElements(By.css("#pw-dialog-input"))).length === 0,
+      15000,
+    );
   }
 
   /** Click "Continue" until the wizard's final action buttons are shown. */
