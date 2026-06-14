@@ -9,6 +9,7 @@ import { killTree } from "./util/proc";
 import { ConnectPage } from "./pages/connect.page";
 import { ChatPage } from "./pages/chat.page";
 import { SidebarPage } from "./pages/sidebar.page";
+import { CalendarPage } from "./pages/calendar.page";
 
 export interface LaunchOptions {
   /**
@@ -61,6 +62,7 @@ export class TauriApp {
   readonly connect: ConnectPage;
   readonly chat: ChatPage;
   readonly sidebar: SidebarPage;
+  readonly calendar: CalendarPage;
 
   private constructor(
     readonly driver: WebDriver,
@@ -70,6 +72,7 @@ export class TauriApp {
     this.connect = new ConnectPage(driver);
     this.chat = new ChatPage(driver);
     this.sidebar = new SidebarPage(driver);
+    this.calendar = new CalendarPage(driver);
   }
 
   /** The isolated plugin-store directory for this client (diagnostics/tests). */
