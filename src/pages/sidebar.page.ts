@@ -1,5 +1,5 @@
 import { By, until, type WebDriver } from "selenium-webdriver";
-import { TID } from "../selectors";
+import { TID, MEMBER_NAME_ATTR } from "../selectors";
 import { delay } from "../util/wait";
 
 /**
@@ -94,6 +94,31 @@ export class SidebarPage {
       }
     }
     throw new Error(`failed to move into channel "${name}" (membership not confirmed)`);
+  }
+
+  /**
+   * Right-click a user row and register them on the server (admin only). The
+   * relay-based features (calendar, file-server) route by a stable registered
+   * `user_id`, so an anonymous peer must be registered before it can be invited.
+   * Synchronisation on the new `user_id` propagating is left to the caller (the
+   * calendar invitee autocomplete only resolves once it lands).
+   */
+  async registerUser(name: string): Promise<void> {
+    const row = await this.d.wait(
+      until.elementLocated(
+        By.css(`[data-testid="${TID.memberItem}"][${MEMBER_NAME_ATTR}="${cssAttrEscape(name)}"]`),
+      ),
+      15000,
+    );
+    await this.d.actions().contextClick(row).perform();
+    await delay(400);
+    const register = await this.d.wait(
+      until.elementLocated(By.xpath("//button[normalize-space(.)='Register']")),
+      8000,
+    );
+    await this.d.wait(until.elementIsVisible(register), 5000);
+    await register.click();
+    await delay(400);
   }
 
   /**

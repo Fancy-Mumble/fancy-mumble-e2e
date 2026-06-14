@@ -7,9 +7,15 @@ import { By } from "selenium-webdriver";
 // NOTE: the registry only exists on the client's `feature/e2e-testability`
 // commit that this submodule is pinned to. If this import fails, run
 // `git submodule update --init --recursive`.
-import { TID, MEMBER_NAME_ATTR, SERVER_ID_ATTR } from "../vendor/client/crates/mumble-tauri/ui/src/testids";
+import {
+  TID,
+  MEMBER_NAME_ATTR,
+  SERVER_ID_ATTR,
+  CALENDAR_EVENT_TITLE_ATTR,
+  CALENDAR_VIEW_ATTR,
+} from "../vendor/client/crates/mumble-tauri/ui/src/testids";
 
 /** `By.css` locator for an element carrying the given `data-testid`. */
 export const byTid = (id: string): By => By.css(`[data-testid="${id}"]`);
 
-export { TID, MEMBER_NAME_ATTR, SERVER_ID_ATTR };
+export { TID, MEMBER_NAME_ATTR, SERVER_ID_ATTR, CALENDAR_EVENT_TITLE_ATTR, CALENDAR_VIEW_ATTR };
