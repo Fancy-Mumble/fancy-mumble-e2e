@@ -57,7 +57,25 @@ describe("calendar: plugin gating + invite sync", () => {
   });
 
   it("relays a scheduled meeting from the organiser to the invited participant", async () => {
-    // The relay targets registered users, so register the invitee first.
+    // The `member-item` rows (with a context menu) live in the Members tab;
+    // waitForMember switches to it and waits for the peer to be present.
+    await admin.chat.waitForMember(bobName);
+    // The relay routes by registered user_id, so register the invitee first.
+    //
+    // Regression guard for the mid-session registration bug: a server-side
+    // plugin only learns a user's registered user_id from the connect
+    // handshake, so the calendar relay caches it in on_client_connected. When
+    // `bob` joins as a guest (user_id -1) and is registered *while connected*,
+    // the relay kept that stale -1 and silently dropped meetings invited to
+    // `bob` - it could not map his new user_id back to his session, so the
+    // event below would never arrive (the test timed out on waitForEvent).
+    //
+    // Fixed in mumble-server `PluginHostManager::onUserStateChanged`: when a
+    // user's registration changes, the client is re-announced to the plugin
+    // host, refreshing its session->user_id (and the calendar plugin's routing
+    // table). So this test deliberately does NOT reconnect `bob` after
+    // registering him - if the meeting still reaches his calendar, the
+    // mid-session mapping works end-to-end.
     await admin.sidebar.registerUser(bobName);
 
     await admin.calendar.open();
