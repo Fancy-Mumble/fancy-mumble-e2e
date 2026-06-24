@@ -1,6 +1,7 @@
 import { By, until, type WebDriver } from "selenium-webdriver";
-import { TID, MEMBER_NAME_ATTR } from "../selectors";
+import { byTid, TID, MEMBER_NAME_ATTR } from "../selectors";
 import { delay } from "../util/wait";
+import { xpathLiteral } from "../util/xpath";
 
 /**
  * Page object for the channel sidebar (ChannelSidebar.tsx + the flat
@@ -22,6 +23,25 @@ export class SidebarPage {
     return By.css(`[data-testid="${TID.channelItem}"][data-channel-id="${id}"]`);
   }
 
+  /**
+   * Ensure the sidebar's "Channels" tab is active before interacting with a
+   * channel row. Channels and Members share one sidebar (SidebarTabs.tsx); when
+   * the Members tab is selected (e.g. after chat.waitForMember / registerUser)
+   * the channels pane is display:none, so channel rows are in the DOM but have
+   * zero size and are not interactable (right-click / double-click throw
+   * ElementNotInteractable). Switching back is idempotent via aria-selected.
+   */
+  private async ensureChannelsTab(): Promise<void> {
+    const tab = await this.d.wait(
+      until.elementLocated(By.xpath("//button[@role='tab' and normalize-space(.)='Channels']")),
+      10000,
+    );
+    if ((await tab.getAttribute("aria-selected")) !== "true") {
+      await tab.click();
+      await delay(200);
+    }
+  }
+
   /** Wait for a channel with the given name to appear in the sidebar. */
   async waitForChannel(name: string, timeout = 20000): Promise<void> {
     await this.d.wait(until.elementLocated(this.byChannelName(name)), timeout);
@@ -30,14 +50,28 @@ export class SidebarPage {
   /**
    * Create a sub-channel under the channel with `parentId` (0 = root) via the
    * right-click context menu and the channel editor dialog. Resolves once the
-   * dialog has closed. Pass `pchatProtocol` (e.g. "fancy_v1_full_archive" or
-   * "signal_v1") to enable persistent chat on the new channel.
+   * dialog has closed.
+   *
+   * Options:
+   *  - `pchatProtocol` (e.g. "fancy_v1_full_archive") enables persistent chat.
+   *  - `hidden` marks the channel hidden (only users with SeeChannel see it).
+   *  - `expiryMode` 1 = absolute, 2 = sliding; with `expirySeconds` the lifetime/
+   *    idle window. The dialog edits value + unit, so we set the value in seconds
+   *    via the "seconds" unit for deterministic short timeouts in tests.
    */
   async createSubChannel(
     parentId: number,
     name: string,
-    opts: { pchatProtocol?: string } = {},
+    opts: {
+      pchatProtocol?: string;
+      hidden?: boolean;
+      expiryMode?: 1 | 2;
+      expirySeconds?: number;
+      /** Names of registered users to invite (implies a hidden private room). */
+      invitees?: readonly string[];
+    } = {},
   ): Promise<void> {
+    await this.ensureChannelsTab();
     const parent = await this.d.wait(until.elementLocated(this.byChannelId(parentId)), 15000);
     await this.d.actions().contextClick(parent).perform();
     // The context menu + editor dialog animate in; located-but-not-yet-
@@ -63,6 +97,44 @@ export class SidebarPage {
       await select.findElement(By.css(`option[value="${opts.pchatProtocol}"]`)).click();
     }
 
+    const wantHidden = opts.hidden || (opts.invitees?.length ?? 0) > 0;
+    if (wantHidden) {
+      const cb = await this.d.findElement(By.css("#ch-ed-hidden"));
+      if (!(await cb.isSelected())) await cb.click();
+    }
+
+    // The invitee picker only renders once "hidden" is checked.
+    if (opts.invitees?.length) {
+      const picker = await this.d.wait(
+        until.elementLocated(By.css('[data-testid="ch-ed-invitee-input"]')),
+        5000,
+      );
+      for (const inviteeName of opts.invitees) {
+        await picker.clear();
+        await picker.sendKeys(inviteeName);
+        const suggestion = By.xpath(
+          `//*[@role='dialog']//ul//li//button[contains(normalize-space(.), ${xpathLiteral(inviteeName)})]`,
+        );
+        const sugg = await this.d.wait(
+          until.elementLocated(suggestion),
+          15000,
+          `invitee "${inviteeName}" never became a suggestion`,
+        );
+        await sugg.click();
+      }
+    }
+
+    if (opts.expiryMode) {
+      const modeSel = await this.d.findElement(By.css("#ch-ed-expiry-mode"));
+      await modeSel.findElement(By.css(`option[value="${opts.expiryMode}"]`)).click();
+      // The value+unit fields only render once a mode is chosen.
+      const valueInput = await this.d.wait(until.elementLocated(By.css("#ch-ed-expiry-value")), 5000);
+      await valueInput.clear();
+      await valueInput.sendKeys(String(opts.expirySeconds ?? 0));
+      const unitSel = await this.d.findElement(By.css("#ch-ed-expiry-unit"));
+      await unitSel.findElement(By.css('option[value="1"]')).click(); // seconds
+    }
+
     const createBtn = await this.d.wait(
       until.elementLocated(By.xpath("//*[@role='dialog']//button[normalize-space(.)='Create']")),
       10000,
@@ -77,12 +149,62 @@ export class SidebarPage {
     );
   }
 
+  /** Whether a channel with the given name is currently in the sidebar (no wait). */
+  async hasChannel(name: string): Promise<boolean> {
+    return (await this.d.findElements(this.byChannelName(name))).length > 0;
+  }
+
+  /** The server-assigned channel id for the named channel (read from its row). */
+  async channelIdByName(name: string): Promise<string> {
+    const el = await this.d.wait(until.elementLocated(this.byChannelName(name)), 15000);
+    return (await el.getAttribute("data-channel-id")) ?? "";
+  }
+
+  /**
+   * Whether a channel with the given id is present (no wait). Stronger than
+   * hasChannel for leak checks: a leaked hidden channel may arrive with only its
+   * id (no name), so it would slip past a name-based check but not this one.
+   */
+  async hasChannelId(id: string): Promise<boolean> {
+    if (!id) return false;
+    return (await this.d.findElements(this.byChannelId(Number(id)))).length > 0;
+  }
+
+  /**
+   * Return to the main channel view from another route (e.g. the Friends page)
+   * by activating the connected server's tab in the left server rail. The
+   * server tab is the only `role="tab"` element with `aria-selected="true"`
+   * while off the channel view (the Channels/Members sidebar tabs aren't
+   * mounted there). Resolves once the channel sidebar's "Channels" tab exists.
+   */
+  async goToChannels(): Promise<void> {
+    const tab = await this.d.wait(
+      until.elementLocated(By.css('[role="tab"][aria-selected="true"]')),
+      10000,
+    );
+    await tab.click();
+    await this.d.wait(
+      until.elementLocated(By.xpath("//button[@role='tab' and normalize-space(.)='Channels']")),
+      10000,
+    );
+  }
+
+  /** Wait until a channel with the given name is gone from the sidebar. */
+  async waitForChannelGone(name: string, timeout = 20000): Promise<void> {
+    await this.d.wait(
+      async () => (await this.d.findElements(this.byChannelName(name))).length === 0,
+      timeout,
+      `channel "${name}" was still visible after ${timeout}ms`,
+    );
+  }
+
   /**
    * Double-click a channel to MOVE the local user into it (membership), not just
    * select it for viewing. The double-click can land as a select-only (the two
    * clicks race the re-render), so retry until the self row confirms membership.
    */
   async joinChannel(name: string): Promise<void> {
+    await this.ensureChannelsTab();
     for (let attempt = 0; attempt < 4; attempt++) {
       const el = await this.d.wait(until.elementLocated(this.byChannelName(name)), 15000);
       await this.d.actions().doubleClick(el).perform();
@@ -135,6 +257,81 @@ export class SidebarPage {
       const text = await rows[0].getText().catch(() => "");
       return text.includes(name);
     }, timeout);
+  }
+
+  /**
+   * Wait until the local user is still connected (the self row exists) but NO
+   * longer a member of `name`. Used to assert that when a channel is removed
+   * (e.g. expiry), its occupant is moved to the parent rather than disconnected.
+   */
+  async waitForMembershipGone(name: string, timeout = 20000): Promise<void> {
+    await this.d.wait(async () => {
+      const rows = await this.d.findElements(
+        By.css(`[data-testid="${TID.memberItem}"][data-clickable="true"]`),
+      );
+      if (rows.length === 0) return false; // self row missing -> disconnected, not "moved"
+      const text = await rows[0].getText().catch(() => "");
+      return !text.includes(name);
+    }, timeout);
+  }
+
+  private byChannelMember(name: string): By {
+    return By.css(`[data-testid="${TID.channelMember}"][${MEMBER_NAME_ATTR}="${cssAttrEscape(name)}"]`);
+  }
+
+  /**
+   * Whether a user row for `name` is currently rendered *in the channel tree*
+   * (nested under a channel), as opposed to the members roster. On the Channels
+   * tab the members pane is `display:none`, so a *displayed* member-item can only
+   * be one rendered under a channel. This is the stronger signal for presence:
+   * a user revealed as "online" still shows in the roster, but a user we can't
+   * place (hidden channel / sentinel) is never shown under a channel.
+   */
+  async hasChannelViewMember(name: string): Promise<boolean> {
+    await this.ensureChannelsTab();
+    const els = await this.d.findElements(this.byChannelMember(name));
+    for (const el of els) {
+      if (await el.isDisplayed().catch(() => false)) return true;
+    }
+    return false;
+  }
+
+  /** Wait until a user row for `name` is rendered under a channel in the tree. */
+  async waitForChannelViewMember(name: string, timeout = 20000): Promise<void> {
+    await this.d.wait(
+      () => this.hasChannelViewMember(name),
+      timeout,
+      `user "${name}" never appeared under a channel in the sidebar tree`,
+    );
+  }
+
+  /** Whether the channel-join password dialog is currently shown. */
+  async hasPasswordPrompt(): Promise<boolean> {
+    return (await this.d.findElements(byTid(TID.passwordPromptDialog))).length > 0;
+  }
+
+  /**
+   * Whether a private room with the given (display) name is listed in the flat
+   * "Private rooms"/Meetings viewer above the channel tree. Meeting rooms are
+   * shown there by their stripped meeting name, not in the main tree.
+   */
+  async hasPrivateRoom(displayName: string): Promise<boolean> {
+    const els = await this.d.findElements(
+      By.css(
+        `[data-testid="${TID.privateChannelsViewer}"] ` +
+          `[data-testid="${TID.channelItem}"][data-channel-name="${cssAttrEscape(displayName)}"]`,
+      ),
+    );
+    return els.length > 0;
+  }
+
+  /** Wait until a private room with the given display name appears in the viewer. */
+  async waitForPrivateRoom(displayName: string, timeout = 20000): Promise<void> {
+    await this.d.wait(
+      () => this.hasPrivateRoom(displayName),
+      timeout,
+      `private room "${displayName}" never appeared in the Private rooms viewer`,
+    );
   }
 }
 

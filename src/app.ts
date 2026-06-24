@@ -10,6 +10,8 @@ import { ConnectPage } from "./pages/connect.page";
 import { ChatPage } from "./pages/chat.page";
 import { SidebarPage } from "./pages/sidebar.page";
 import { CalendarPage } from "./pages/calendar.page";
+import { FriendsPage } from "./pages/friends.page";
+import { AdminPage } from "./pages/admin.page";
 
 export interface LaunchOptions {
   /**
@@ -63,6 +65,8 @@ export class TauriApp {
   readonly chat: ChatPage;
   readonly sidebar: SidebarPage;
   readonly calendar: CalendarPage;
+  readonly friends: FriendsPage;
+  readonly admin: AdminPage;
 
   private constructor(
     readonly driver: WebDriver,
@@ -73,6 +77,8 @@ export class TauriApp {
     this.chat = new ChatPage(driver);
     this.sidebar = new SidebarPage(driver);
     this.calendar = new CalendarPage(driver);
+    this.friends = new FriendsPage(driver);
+    this.admin = new AdminPage(driver);
   }
 
   /** The isolated plugin-store directory for this client (diagnostics/tests). */

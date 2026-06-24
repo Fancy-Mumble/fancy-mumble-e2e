@@ -22,3 +22,21 @@ export function setSuperUserPassword(password: string): void {
     { stdio: "ignore" },
   );
 }
+
+/**
+ * Whether the server container's main process is still running. Used to assert
+ * the server did not crash (e.g. after deleting a parentless/detached channel,
+ * which previously dereferenced a null destination and took the server down).
+ */
+export function isServerRunning(): boolean {
+  try {
+    const out = execFileSync(
+      "docker",
+      ["inspect", "-f", "{{.State.Running}}", CONTAINER],
+      { encoding: "utf8" },
+    );
+    return out.trim() === "true";
+  } catch {
+    return false;
+  }
+}
