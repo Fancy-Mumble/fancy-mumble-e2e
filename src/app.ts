@@ -12,6 +12,7 @@ import { SidebarPage } from "./pages/sidebar.page";
 import { CalendarPage } from "./pages/calendar.page";
 import { FriendsPage } from "./pages/friends.page";
 import { AdminPage } from "./pages/admin.page";
+import { StreamPage } from "./pages/stream.page";
 
 export interface LaunchOptions {
   /**
@@ -20,6 +21,14 @@ export interface LaunchOptions {
    * independent identities/certs/saved-servers.
    */
   instance?: number;
+  /**
+   * Window title to auto-select for screen capture (Windows only). Lets the
+   * test drive the *current* build, whose `getDisplayMedia` opens a native OS
+   * picker Selenium can't touch: WebView2 resolves it out-of-band via the
+   * `--auto-select-desktop-capture-source=<title>` Chromium flag. Ignored by
+   * the new Rust-native picker (which is driven through the DOM instead).
+   */
+  captureWindowTitle?: string;
 }
 
 /**
@@ -28,8 +37,18 @@ export interface LaunchOptions {
  * overrides of HOME/XDG (POSIX) or APPDATA/LOCALAPPDATA (Windows) give each
  * launched client a clean, separate profile.
  */
-function makeIsolatedEnv(dataDir: string): NodeJS.ProcessEnv {
+function makeIsolatedEnv(dataDir: string, captureWindowTitle?: string): NodeJS.ProcessEnv {
   const env: NodeJS.ProcessEnv = { ...process.env };
+  // Auto-select a desktop-capture source for the *current* build's
+  // getDisplayMedia (Windows/WebView2 only): pass the Chromium flag through the
+  // env var WebView2 reads for extra browser args. Quoted so titles with spaces
+  // match. The new Rust picker ignores this.
+  if (captureWindowTitle && process.platform === "win32") {
+    const extra = `--auto-select-desktop-capture-source="${captureWindowTitle}"`;
+    env.WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS = env.WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS
+      ? `${env.WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS} ${extra}`
+      : extra;
+  }
   // Isolate the Rust-side app data root (certs, identities, pchat seeds, signal
   // state). Tauri's app_data_dir() ignores APPDATA/HOME on Windows (OS
   // known-folder API), so without this every instance would share ONE cert /
@@ -67,6 +86,7 @@ export class TauriApp {
   readonly calendar: CalendarPage;
   readonly friends: FriendsPage;
   readonly admin: AdminPage;
+  readonly stream: StreamPage;
 
   private constructor(
     readonly driver: WebDriver,
@@ -79,6 +99,7 @@ export class TauriApp {
     this.calendar = new CalendarPage(driver);
     this.friends = new FriendsPage(driver);
     this.admin = new AdminPage(driver);
+    this.stream = new StreamPage(driver);
   }
 
   /** The isolated plugin-store directory for this client (diagnostics/tests). */
@@ -112,7 +133,7 @@ export class TauriApp {
     const port = config.driverPort + instance * 2;
     const nativePort = port + 1;
     const dataDir = mkdtempSync(path.join(os.tmpdir(), "fancy-e2e-"));
-    const env = makeIsolatedEnv(dataDir);
+    const env = makeIsolatedEnv(dataDir, opts.captureWindowTitle);
 
     const proc = await startTauriDriver(port, nativePort, env);
     try {
