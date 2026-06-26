@@ -26,6 +26,7 @@ services:
       - "${E2E_SERVER_PORT:-64738}:64738/udp"
       - "${E2E_FILESERVER_PORT:-64739}:64739/tcp" # file-server plugin (HTTP)
       - "${E2E_LIVEDOC_PORT:-64740}:64740/tcp" # live-doc plugin (WebSocket)
+      - "${E2E_WEBRTC_SFU_PORT:-10000}:10000/udp" # WebRTC SFU media relay (screen share)
       - "${E2E_ICE_PORT:-6502}:6502/tcp" # ZeroC Ice admin (channel viewer)
     environment:
       # SuperUser password for admin-driven scenarios (channel create/delete,
