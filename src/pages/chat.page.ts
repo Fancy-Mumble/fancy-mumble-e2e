@@ -57,6 +57,79 @@ export class ChatPage {
     await send.click();
   }
 
+  /**
+   * Open a direct-message conversation with a user by clicking their member
+   * row (a single click enters DM mode - see ChannelSidebar.handleUserClick ->
+   * selectDmUser). The row must be present and online, so this doubles as a
+   * check that the user is currently visible in the roster.
+   */
+  async openDirectMessage(name: string): Promise<void> {
+    await this.ensureMembersTab();
+    const row = await this.d.wait(until.elementLocated(this.memberRow(name)), 15000);
+    await row.click();
+  }
+
+  /** Open a DM with `name` and send them `text` directly. */
+  async sendDirectMessage(name: string, text: string): Promise<void> {
+    await this.openDirectMessage(name);
+    await this.sendMessage(text);
+  }
+
+  /** Whether the chat header's end-to-end-encrypted badge is shown (i.e. the open
+   *  chat is an E2E signal channel - e.g. a friend chat that upgraded). */
+  async hasE2EBadge(): Promise<boolean> {
+    return (await this.d.findElements(byTid(TID.chatE2EBadge))).length > 0;
+  }
+
+  /** Wait until the chat header's E2E badge appears (the chat became E2E). */
+  async waitForE2EBadge(timeout = 15000): Promise<void> {
+    await this.d.wait(
+      until.elementLocated(byTid(TID.chatE2EBadge)),
+      timeout,
+      "chat never showed the end-to-end-encrypted badge",
+    );
+  }
+
+  /** The chat header's title text (channel/peer display name). */
+  async headerTitle(): Promise<string> {
+    const el = await this.d.wait(until.elementLocated(byTid(TID.chatHeaderTitle)), 10000);
+    return (await el.getText()).trim();
+  }
+
+  /**
+   * Add `name` as a friend via the roster row's context menu. The friend is keyed
+   * by the user's TLS cert hash, so the target must be a registered/known user.
+   */
+  async addFriend(name: string): Promise<void> {
+    await this.ensureMembersTab();
+    const row = await this.d.wait(until.elementLocated(this.memberRow(name)), 15000);
+    await this.d.wait(until.elementIsVisible(row), 5000);
+    await this.d.actions().contextClick(row).perform();
+    const toggle = await this.d.wait(until.elementLocated(byTid(TID.userMenuFriendToggle)), 8000);
+    await this.d.wait(until.elementIsVisible(toggle), 5000);
+    await toggle.click();
+  }
+
+  private senderRow(sender: string): By {
+    return By.css(
+      `[data-testid="${TID.chatMessageSender}"][data-sender-name="${cssAttrEscape(sender)}"]`,
+    );
+  }
+
+  /** Wait until a rendered message is attributed to `sender`. */
+  async waitForMessageFrom(sender: string, timeout = 15000): Promise<void> {
+    await this.d.wait(
+      until.elementLocated(this.senderRow(sender)),
+      timeout,
+      `no message attributed to "${sender}" appeared`,
+    );
+  }
+
+  /** Whether any currently rendered message is attributed to `sender`. */
+  async hasMessageFrom(sender: string): Promise<boolean> {
+    return (await this.d.findElements(this.senderRow(sender))).length > 0;
+  }
+
   /** Wait until some element on the page renders `text` (message delivered). */
   async waitForText(text: string, timeout = 15000): Promise<void> {
     const xp = By.xpath(`//*[contains(normalize-space(string(.)), ${xpathLiteral(text)})]`);
@@ -179,10 +252,86 @@ export class ChatPage {
     );
   }
 
+  /**
+   * Capture desktop notifications the app raises. The native notification IPC
+   * (`plugin:notification|notify`) can't be intercepted from the webview - its
+   * `__TAURI_INTERNALS__.invoke` is locked non-writable - so the app mirrors
+   * every notification onto a `fancy:desktop-notification` DOM event (see
+   * `showDesktopNotification`), which we record here as `{ title, body }`.
+   * Install before the action that should notify. Idempotent.
+   */
+  async installNotificationCapture(): Promise<void> {
+    await this.d.executeScript(`
+      window.__e2eNotifications = window.__e2eNotifications || [];
+      if (!window.__e2eNotifyCapture) {
+        window.__e2eNotifyCapture = function (e) {
+          try {
+            const d = e.detail || {};
+            window.__e2eNotifications.push({ title: d.title || '', body: d.body || '' });
+          } catch (err) { /* ignore */ }
+        };
+        window.addEventListener('fancy:desktop-notification', window.__e2eNotifyCapture);
+      }
+    `);
+  }
+
+  /** All notifications captured since {@link installNotificationCapture}. */
+  async notifications(): Promise<{ title: string; body: string }[]> {
+    return this.d.executeScript("return window.__e2eNotifications || [];");
+  }
+
+  /**
+   * Wait until a captured notification has `match` in its title or body, and
+   * return it. Use a phrase unique to the notification under test (e.g. the
+   * meeting title, or "Meeting invitation") so reminder and invite notifications
+   * don't alias each other.
+   */
+  async waitForNotification(
+    match: string,
+    timeout = 30000,
+  ): Promise<{ title: string; body: string }> {
+    let found: { title: string; body: string } | undefined;
+    await this.d.wait(async () => {
+      const list = await this.notifications();
+      found = list.find((n) => n.title.includes(match) || n.body.includes(match));
+      return found !== undefined;
+    }, timeout, `no notification matching "${match}" was fired`);
+    return found!;
+  }
+
   /** Wait for a member row with the given display name to appear in the list. */
   async waitForMember(name: string, timeout = 20000): Promise<void> {
     await this.ensureMembersTab();
     await this.d.wait(until.elementLocated(this.memberRow(name)), timeout);
+  }
+
+  /**
+   * Wait until the named member's row is gone from the list. Used to assert
+   * presence hiding: when a user moves into a hidden channel the viewer can't
+   * see, the server sends a UserRemove so they vanish from the viewer's roster.
+   */
+  async waitForMemberGone(name: string, timeout = 20000): Promise<void> {
+    await this.ensureMembersTab();
+    await this.d.wait(
+      async () => (await this.d.findElements(this.memberRow(name))).length === 0,
+      timeout,
+      `member "${name}" was still visible after ${timeout}ms`,
+    );
+  }
+
+  /**
+   * Wait until the named member's row shows the "Registered" status icon - i.e.
+   * the server has committed their registration and broadcast the new user_id.
+   * Registration is keyed by the live session, so a peer that disconnects before
+   * it commits is never persisted; confirm it landed before relying on the
+   * registered-user directory to invite them while offline.
+   */
+  async waitForRegistered(name: string, timeout = 20000): Promise<void> {
+    await this.ensureMembersTab();
+    await this.d.wait(
+      until.elementLocated(this.memberRow(name, ' [title="Registered"]')),
+      timeout,
+    );
   }
 
   /**
@@ -193,12 +342,17 @@ export class ChatPage {
    * still finds rows after switching away.
    */
   private async ensureMembersTab(): Promise<void> {
-    if ((await this.d.findElements(byTid(TID.memberList))).length > 0) return;
+    // Activate the Members tab. Checking only DOM presence of the member list is
+    // not enough: once mounted the pane stays in the DOM (display:none) when the
+    // Channels tab is active, so its rows would be located but not interactable.
+    // Gate on the tab's aria-selected, mirroring sidebar.ensureChannelsTab.
     const tab = await this.d.wait(
       until.elementLocated(By.xpath("//button[@role='tab' and normalize-space(.)='Members']")),
       10000,
     );
-    await tab.click();
+    if ((await tab.getAttribute("aria-selected")) !== "true") {
+      await tab.click();
+    }
     await this.d.wait(until.elementLocated(byTid(TID.memberList)), 15000);
   }
 
