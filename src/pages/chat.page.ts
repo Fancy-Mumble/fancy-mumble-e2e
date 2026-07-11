@@ -309,15 +309,34 @@ export class ChatPage {
    * Wait until the named member's row is gone from the list. Used to assert
    * presence hiding: when a user moves into a hidden channel the viewer can't
    * see, the server sends a UserRemove so they vanish from the viewer's roster.
+   *
+   * Deliberately does NOT require the member-list element to be mounted:
+   * when the last other member leaves, MembersTab swaps the list for a
+   * "No other members" empty state - i.e. the success condition itself
+   * unmounts the list, so gating on it (like ensureMembersTab does) would
+   * deadlock. The pane must still show *either* the list or the empty state
+   * before we accept "0 rows", so an unmounted pane can't false-positive.
    */
   async waitForMemberGone(name: string, timeout = 20000): Promise<void> {
-    await this.ensureMembersTab();
+    await this.selectMembersTab();
     await this.d.wait(
-      async () => (await this.d.findElements(this.memberRow(name))).length === 0,
+      async () => {
+        if ((await this.d.findElements(this.memberRow(name))).length > 0) return false;
+        if ((await this.d.findElements(byTid(TID.memberList))).length > 0) return true;
+        return (await this.d.findElements(this.membersEmptyState)).length > 0;
+      },
       timeout,
       `member "${name}" was still visible after ${timeout}ms`,
     );
   }
+
+  /**
+   * MembersTab's roster-is-empty placeholder (sidebar.json `membersTab.empty`;
+   * the suite forces English). It has no test id, so match the text.
+   */
+  private readonly membersEmptyState = By.xpath(
+    "//*[normalize-space(.)='No other members' and not(*)]",
+  );
 
   /**
    * Wait until the named member's row shows the "Registered" status icon - i.e.
@@ -342,6 +361,12 @@ export class ChatPage {
    * still finds rows after switching away.
    */
   private async ensureMembersTab(): Promise<void> {
+    await this.selectMembersTab();
+    await this.d.wait(until.elementLocated(byTid(TID.memberList)), 15000);
+  }
+
+  /** Activate the Members tab without requiring the member list to mount. */
+  private async selectMembersTab(): Promise<void> {
     // Activate the Members tab. Checking only DOM presence of the member list is
     // not enough: once mounted the pane stays in the DOM (display:none) when the
     // Channels tab is active, so its rows would be located but not interactable.
@@ -353,7 +378,6 @@ export class ChatPage {
     if ((await tab.getAttribute("aria-selected")) !== "true") {
       await tab.click();
     }
-    await this.d.wait(until.elementLocated(byTid(TID.memberList)), 15000);
   }
 
   /**
