@@ -21,12 +21,29 @@ export interface CheckerboardOptions {
   readonly cell?: number;
   readonly x?: number;
   readonly y?: number;
+  /** When > 0, the helper inverts the board phase every N ms and reports each
+   *  flip (see {@link CheckerboardWindow.flips}) - the latency probe. */
+  readonly blinkMs?: number;
+  /** Cycle cell shades at ~60 Hz so every captured frame is distinct. Without
+   *  this an fps floor is meaningless - identical frames still re-encode and
+   *  tick the receiver's decoded-frame counter. */
+  readonly animate?: boolean;
+}
+
+/** One reported phase flip of a blinking checkerboard. */
+export interface CheckerboardFlip {
+  /** The phase the board changed TO. */
+  readonly phase: 0 | 1;
+  /** Wall-clock time of the flip (epoch ms, same clock as `Date.now()`). */
+  readonly atMs: number;
 }
 
 /** A running checkerboard helper window. */
 export class CheckerboardWindow {
   readonly cols: number;
   readonly rows: number;
+  /** Phase flips reported so far (blink mode only), oldest first. */
+  readonly flips: CheckerboardFlip[] = [];
 
   private constructor(
     private readonly proc: ChildProcess,
@@ -37,6 +54,20 @@ export class CheckerboardWindow {
   ) {
     this.cols = cols;
     this.rows = rows;
+    // Keep collecting flip reports for the window's lifetime (blink mode).
+    let pending = "";
+    proc.stdout?.on("data", (buf: Buffer) => {
+      pending += buf.toString();
+      let nl;
+      while ((nl = pending.indexOf("\n")) >= 0) {
+        const line = pending.slice(0, nl);
+        pending = pending.slice(nl + 1);
+        const m = /checkerboard-flip phase=([01]) at_ms=(\d+)/.exec(line);
+        if (m) {
+          this.flips.push({ phase: Number(m[1]) as 0 | 1, atMs: Number(m[2]) });
+        }
+      }
+    });
   }
 
   /**
@@ -56,6 +87,8 @@ export class CheckerboardWindow {
       "--cell", String(opts.cell ?? 64),
       "--x", String(opts.x ?? 120),
       "--y", String(opts.y ?? 120),
+      "--blink-ms", String(opts.blinkMs ?? 0),
+      ...(opts.animate ? ["--animate"] : []),
     ];
     const proc = spawn(pythonBin, args, {
       stdio: ["ignore", "pipe", "pipe"],
