@@ -29,6 +29,11 @@ export interface LaunchOptions {
    * the new Rust-native picker (which is driven through the DOM instead).
    */
   captureWindowTitle?: string;
+  /**
+   * Extra environment variables for this client instance, e.g. the
+   * FANCY_E2E_VIRTUAL_MIC / FANCY_E2E_AUDIO_STATS_FILE audio hooks.
+   */
+  extraEnv?: Record<string, string>;
 }
 
 /**
@@ -202,6 +207,7 @@ export class TauriApp {
     const nativePort = port + 1;
     const dataDir = mkdtempSync(path.join(os.tmpdir(), "fancy-e2e-"));
     const env = makeIsolatedEnv(dataDir, opts.captureWindowTitle);
+    Object.assign(env, opts.extraEnv ?? {});
 
     const proc = await startTauriDriver(port, nativePort, env);
     try {
