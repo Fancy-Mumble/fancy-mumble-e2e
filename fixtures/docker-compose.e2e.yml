@@ -39,6 +39,10 @@ services:
       # /config (NOT /data) because the entrypoint does `chown -R /data`, which
       # fails under `set -e` on a read-only bind-mounted file.
       MUMBLE_CUSTOM_CONFIG_FILE: "/config/mumble-server.ini"
+      # Trace-level SFU internals (per-leg UDP/RTP/forwarding counters). The
+      # screen-share e2e diagnoses media-path failures from these; the volume
+      # is modest (stats lines are rate-limited) so it stays on for the fixture.
+      RUST_LOG: "webrtc_sfu=trace,info"
     volumes:
       - "./mumble-server.ini:/config/mumble-server.ini:ro"
     healthcheck:

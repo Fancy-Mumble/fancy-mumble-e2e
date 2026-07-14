@@ -29,6 +29,11 @@ export interface LaunchOptions {
    * the new Rust-native picker (which is driven through the DOM instead).
    */
   captureWindowTitle?: string;
+  /**
+   * Extra environment variables for this client instance, e.g. the
+   * FANCY_E2E_VIRTUAL_MIC / FANCY_E2E_AUDIO_STATS_FILE audio hooks.
+   */
+  extraEnv?: Record<string, string>;
 }
 
 /**
@@ -144,6 +149,74 @@ export class TauriApp {
     }
   }
 
+  /**
+   * Attempt a connection straight through the backend `connect` command and
+   * report the outcome, bypassing the wizard. Needed for the registered-name
+   * impersonation regression test: it connects **anonymously** (no client
+   * certificate → empty certhash), which the normal-mode wizard can't express
+   * but is exactly the vector that must be rejected.
+   *
+   * Resolves once the session reaches `connected` (impersonation would have
+   * SUCCEEDED — the bug) or the server rejects it. The rejection reason and
+   * `Reject.type` are captured when the backend emits `connection-rejected`
+   * (WrongUserPW = 3); `reject_type` may be null on servers that don't set it.
+   */
+  async attemptRawConnect(
+    host: string,
+    port: number,
+    username: string,
+    opts: { certLabel?: string | null } = {},
+  ): Promise<{ connected: boolean; reason: string | null; rejectType: number | null }> {
+    const certLabel = opts.certLabel ?? null;
+    const raw = await this.driver.executeAsyncScript<string>(
+      `
+      const done = arguments[arguments.length - 1];
+      const host = arguments[0], port = arguments[1], username = arguments[2], certLabel = arguments[3];
+      const internals = window.__TAURI_INTERNALS__;
+      if (!internals || !internals.invoke) { done(JSON.stringify({ error: 'no-invoke' })); return; }
+      const invoke = internals.invoke;
+      let rejected = null;
+      // Best-effort capture of the server's rejection (reason + Reject.type).
+      try {
+        const cb = internals.transformCallback(function (evt) {
+          rejected = (evt && evt.payload) ? evt.payload : evt;
+        });
+        invoke('plugin:event|listen', { event: 'connection-rejected', target: { kind: 'Any' }, handler: cb });
+      } catch (e) { /* fall back to status polling below */ }
+      invoke('connect', { host: host, port: port, username: username, certLabel: certLabel, password: null })
+        .catch(function () { /* rejection surfaces via the event / status */ });
+      const start = Date.now();
+      (function poll() {
+        invoke('get_status').then(function (st) {
+          if (st === 'connected') { done(JSON.stringify({ connected: true, reason: null, rejectType: null })); return; }
+          if (rejected) {
+            done(JSON.stringify({
+              connected: false,
+              reason: (rejected.reason == null ? null : rejected.reason),
+              rejectType: (rejected.reject_type == null ? null : rejected.reject_type),
+            }));
+            return;
+          }
+          if (Date.now() - start > 22000) { done(JSON.stringify({ connected: false, reason: null, rejectType: null })); return; }
+          setTimeout(poll, 400);
+        }).catch(function () { setTimeout(poll, 400); });
+      })();
+      `,
+      host,
+      port,
+      username,
+      certLabel,
+    );
+    const parsed = JSON.parse(raw) as {
+      error?: string;
+      connected: boolean;
+      reason: string | null;
+      rejectType: number | null;
+    };
+    if (parsed.error) throw new Error(`attemptRawConnect failed: ${parsed.error}`);
+    return { connected: parsed.connected, reason: parsed.reason, rejectType: parsed.rejectType };
+  }
+
   static async launch(opts: LaunchOptions = {}): Promise<TauriApp> {
     const instance = opts.instance ?? 0;
     // Two ports per instance: tauri-driver listens on `port`, msedgedriver/
@@ -152,6 +225,7 @@ export class TauriApp {
     const nativePort = port + 1;
     const dataDir = mkdtempSync(path.join(os.tmpdir(), "fancy-e2e-"));
     const env = makeIsolatedEnv(dataDir, opts.captureWindowTitle);
+    Object.assign(env, opts.extraEnv ?? {});
 
     const proc = await startTauriDriver(port, nativePort, env);
     try {

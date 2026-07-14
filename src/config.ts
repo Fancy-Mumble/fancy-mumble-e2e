@@ -37,6 +37,28 @@ export const config = {
   serverHost: process.env.E2E_SERVER_HOST ?? "127.0.0.1",
   serverPort: Number(process.env.E2E_SERVER_PORT ?? "64738"),
 
+  /**
+   * Path to the built minimal native Qt6 client (workspace-excluded crate;
+   * see vendor/client/crates/qt6ui/README + build.ps1). Defaults to that
+   * crate's debug output - it is built with its own `build.ps1`, not the
+   * workspace `cargo build`.
+   */
+  qt6uiBin: process.env.E2E_QT6UI_BIN ??
+    path.join(
+      repoRoot, "vendor", "client", "crates", "qt6ui", "target", "debug",
+      process.platform === "win32" ? "qt6ui.exe" : "qt6ui",
+    ),
+
+  /**
+   * Qt (MinGW) kit bin dir prepended to PATH when launching qt6ui on
+   * Windows: the runtime DLLs are not on the ambient PATH, and unrelated
+   * tools may ship incompatible MSVC Qt6 DLLs that the loader would pick up.
+   */
+  qtBinDir: process.env.E2E_QT_BIN_DIR ?? "C:\\Qt\\6.11.1\\mingw_64\\bin",
+
+  /** Base port for qt6ui's e2e control channel; instance N uses base+N. */
+  qt6uiControlPort: Number(process.env.E2E_QT6UI_CONTROL_PORT ?? "4600"),
+
   /** How long to wait for connect + post-connect bootstrap to finish (ms). */
   connectTimeout: Number(process.env.E2E_CONNECT_TIMEOUT ?? "45000"),
 

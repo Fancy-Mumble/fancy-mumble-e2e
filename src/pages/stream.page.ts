@@ -100,6 +100,7 @@ export class StreamPage {
     onNativePicker?: () => Promise<void>,
     timeout = 20000,
   ): Promise<void> {
+    await this.captureConsole();
     await this.clickToggle(timeout);
     if (await this.customPickerAppeared()) {
       // New build: drive the in-app picker to capture the real OS window.
@@ -109,7 +110,47 @@ export class StreamPage {
       // level to select the real window and confirm.
       await onNativePicker();
     }
-    await this.waitOwnPreview();
+    try {
+      await this.waitOwnPreview();
+    } catch (e) {
+      // WebRTC failures are invisible from the DOM alone - attach the app's
+      // console (captured above) so the timeout explains itself.
+      const logs = await this.readCapturedConsole();
+      const err = e as Error;
+      err.message += `\n--- webview console ---\n${logs.join("\n")}`;
+      throw err;
+    }
+  }
+
+  /** Idempotently wrap the webview console so failures can replay it. */
+  private async captureConsole(): Promise<void> {
+    await this.d.executeScript(`
+      if (!window.__e2eLogs) {
+        window.__e2eLogs = [];
+        for (const level of ["log", "info", "warn", "error"]) {
+          const orig = console[level].bind(console);
+          console[level] = (...args) => {
+            try {
+              window.__e2eLogs.push(level + " " + args.map((a) => {
+                try { return typeof a === "string" ? a : JSON.stringify(a); }
+                catch { return String(a); }
+              }).join(" "));
+              if (window.__e2eLogs.length > 400) window.__e2eLogs.shift();
+            } catch {}
+            orig(...args);
+          };
+        }
+      }
+    `);
+  }
+
+  /** Console lines captured since {@link captureConsole} was installed. */
+  private async readCapturedConsole(): Promise<string[]> {
+    try {
+      return await this.d.executeScript<string[]>("return window.__e2eLogs || [];");
+    } catch {
+      return ["(console capture unavailable)"];
+    }
   }
 
   /** New-build picker flow: Window tab -> pick card by title -> confirm. */
@@ -132,6 +173,37 @@ export class StreamPage {
       10000,
       "source picker did not close after confirming",
     );
+  }
+
+  /**
+   * Start sharing an ENTIRE SCREEN via the custom picker (first screen card).
+   * This is the path that engages the GPU pipeline on platforms that have
+   * one; window shares use the portable CPU pipeline.
+   */
+  async shareScreen(timeout = 20000): Promise<void> {
+    await this.captureConsole();
+    await this.clickToggle(timeout);
+    if (!(await this.customPickerAppeared())) {
+      throw new Error("custom source picker did not open (old build?)");
+    }
+    await this.selectTab("screens");
+    const card = await this.d.wait(
+      until.elementLocated(byTid(TID.screenShareSource)),
+      timeout,
+      "picker offered no screens",
+    );
+    await card.click();
+    const confirm = await this.d.wait(until.elementLocated(byTid(TID.screenShareConfirm)), 10000);
+    await this.d.wait(until.elementIsEnabled(confirm), 10000);
+    await confirm.click();
+    try {
+      await this.waitOwnPreview();
+    } catch (e) {
+      const logs = await this.readCapturedConsole();
+      const err = e as Error;
+      err.message += `\n--- webview console ---\n${logs.join("\n")}`;
+      throw err;
+    }
   }
 
   /** Stop the local broadcast via the header toggle. */
@@ -542,19 +614,62 @@ export class StreamPage {
     await this.waitVideoReady("true", timeout);
   }
 
-  /** Wait until a "<name> is sharing" banner appears, then click its Watch button. */
+  /**
+   * Start watching `name`'s broadcast, whichever affordance the UI offers:
+   *
+   *   - Idle viewer: the "<name> is sharing" banner's Watch button.
+   *   - Already broadcasting ourselves: the focus view replaces the banner,
+   *     and other streams appear as clickable tiles (secondary panes, or the
+   *     bottom drawer - opened via its toggle when collapsed).
+   */
   async watchByName(name: string, timeout = 30000): Promise<void> {
     const banner = By.css(
       `[data-testid="${TID.broadcastBanner}"][${BROADCASTER_NAME_ATTR}="${cssAttrEscape(name)}"]`,
     );
-    const row = await this.d.wait(
-      until.elementLocated(banner),
-      timeout,
-      `no "is sharing" banner for "${name}" appeared`,
+    const tile = By.css(
+      `[data-testid="${TID.streamWatchTile}"][${BROADCASTER_NAME_ATTR}="${cssAttrEscape(name)}"]`,
     );
-    const watch = await row.findElement(byTid(TID.broadcastWatch));
-    await watch.click();
-    await this.waitVideoReady("false", timeout);
+    const deadline = Date.now() + timeout;
+    for (;;) {
+      const rows = await this.d.findElements(banner);
+      if (rows.length > 0) {
+        const watch = await rows[0].findElement(byTid(TID.broadcastWatch));
+        await watch.click();
+        break;
+      }
+
+      const tiles = await this.d.findElements(tile);
+      if (tiles.length > 0) {
+        if (await tiles[0].isDisplayed()) {
+          await tiles[0].click();
+          break;
+        }
+        // Tile exists but is hidden -> it lives in the collapsed drawer.
+        const toggles = await this.d.findElements(byTid(TID.streamDrawerToggle));
+        if (toggles.length > 0) {
+          await toggles[0].click();
+          const reopened = await this.d.findElements(tile);
+          if (reopened.length > 0 && (await reopened[0].isDisplayed())) {
+            await reopened[0].click();
+            break;
+          }
+        }
+      }
+
+      if (Date.now() > deadline) {
+        throw new Error(`no "is sharing" banner or watch tile for "${name}" appeared`);
+      }
+      await delay(300);
+    }
+    await this.captureConsole();
+    try {
+      await this.waitVideoReady("false", timeout);
+    } catch (e) {
+      const logs = await this.readCapturedConsole();
+      const err = e as Error;
+      err.message += `\n--- webview console ---\n${logs.join("\n")}`;
+      throw err;
+    }
   }
 
   /**
@@ -595,6 +710,28 @@ export class StreamPage {
     }
     throw new Error(
       `stream never decoded into a clean checkerboard (own=${own}): ${JSON.stringify(last)}`,
+    );
+  }
+
+  /**
+   * Snapshot the decoded-frame counter of the chosen stream `<video>` plus the
+   * sampling wall clock. Two snapshots over an interval give the real decoded
+   * fps: (Δ totalVideoFrames) / (Δ tMs).
+   */
+  async readPlaybackStats(own: boolean): Promise<{ totalVideoFrames: number; tMs: number }> {
+    return this.d.executeScript<{ totalVideoFrames: number; tMs: number }>(
+      `
+      const video = document.querySelector(
+        '[data-testid="' + arguments[0] + '"][data-own="' + arguments[1] + '"]');
+      if (!video) return { totalVideoFrames: -1, tMs: Date.now() };
+      const q = video.getVideoPlaybackQuality ? video.getVideoPlaybackQuality() : null;
+      return {
+        totalVideoFrames: q ? q.totalVideoFrames : (video.webkitDecodedFrameCount ?? -1),
+        tMs: Date.now(),
+      };
+      `,
+      TID.streamViewerVideo,
+      own ? "true" : "false",
     );
   }
 
