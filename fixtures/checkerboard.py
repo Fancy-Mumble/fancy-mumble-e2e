@@ -80,18 +80,52 @@ def build(args: argparse.Namespace) -> tk.Tk:
 
     green = _hex(GREEN)
     purple = _hex(PURPLE)
+    cells: list[int] = []
     for r in range(args.rows):
         for c in range(args.cols):
             # `phase` flips which colour lands on cell (0,0) so two instances
             # produce inverted boards that the test can tell apart.
             is_green = ((r + c + args.phase) % 2) == 0
             x0, y0 = c * args.cell, r * args.cell
-            canvas.create_rectangle(
+            cells.append(canvas.create_rectangle(
                 x0, y0, x0 + args.cell, y0 + args.cell,
                 fill=green if is_green else purple,
                 width=0,
                 outline="",
-            )
+            ))
+
+    # Optional OS-level animation: flip the board's phase every --animate-ms.
+    # Screen-share delivery tests need GUARANTEED continuous motion on the
+    # captured desktop; in-page (webview) animation is useless for that
+    # because browsers throttle requestAnimationFrame in occluded windows.
+    # A Tk after() loop repaints regardless of focus or occlusion.
+    #
+    # --noise additionally randomises every cell's colour per tick: the
+    # phase-flip pattern compresses to almost nothing (repeating content),
+    # while random cells defeat temporal prediction and drive the encoder
+    # to real multi-Mbit/s output - required for load tests.
+    if args.animate_ms > 0:
+        import random
+
+        state = {"flip": 0}
+        palette = [
+            "#%02x%02x%02x" % (r, g, b)
+            for r in (0, 90, 180, 255) for g in (0, 90, 180, 255) for b in (0, 90, 180, 255)
+        ]
+
+        def tick() -> None:
+            state["flip"] ^= 1
+            if args.noise:
+                for item in cells:
+                    canvas.itemconfig(item, fill=random.choice(palette))
+            else:
+                for i, item in enumerate(cells):
+                    r, c = divmod(i, args.cols)
+                    is_green = ((r + c + args.phase + state["flip"]) % 2) == 0
+                    canvas.itemconfig(item, fill=green if is_green else purple)
+            root.after(args.animate_ms, tick)
+
+        root.after(args.animate_ms, tick)
 
     # Print a machine-readable line so the harness can confirm the window is up
     # (and learn the exact geometry it should expect back).
@@ -114,6 +148,12 @@ def main(argv: list[str]) -> int:
     p.add_argument("--cell", type=int, default=64, help="Cell edge length in pixels")
     p.add_argument("--x", type=int, default=120, help="Window left position")
     p.add_argument("--y", type=int, default=120, help="Window top position")
+    p.add_argument("--animate-ms", type=int, default=0,
+                   help="Flip the board's phase every N ms (0 = static). "
+                        "Gives delivery-health tests guaranteed screen motion.")
+    p.add_argument("--noise", action="store_true",
+                   help="With --animate-ms: randomise every cell per tick "
+                        "(incompressible content for load tests).")
     args = p.parse_args(argv)
 
     root = build(args)

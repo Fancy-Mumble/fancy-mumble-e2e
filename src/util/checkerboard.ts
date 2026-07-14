@@ -21,6 +21,12 @@ export interface CheckerboardOptions {
   readonly cell?: number;
   readonly x?: number;
   readonly y?: number;
+  /** Flip the board's phase every N ms (OS-level motion for delivery-health
+   *  tests - webview rAF animation throttles when the window is occluded). */
+  readonly animateMs?: number;
+  /** With animateMs: randomise every cell per tick (incompressible content
+   *  that drives the encoder to real multi-Mbit/s output for load tests). */
+  readonly noise?: boolean;
 }
 
 /** A running checkerboard helper window. */
@@ -56,6 +62,8 @@ export class CheckerboardWindow {
       "--cell", String(opts.cell ?? 64),
       "--x", String(opts.x ?? 120),
       "--y", String(opts.y ?? 120),
+      "--animate-ms", String(opts.animateMs ?? 0),
+      ...(opts.noise ? ["--noise"] : []),
     ];
     const proc = spawn(pythonBin, args, {
       stdio: ["ignore", "pipe", "pipe"],

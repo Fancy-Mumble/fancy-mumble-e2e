@@ -45,6 +45,27 @@ export class ChatPage {
     }
   }
 
+  /**
+   * Resolve the plugin trust prompt (the modal a server with bundled plugins
+   * raises a beat after connect; `closeOnEsc=false`, so it MUST be answered)
+   * by allowing all offered plugins for this server. No-op when the prompt
+   * never shows within `timeout`. Call before driving UI that a lingering
+   * modal overlay would otherwise click-intercept.
+   */
+  async allowServerPlugins(timeout = 8000): Promise<void> {
+    const allowSel = By.xpath(
+      "//*[@role='dialog']//button[normalize-space(.)='Allow all for this server'" +
+        " or normalize-space(.)='Allow for this server']",
+    );
+    try {
+      const btn = await this.d.wait(until.elementLocated(allowSel), timeout);
+      await btn.click();
+      await this.d.wait(async () => (await this.d.findElements(allowSel)).length === 0, 5000);
+    } catch {
+      /* no trust prompt (no plugins, or already trusted) */
+    }
+  }
+
   /** Type into the composer's textarea and click send. */
   async sendMessage(text: string): Promise<void> {
     const wrap = await this.d.wait(until.elementLocated(byTid(TID.chatComposerInput)), 15000);
