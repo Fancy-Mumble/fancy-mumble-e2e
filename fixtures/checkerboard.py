@@ -33,6 +33,7 @@ from __future__ import annotations
 
 import argparse
 import sys
+import time
 import tkinter as tk
 
 # Pure-ish, high-saturation colours. Chosen so that after VP8 the green cells
@@ -80,19 +81,22 @@ def build(args: argparse.Namespace) -> tk.Tk:
 
     green = _hex(GREEN)
     purple = _hex(PURPLE)
-    cells: list[int] = []
+    cells: list[tuple[int, int, int]] = []  # (canvas item, row, col)
     for r in range(args.rows):
         for c in range(args.cols):
             # `phase` flips which colour lands on cell (0,0) so two instances
             # produce inverted boards that the test can tell apart.
             is_green = ((r + c + args.phase) % 2) == 0
             x0, y0 = c * args.cell, r * args.cell
-            cells.append(canvas.create_rectangle(
+            item = canvas.create_rectangle(
                 x0, y0, x0 + args.cell, y0 + args.cell,
                 fill=green if is_green else purple,
                 width=0,
                 outline="",
-            ))
+            )
+            cells.append((item, r, c))
+
+    state = {"phase": args.phase, "tick": 0}
 
     # Optional OS-level animation: flip the board's phase every --animate-ms.
     # Screen-share delivery tests need GUARANTEED continuous motion on the
@@ -107,25 +111,63 @@ def build(args: argparse.Namespace) -> tk.Tk:
     if args.animate_ms > 0:
         import random
 
-        state = {"flip": 0}
         palette = [
             "#%02x%02x%02x" % (r, g, b)
             for r in (0, 90, 180, 255) for g in (0, 90, 180, 255) for b in (0, 90, 180, 255)
         ]
 
         def tick() -> None:
-            state["flip"] ^= 1
+            state["phase"] ^= 1
+            phase = state["phase"]
             if args.noise:
-                for item in cells:
+                for item, _r, _c in cells:
                     canvas.itemconfig(item, fill=random.choice(palette))
             else:
-                for i, item in enumerate(cells):
-                    r, c = divmod(i, args.cols)
-                    is_green = ((r + c + args.phase + state["flip"]) % 2) == 0
+                for item, r, c in cells:
+                    is_green = ((r + c + phase) % 2) == 0
                     canvas.itemconfig(item, fill=green if is_green else purple)
             root.after(args.animate_ms, tick)
 
         root.after(args.animate_ms, tick)
+
+    if args.blink_ms > 0:
+        # Latency probe: invert the board's phase every --blink-ms and report
+        # each flip with a wall-clock timestamp so the harness can correlate
+        # "source changed" with "change became visible in <video>".
+        def flip() -> None:
+            state["phase"] ^= 1
+            phase = state["phase"]
+            for item, r, c in cells:
+                is_green = ((r + c + phase) % 2) == 0
+                canvas.itemconfigure(item, fill=green if is_green else purple)
+            print(f"checkerboard-flip phase={phase} at_ms={int(time.time() * 1000)}", flush=True)
+            root.after(args.blink_ms, flip)
+
+        root.after(args.blink_ms, flip)
+
+    if args.animate:
+        # Throughput probe: make EVERY frame distinct at ~60 Hz by cycling the
+        # brightness of one row per tick (round-robin). Without this, a video
+        # pipeline can "pass" an fps floor by re-encoding identical frames -
+        # the decoded-frame counter ticks even though nothing moved. The shade
+        # steps stay well inside the classifier's hue classes (green keeps
+        # g >= 160 vs r=b=0; purple keeps r=b >= 130 vs g=0), so the phase
+        # detection used for fidelity/latency is unaffected.
+        def animate() -> None:
+            state["tick"] += 1
+            row = state["tick"] % args.rows
+            step = (state["tick"] % 5) * 10
+            g_shade = "#%02x%02x%02x" % (0, 160 + step, 0)
+            p_shade = "#%02x%02x%02x" % (130 + step, 0, 130 + step)
+            phase = state["phase"]
+            for item, r, c in cells:
+                if r != row:
+                    continue
+                is_green = ((r + c + phase) % 2) == 0
+                canvas.itemconfigure(item, fill=g_shade if is_green else p_shade)
+            root.after(16, animate)
+
+        root.after(16, animate)
 
     # Print a machine-readable line so the harness can confirm the window is up
     # (and learn the exact geometry it should expect back).
@@ -154,6 +196,13 @@ def main(argv: list[str]) -> int:
     p.add_argument("--noise", action="store_true",
                    help="With --animate-ms: randomise every cell per tick "
                         "(incompressible content for load tests).")
+    p.add_argument("--blink-ms", type=int, default=0,
+                   help="Invert the board phase every N ms and print a "
+                        "'checkerboard-flip' line per flip (0 = static board)")
+    p.add_argument("--animate", action="store_true",
+                   help="Cycle cell shades at ~60 Hz (one row per tick) so "
+                        "every captured frame is distinct - required for an "
+                        "honest fps measurement")
     args = p.parse_args(argv)
 
     root = build(args)
