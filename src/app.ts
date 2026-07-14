@@ -126,6 +126,24 @@ export class TauriApp {
     }
   }
 
+  /**
+   * Turn on the app's file logging (logs land in the REAL OS log dir,
+   * `%LOCALAPPDATA%/com.fancymumble.app/logs` - Tauri resolves known
+   * folders via the OS API, ignoring the isolated env vars). Lets tests
+   * read backend tracing (e.g. screenshare pipeline timings) post-run.
+   */
+  async enableFileLogging(): Promise<void> {
+    const result = await this.driver.executeAsyncScript<string>(`
+      const cb = arguments[arguments.length - 1];
+      const inv = window.__TAURI_INTERNALS__ && window.__TAURI_INTERNALS__.invoke;
+      if (!inv) { cb('no-invoke'); return; }
+      inv('set_log_to_file', { enabled: true }).then(() => cb('ok')).catch((e) => cb('err:' + e));
+    `);
+    if (result !== "ok") {
+      throw new Error(`enableFileLogging failed: ${result}`);
+    }
+  }
+
   static async launch(opts: LaunchOptions = {}): Promise<TauriApp> {
     const instance = opts.instance ?? 0;
     // Two ports per instance: tauri-driver listens on `port`, msedgedriver/

@@ -65,8 +65,9 @@ export class StreamPage {
     }
   }
 
-  /** Switch the custom picker to the "Entire Screen" or "Window" tab. */
-  async selectTab(tab: "screens" | "windows"): Promise<void> {
+  /** Switch the custom picker to the "Entire Screen", "Window" or "Device"
+   *  (webcam) tab. */
+  async selectTab(tab: "screens" | "windows" | "devices"): Promise<void> {
     const el = await this.d.wait(
       until.elementLocated(By.css(`[data-testid="${TID.screenSharePickerTab}"][data-tab="${tab}"]`)),
       10000,
@@ -139,6 +140,403 @@ export class StreamPage {
     await toggle.click();
   }
 
+  /**
+   * Open the custom picker on the Devices (webcam) tab and wait until camera
+   * enumeration settles: either at least one device card is listed or the
+   * "no devices" status is shown. Returns the listed device titles (empty
+   * when the machine has no cameras). Only valid on the new Rust-native
+   * build - throws if the custom picker does not appear.
+   */
+  /** Open the source picker via the header share toggle. */
+  async openPicker(timeout = 15000): Promise<void> {
+    await this.clickToggle(timeout);
+    if (!(await this.customPickerAppeared(5000))) {
+      throw new Error("custom screen-share picker did not open (old build?)");
+    }
+  }
+
+  async openPickerDevices(timeout = 15000): Promise<string[]> {
+    await this.openPicker(timeout);
+    await this.selectTab("devices");
+    // Enumeration is one `list_capture_sources` invoke; cards render as soon
+    // as it resolves. Poll briefly - no cards after the budget simply means
+    // this machine has no cameras (the caller decides whether to skip).
+    const deadline = Date.now() + timeout;
+    while (Date.now() < deadline) {
+      const cards = await this.d.findElements(
+        By.css(`[data-testid="${TID.screenShareSource}"][data-source-kind="device"]`),
+      );
+      if (cards.length > 0) return this.titlesOf(cards);
+      await delay(300);
+    }
+    return [];
+  }
+
+  /**
+   * In the open picker, switch to `tab` and click a source card (the one
+   * whose title contains `title`, or the first card). Does NOT confirm -
+   * callers can combine picks across tabs (screen + camera). Returns the
+   * picked card's title.
+   */
+  async pickSource(tab: "screens" | "windows" | "devices", title?: string): Promise<string> {
+    await this.selectTab(tab);
+    const kinds = { screens: "screen", windows: "window", devices: "device" } as const;
+    const kind = kinds[tab];
+    let css = `[data-testid="${TID.screenShareSource}"][data-source-kind="${kind}"]`;
+    let what = `a ${kind} source`;
+    if (title) {
+      css += `[${STREAM_SOURCE_TITLE_ATTR}*="${cssAttrEscape(title)}"]`;
+      what += ` titled like "${title}"`;
+    }
+    const card = await this.d.wait(
+      until.elementLocated(By.css(css)),
+      15000,
+      `picker never offered ${what}`,
+    );
+    const picked = (await card.getAttribute(STREAM_SOURCE_TITLE_ATTR)) ?? "";
+    await card.click();
+    return picked;
+  }
+
+  /**
+   * Click the own-stream control-bar "add missing source" shortcut (shown
+   * while broadcasting only a screen OR only a camera); resolves once the
+   * picker (seeded with the live sources) is open.
+   */
+  async clickAddSource(timeout = 10000): Promise<void> {
+    const btn = await this.d.wait(
+      until.elementLocated(By.css('[data-testid="stream-add-source"]')),
+      timeout,
+      "no add-source shortcut in the own-stream controls",
+    );
+    await btn.click();
+    await this.d.wait(until.elementLocated(byTid(TID.screenSharePicker)), 10000);
+  }
+
+  /** Whether the chat-header share toggle is present (it must stay visible
+   *  while broadcasting so sources can be changed/added). */
+  async headerShareTogglePresent(): Promise<boolean> {
+    const els = await this.d.findElements(byTid(TID.screenShareToggle));
+    return els.length > 0;
+  }
+
+  /**
+   * Open the "Stats for Nerds" panel and count its per-track resolution rows
+   * (one per inbound video track). Polls briefly because the first stats tick
+   * lands ~1s after the panel opens. Leaves the panel open.
+   */
+  async statsResolutionCount(timeout = 8000): Promise<number> {
+    // The stats toggle lives in the stream control bar; hover the viewport to
+    // reveal the controls, then click it.
+    const statsBtn = await this.d.wait(
+      until.elementLocated(By.css('button[aria-label="Stats for Nerds"], button[aria-label="Hide stats for nerds"]')),
+      timeout,
+      "no Stats-for-Nerds toggle in the stream controls",
+    );
+    await statsBtn.click();
+    const deadline = Date.now() + timeout;
+    let count = 0;
+    while (Date.now() < deadline) {
+      count = (await this.d.findElements(byTid(TID.streamStatsResolution))).length;
+      if (count > 0) return count;
+      await delay(400);
+    }
+    return count;
+  }
+
+  /**
+   * Per-track fps from the (open) stats panel's "Current Res" rows
+   * ("1234×567@30" -> 30). NaN entries mean the row showed no rate yet.
+   */
+  async readStatsFps(): Promise<number[]> {
+    const rows = await this.d.findElements(byTid(TID.streamStatsResolution));
+    const out: number[] = [];
+    for (const row of rows) {
+      const text = (await row.getText()) ?? "";
+      const m = /@(\d+(?:\.\d+)?)/.exec(text);
+      out.push(m ? Number(m[1]) : Number.NaN);
+    }
+    return out;
+  }
+
+  /**
+   * Read a labelled row's numeric value from the (open) stats panel, e.g.
+   * `readStatsNumber("Connection Speed")` -> 8470 (kbps). NaN when missing.
+   */
+  async readStatsNumber(label: string): Promise<number> {
+    const value = await this.d.executeScript<string>(
+      `const rows = document.querySelectorAll('[data-testid="stream-stats-panel"] > div > div');
+       for (const row of rows) {
+         if (row.textContent && row.textContent.includes(arguments[0])) return row.textContent;
+       }
+       return '';`,
+      label,
+    );
+    const m = /(-?\d+(?:\.\d+)?)/.exec((value ?? "").replace(label, ""));
+    return m ? Number(m[1]) : Number.NaN;
+  }
+
+  /**
+   * Freeze counters from the (open) stats panel, one entry per video track:
+   * `[count, totalSeconds]` parsed from "n (x.x s total)"-style rows. The
+   * panel must already be open (see {@link statsResolutionCount}).
+   */
+  async readStatsFreezes(): Promise<Array<[number, number]>> {
+    const rows = await this.d.findElements(
+      By.css(`[data-testid="stream-stats-freezes"]`),
+    );
+    const out: Array<[number, number]> = [];
+    for (const row of rows) {
+      const text = (await row.getText()) ?? "";
+      const m = /(\d+)\s*\((\d+(?:\.\d+)?)/.exec(text);
+      if (m) out.push([Number(m[1]), Number(m[2])]);
+    }
+    return out;
+  }
+
+  /** Close the "Stats for Nerds" panel if it is open. */
+  async closeStats(): Promise<void> {
+    const btns = await this.d.findElements(By.css('button[aria-label="Close stats"]'));
+    if (btns.length > 0) await btns[0]!.click();
+  }
+
+  /** Click the × on the own camera PiP tile to end just the camera track. */
+  async endCameraViaPip(timeout = 10000): Promise<void> {
+    const x = await this.d.wait(
+      until.elementLocated(byTid(TID.streamEndCamera)),
+      timeout,
+      "no × on the camera PiP tile",
+    );
+    await x.click();
+    // The camera PiP must disappear (screen keeps sharing).
+    await this.d.wait(
+      async () =>
+        (await this.d.findElements(
+          By.css(`[data-testid="${TID.streamCameraVideo}"][data-own="true"]`),
+        )).length === 0,
+      timeout,
+      "camera PiP did not disappear after ending the camera track",
+    );
+  }
+
+  /** Click the panel × ("Stop sharing") exactly once. With both screen and
+   *  camera live this ends only the screen; with one source it stops all. */
+  async clickPanelStopOnce(timeout = 10000): Promise<void> {
+    const btn = await this.d.wait(
+      until.elementLocated(By.css('button[aria-label^="Stop sharing"]')),
+      timeout,
+      "no panel stop (×) button in the stream viewer",
+    );
+    await btn.click();
+  }
+
+  /** Whether the own-broadcast preview is currently mounted (broadcast live). */
+  async ownPreviewPresent(): Promise<boolean> {
+    const els = await this.d.findElements(
+      By.css(`[data-testid="${TID.streamViewerVideo}"][data-own="true"]`),
+    );
+    return els.length > 0;
+  }
+
+  /** Whether the own camera PiP tile is currently rendered. */
+  async cameraPipPresent(): Promise<boolean> {
+    const els = await this.d.findElements(
+      By.css(`[data-testid="${TID.streamCameraVideo}"][data-own="true"]`),
+    );
+    return els.length > 0;
+  }
+
+  /** Wait until the own camera PiP tile is gone (e.g. camera promoted to the
+   *  main video after the screen track ended). */
+  async waitForCameraPipGone(timeout = 10000): Promise<void> {
+    await this.d.wait(
+      async () => !(await this.cameraPipPresent()),
+      timeout,
+      "camera PiP tile did not disappear",
+    );
+  }
+
+  /** Best-effort full stop of any active own broadcast (afterEach cleanup). */
+  async stopBroadcastIfActive(): Promise<void> {
+    const own = By.css(`[data-testid="${TID.streamViewerVideo}"][data-own="true"]`);
+    try {
+      for (let i = 0; i < 3; i++) {
+        const btns = await this.d.findElements(By.css('button[aria-label^="Stop sharing"]'));
+        if (btns.length === 0) break;
+        await btns[0]!.click();
+        await delay(800);
+        if ((await this.d.findElements(own)).length === 0) break;
+      }
+    } catch {
+      /* best effort */
+    }
+  }
+
+  /** Kinds ("screen" | "window" | "device") of the picker's selection chips. */
+  async selectionChipKinds(): Promise<string[]> {
+    const chips = await this.d.findElements(
+      By.css('[data-testid="screen-share-selection-chip"]'),
+    );
+    const kinds: string[] = [];
+    for (const chip of chips) {
+      kinds.push((await chip.getAttribute("data-chip-kind")) ?? "");
+    }
+    return kinds;
+  }
+
+  /** Confirm the picker's current selection; resolves when it closes. */
+  async confirmPicker(): Promise<void> {
+    const confirm = await this.d.wait(until.elementLocated(byTid(TID.screenShareConfirm)), 10000);
+    await this.d.wait(until.elementIsEnabled(confirm), 10000);
+    await confirm.click();
+    await this.d.wait(
+      async () => (await this.d.findElements(byTid(TID.screenSharePicker))).length === 0,
+      10000,
+      "source picker did not close after confirming",
+    );
+  }
+
+  /**
+   * On the already-open picker's Devices tab, select the camera whose title
+   * contains `title` and confirm the share. Resolves when the picker closes.
+   */
+  async confirmDevice(title: string, timeout = 15000): Promise<void> {
+    const card = By.css(
+      `[data-testid="${TID.screenShareSource}"][data-source-kind="device"][${STREAM_SOURCE_TITLE_ATTR}*="${cssAttrEscape(title)}"]`,
+    );
+    const el = await this.d.wait(
+      until.elementLocated(card),
+      timeout,
+      `picker never offered a camera titled like "${title}"`,
+    );
+    await el.click();
+    const confirm = await this.d.wait(until.elementLocated(byTid(TID.screenShareConfirm)), 10000);
+    await this.d.wait(until.elementIsEnabled(confirm), 10000);
+    await confirm.click();
+    await this.d.wait(
+      async () => (await this.d.findElements(byTid(TID.screenSharePicker))).length === 0,
+      10000,
+      "source picker did not close after confirming the camera",
+    );
+  }
+
+  /** Whether the app's webview still answers (i.e. the process is alive). */
+  async appAlive(): Promise<boolean> {
+    try {
+      await this.d.getTitle();
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * Fully stop the running broadcast via the panel × ("Stop sharing"). The ×
+   * is context-aware: with BOTH screen and camera live it ends only the
+   * screen (aria-label "Stop sharing your screen"); with one source it stops
+   * the whole broadcast. So click it until the own-stream viewer is gone (at
+   * most twice: both -> camera-only -> stopped).
+   */
+  async stopBroadcast(): Promise<void> {
+    const stopBtn = By.css('button[aria-label^="Stop sharing"]');
+    const own = By.css(`[data-testid="${TID.streamViewerVideo}"][data-own="true"]`);
+    for (let i = 0; i < 3; i++) {
+      const btns = await this.d.findElements(stopBtn);
+      if (btns.length === 0) break;
+      await btns[0]!.click();
+      // Either the viewer closes (fully stopped) or the source set shrinks
+      // (screen dropped, camera promoted to main) - re-check next iteration.
+      await delay(800);
+      if ((await this.d.findElements(own)).length === 0) return;
+    }
+    await this.d.wait(
+      async () => (await this.d.findElements(own)).length === 0,
+      10000,
+      "own stream viewer did not close after stopping the broadcast",
+    );
+  }
+
+  /** In the open picker, click a quality preset button ("SD"/"HD"/"Source"). */
+  async setQuality(label: "SD" | "HD" | "Source"): Promise<void> {
+    const btn = await this.d.wait(
+      until.elementLocated(By.xpath(`//button[normalize-space(.)='${label}']`)),
+      10000,
+      `no "${label}" quality button in the picker`,
+    );
+    await btn.click();
+  }
+
+  /**
+   * In the open picker, choose a Stream Mode preset via the gear popover
+   * (labels from the EN locale; the suite forces English).
+   */
+  async setStreamMode(mode: "gaming" | "screenshare"): Promise<void> {
+    const gear = await this.d.wait(until.elementLocated(byTid(TID.screenShareSettings)), 10000);
+    await gear.click();
+    const label = mode === "screenshare" ? "Screenshare" : "Gaming";
+    const item = By.xpath(
+      `//button[@role='menuitemradio'][.//span[normalize-space(.)='${label}']]`,
+    );
+    const el = await this.d.wait(until.elementLocated(item), 5000, `no "${label}" mode item`);
+    await el.click();
+    // The popover stays open after picking a mode; close it so it does not
+    // overlay the picker's confirm button.
+    await gear.click();
+  }
+
+  /**
+   * Decoded frames per second of the own preview over `windowMs`, from the
+   * video sink's frame counter (`getVideoPlaybackQuality`) - measures what
+   * the viewer actually RECEIVES, end to end through encode/SFU/decode.
+   */
+  async measureOwnPreviewFps(windowMs = 3000): Promise<number> {
+    const read = () =>
+      this.d.executeScript<number>(
+        `const v = document.querySelector('[data-testid="${TID.streamViewerVideo}"][data-own="true"]');
+         if (!v) return -1;
+         const q = v.getVideoPlaybackQuality && v.getVideoPlaybackQuality();
+         return q ? q.totalVideoFrames : -1;`,
+      );
+    const before = await read();
+    await delay(windowMs);
+    const after = await read();
+    if (before < 0 || after < 0) throw new Error("own preview vanished while measuring fps");
+    return ((after - before) * 1000) / windowMs;
+  }
+
+  /**
+   * Assert the own-preview stream KEEPS decoding: sample the `<video>`'s
+   * playback position twice, `windowMs` apart, and require it to advance.
+   * Catches a broadcast that dies right after its first frames. (A source
+   * whose *content* is static still advances - this guards pipeline health,
+   * not pixel change.)
+   */
+  async assertOwnPreviewFlowing(windowMs = 3000): Promise<void> {
+    const readTime = () =>
+      this.d.executeScript<number>(
+        `const v = document.querySelector('[data-testid="${TID.streamViewerVideo}"][data-own="true"]');
+         return v ? v.currentTime : -1;`,
+      );
+    const before = await readTime();
+    if (before < 0) throw new Error("own stream preview vanished");
+    await delay(windowMs);
+    const after = await readTime();
+    if (after < 0) throw new Error("own stream preview vanished while playing");
+    if (after <= before) {
+      throw new Error(
+        `own stream preview stopped decoding (currentTime ${before} -> ${after})`,
+      );
+    }
+  }
+
+  private async titlesOf(cards: import("selenium-webdriver").WebElement[]): Promise<string[]> {
+    const titles: string[] = [];
+    for (const c of cards) {
+      titles.push((await c.getAttribute(STREAM_SOURCE_TITLE_ATTR)) ?? "");
+    }
+    return titles;
+  }
+
   /** Wait for the broadcaster's own loopback preview to carry decoded frames. */
   async waitOwnPreview(timeout = 30000): Promise<void> {
     await this.waitVideoReady("true", timeout);
@@ -209,6 +607,26 @@ export class StreamPage {
       const w = await this.d.executeScript<number>("return arguments[0].videoWidth || 0;", els[0]);
       return w > 0;
     }, timeout, `stream <video data-own="${own}"> never received frames`);
+  }
+
+  /**
+   * Wait for the camera picture-in-picture tile (screen + camera shares) to
+   * carry decoded frames. `own` selects the broadcaster's loopback preview
+   * (true) or a remote viewer (false). A camera-ONLY share renders in the
+   * main stream video instead - use {@link waitOwnPreview} / {@link
+   * watchByName} for that case.
+   */
+  async waitCameraPip(own: boolean, timeout = 30000): Promise<void> {
+    const sel = By.css(
+      `[data-testid="${TID.streamCameraVideo}"][data-own="${own ? "true" : "false"}"]`,
+    );
+    await this.d.wait(until.elementLocated(sel), timeout);
+    await this.d.wait(async () => {
+      const els = await this.d.findElements(sel);
+      if (els.length === 0) return false;
+      const w = await this.d.executeScript<number>("return arguments[0].videoWidth || 0;", els[0]);
+      return w > 0;
+    }, timeout, `camera PiP <video data-own="${own}"> never received frames`);
   }
 }
 
