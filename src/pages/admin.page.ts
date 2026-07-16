@@ -1,5 +1,5 @@
 import { By, until, type WebDriver } from "selenium-webdriver";
-import { TID } from "../selectors";
+import { TID, byTid } from "../selectors";
 
 /**
  * Page object for the admin panel (`/admin`), focused on the "Channels / ACL"
@@ -33,6 +33,100 @@ export class AdminPage {
       10000,
     );
     await tab.click();
+  }
+
+  /** Switch to the "Roles" tab. */
+  async openRolesTab(): Promise<void> {
+    const tab = await this.d.wait(
+      until.elementLocated(By.xpath("//button[normalize-space(.)='Roles']")),
+      10000,
+    );
+    await tab.click();
+  }
+
+  /** Click "+ Create role" on the Roles tab (must already be open). */
+  async clickCreateRole(): Promise<void> {
+    const btn = await this.d.wait(
+      until.elementLocated(byTid(TID.rolesCreateButton)),
+      10000,
+    );
+    await btn.click();
+  }
+
+  /**
+   * Wait for the role editor (`/admin/role/:name`) to settle on either
+   * outcome: its Display sub-tab's name field ("found"), or the "Role
+   * {{name}} not found." placeholder ("not-found").
+   */
+  async waitForRoleEditorSettled(timeout = 10000): Promise<"found" | "not-found"> {
+    await this.d.wait(async () => {
+      const found = await this.d.findElements(byTid(TID.roleNameInput));
+      const notFound = await this.d.findElements(byTid(TID.roleEditorNotFound));
+      return found.length > 0 || notFound.length > 0;
+    }, timeout, "role editor never settled (neither the name field nor the 'not found' message appeared)");
+    const notFound = await this.d.findElements(byTid(TID.roleEditorNotFound));
+    return notFound.length > 0 ? "not-found" : "found";
+  }
+
+  /** Current value of the role editor's Display-tab name field. */
+  async roleNameInputValue(): Promise<string> {
+    const input = await this.d.findElement(byTid(TID.roleNameInput));
+    return (await input.getAttribute("value")) ?? "";
+  }
+
+  private byRoleListRow(name: string): By {
+    return By.css(
+      `[data-testid="${TID.roleListRow}"][data-role-name="${cssAttrEscape(name)}"]`,
+    );
+  }
+
+  /** Whether a role row named `name` is currently present on the Roles tab list. */
+  async hasRoleInList(name: string): Promise<boolean> {
+    return (await this.d.findElements(this.byRoleListRow(name))).length > 0;
+  }
+
+  /** Wait until the Roles tab list contains a role row named `name`. */
+  async waitForRoleInList(name: string, timeout = 10000) {
+    return this.d.wait(until.elementLocated(this.byRoleListRow(name)), timeout);
+  }
+
+  // -- New-role wizard (`/admin/roles/new`) --------------------------------
+
+  /** Click the wizard's "Next" step button. */
+  async wizardClickNext(): Promise<void> {
+    const btn = await this.d.wait(until.elementLocated(byTid(TID.roleWizardNext)), 10000);
+    await btn.click();
+  }
+
+  /** Click the wizard's "Previous" step button. */
+  async wizardClickPrev(): Promise<void> {
+    const btn = await this.d.wait(until.elementLocated(byTid(TID.roleWizardPrev)), 10000);
+    await btn.click();
+  }
+
+  /** Click the wizard's final-step "Create role" button (persists the draft). */
+  async wizardClickCreate(): Promise<void> {
+    const btn = await this.d.wait(until.elementLocated(byTid(TID.roleWizardCreate)), 10000);
+    await btn.click();
+  }
+
+  /** Click the wizard's "Cancel" button (discards the draft). */
+  async wizardClickCancel(): Promise<void> {
+    const btn = await this.d.wait(until.elementLocated(byTid(TID.roleWizardCancel)), 10000);
+    await btn.click();
+  }
+
+  /**
+   * Click the top chevron "Go back" button shared by every `TabbedPage`
+   * (Settings, Admin, the role editor, the new-role wizard). Only one such
+   * page is ever on screen at a time, so the aria-label alone is unambiguous.
+   */
+  async clickTopBack(): Promise<void> {
+    const btn = await this.d.wait(
+      until.elementLocated(By.css('[aria-label="Go back"]')),
+      10000,
+    );
+    await btn.click();
   }
 
   private byAclChannel(name: string): By {
