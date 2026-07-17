@@ -224,6 +224,11 @@ export class SidebarPage {
    * `user_id`, so an anonymous peer must be registered before it can be invited.
    * Synchronisation on the new `user_id` propagating is left to the caller (the
    * calendar invitee autocomplete only resolves once it lands).
+   *
+   * Register now asks for verification before committing: clicking the menu
+   * item opens a ConfirmDialog naming the user. This helper asserts the
+   * dialog appears AND mentions `name` (the "verify their user name" popup
+   * from the register-does-nothing ticket), then confirms it.
    */
   async registerUser(name: string): Promise<void> {
     const row = await this.d.wait(
@@ -240,7 +245,29 @@ export class SidebarPage {
     );
     await this.d.wait(until.elementIsVisible(register), 5000);
     await register.click();
-    await delay(400);
+
+    // The verification popup must appear and name the user being registered.
+    const dialog = await this.d.wait(
+      until.elementLocated(byTid(TID.confirmDialog)),
+      8000,
+      "register verification popup (ConfirmDialog) never appeared",
+    );
+    // getText() only returns VISIBLE text; the modal fades in, so poll until
+    // the dialog actually shows the user's name rather than sampling once.
+    await this.d.wait(
+      async () => (await dialog.getText()).includes(name),
+      5000,
+      `register verification popup never showed the user's name "${name}"`,
+    );
+    await dialog.findElement(byTid(TID.confirmDialogConfirm)).click();
+
+    // The dialog closes once the registration request is sent.
+    await this.d.wait(
+      async () => (await this.d.findElements(byTid(TID.confirmDialog))).length === 0,
+      8000,
+      "register verification popup never closed after confirming",
+    );
+    await delay(200);
   }
 
   /**

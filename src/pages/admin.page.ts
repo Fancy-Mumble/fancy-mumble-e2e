@@ -1,5 +1,5 @@
 import { By, until, type WebDriver } from "selenium-webdriver";
-import { TID, byTid } from "../selectors";
+import { MEMBER_NAME_ATTR, TID, byTid } from "../selectors";
 
 /**
  * Page object for the admin panel (`/admin`), focused on the "Channels / ACL"
@@ -33,6 +33,86 @@ export class AdminPage {
       10000,
     );
     await tab.click();
+  }
+
+  /** Switch to the "Users" (registered users) tab. It is also the panel's
+   *  default tab, but clicking is idempotent and guards against deep links. */
+  async openUsersTab(): Promise<void> {
+    const tab = await this.d.wait(
+      until.elementLocated(By.xpath("//button[normalize-space(.)='Users']")),
+      10000,
+    );
+    await tab.click();
+  }
+
+  private byRegisteredUserRow(name: string): By {
+    return By.css(
+      `[data-testid="${TID.registeredUserRow}"][${MEMBER_NAME_ATTR}="${cssAttrEscape(name)}"]`,
+    );
+  }
+
+  /** Wait until the Users tab's table lists a registered user named `name`. */
+  async waitForRegisteredUser(name: string, timeout = 20000) {
+    return this.d.wait(
+      until.elementLocated(this.byRegisteredUserRow(name)),
+      timeout,
+      `registered user "${name}" never appeared in the admin Users list`,
+    );
+  }
+
+  /** Whether the Users tab currently lists a registered user named `name` (no wait). */
+  async hasRegisteredUser(name: string): Promise<boolean> {
+    return (await this.d.findElements(this.byRegisteredUserRow(name))).length > 0;
+  }
+
+  /** Wait until the registered user `name` is gone from the Users tab list. */
+  async waitForRegisteredUserGone(name: string, timeout = 20000): Promise<void> {
+    await this.d.wait(
+      async () => (await this.d.findElements(this.byRegisteredUserRow(name))).length === 0,
+      timeout,
+      `registered user "${name}" was still listed after ${timeout}ms`,
+    );
+  }
+
+  /**
+   * Unregister `name` via the Users tab's row Actions (kebab) menu, clicking
+   * through the data-loss ConfirmDialog. Asserts the dialog names the user
+   * before confirming. The tab refreshes its list afterwards; await
+   * {@link waitForRegisteredUserGone} to confirm the removal committed.
+   */
+  async unregisterUser(name: string): Promise<void> {
+    const row = await this.waitForRegisteredUser(name);
+    // The kebab trigger carries the row's aria-label ("Actions for {name}").
+    const kebab = await row.findElement(
+      By.css(`button[aria-label="Actions for ${cssAttrEscape(name)}"]`),
+    );
+    await kebab.click();
+    const item = await this.d.wait(
+      until.elementLocated(
+        By.xpath("//button[@role='menuitem' and starts-with(normalize-space(.), 'Unregister')]"),
+      ),
+      8000,
+    );
+    await item.click();
+
+    const dialog = await this.d.wait(
+      until.elementLocated(byTid(TID.confirmDialog)),
+      8000,
+      "unregister confirmation dialog never appeared",
+    );
+    // getText() only returns VISIBLE text; the modal fades in, so poll until
+    // the dialog actually shows the user's name rather than sampling once.
+    await this.d.wait(
+      async () => (await dialog.getText()).includes(name),
+      5000,
+      `unregister confirmation never showed the user's name "${name}"`,
+    );
+    await dialog.findElement(byTid(TID.confirmDialogConfirm)).click();
+    await this.d.wait(
+      async () => (await this.d.findElements(byTid(TID.confirmDialog))).length === 0,
+      8000,
+      "unregister confirmation dialog never closed after confirming",
+    );
   }
 
   /** Switch to the "Roles" tab. */
