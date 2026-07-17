@@ -68,6 +68,20 @@ export class AdminPage {
     return notFound.length > 0 ? "not-found" : "found";
   }
 
+  /**
+   * Wait until the new-role wizard has seeded its draft and rendered the
+   * Display step's name field. The wizard can only pick the draft name once
+   * the root ACL arrives, so the field is absent for a beat after the click -
+   * reading it without waiting is a race.
+   */
+  async waitForWizardReady(timeout = 15000): Promise<void> {
+    await this.d.wait(
+      until.elementLocated(byTid(TID.roleNameInput)),
+      timeout,
+      "new-role wizard never rendered its name field",
+    );
+  }
+
   /** Current value of the role editor's Display-tab name field. */
   async roleNameInputValue(): Promise<string> {
     const input = await this.d.findElement(byTid(TID.roleNameInput));
