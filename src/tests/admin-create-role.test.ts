@@ -47,6 +47,7 @@ describe("admin: creating a role via the Roles wizard", () => {
     await admin.admin.open();
     await admin.admin.openRolesTab();
     await admin.admin.clickCreateRole();
+    await admin.admin.waitForWizardReady();
 
     const draftName = await admin.admin.roleNameInputValue();
     assert.ok(draftName.length > 0, "wizard never showed a draft role name");
@@ -67,6 +68,7 @@ describe("admin: creating a role via the Roles wizard", () => {
     await admin.admin.open();
     await admin.admin.openRolesTab();
     await admin.admin.clickCreateRole();
+    await admin.admin.waitForWizardReady();
 
     const draftName = await admin.admin.roleNameInputValue();
 
@@ -98,7 +100,10 @@ describe("admin: creating a role via the Roles wizard", () => {
     assert.equal(outcome, "found", `role editor showed "not found" for "${draftName}" after Create`);
     assert.equal(await admin.admin.roleNameInputValue(), draftName);
 
-    await admin.admin.openRolesTab();
+    // Create lands on the new role's editor, whose tabs are the role's own
+    // (Display/Permissions/Members) - the admin tab strip isn't there, so the
+    // way back to the list is Back, which must land on Roles rather than Users.
+    await admin.admin.clickTopBack();
     await admin.admin.waitForRoleInList(draftName);
     createdRoleName = draftName;
   });
@@ -107,6 +112,7 @@ describe("admin: creating a role via the Roles wizard", () => {
     await admin.admin.open();
     await admin.admin.openRolesTab();
     await admin.admin.clickCreateRole();
+    await admin.admin.waitForWizardReady();
 
     await admin.admin.clickTopBack();
 
