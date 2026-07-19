@@ -13,6 +13,8 @@ import { CalendarPage } from "./pages/calendar.page";
 import { FriendsPage } from "./pages/friends.page";
 import { AdminPage } from "./pages/admin.page";
 import { StreamPage } from "./pages/stream.page";
+import { ForumPage } from "./pages/forum.page";
+import { ScheduledPage } from "./pages/scheduled.page";
 
 export interface LaunchOptions {
   /**
@@ -92,6 +94,8 @@ export class TauriApp {
   readonly friends: FriendsPage;
   readonly admin: AdminPage;
   readonly stream: StreamPage;
+  readonly forum: ForumPage;
+  readonly scheduled: ScheduledPage;
 
   private constructor(
     readonly driver: WebDriver,
@@ -105,6 +109,8 @@ export class TauriApp {
     this.friends = new FriendsPage(driver);
     this.admin = new AdminPage(driver);
     this.stream = new StreamPage(driver);
+    this.forum = new ForumPage(driver);
+    this.scheduled = new ScheduledPage(driver);
   }
 
   /** The isolated plugin-store directory for this client (diagnostics/tests). */
