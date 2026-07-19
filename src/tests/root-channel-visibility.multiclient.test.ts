@@ -4,7 +4,7 @@ import { config } from "../config";
 import { setSuperUserPassword } from "../util/server";
 
 /**
- * Root-channel visibility — regression guard.
+ * Root-channel visibility - regression guard.
  *
  * The server omits `channel_id` for users sitting in the root channel (id 0):
  * `serializeUserState` / the sync loop only set it when `cChannel->iId != 0`. So

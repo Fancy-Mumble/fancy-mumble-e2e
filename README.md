@@ -3,7 +3,7 @@
 Fully-automated **end-to-end** tests for [FancyMumble](https://github.com/Fancy-Mumble/FancyMumbleNext):
 launch the real packaged desktop client, drive the actual React UI with
 **Selenium + tauri-driver**, and talk to a **real Fancy Mumble server** in
-Docker — proving the whole stack (UI → Tauri commands → mumble-protocol →
+Docker - proving the whole stack (UI → Tauri commands → mumble-protocol →
 server → back to UI) works together.
 
 This repo contains **only** the e2e harness and fixtures. The three projects
@@ -94,7 +94,7 @@ xvfb-run -a npm run test:e2e        # Linux headless
 docker compose -f fixtures/docker-compose.e2e.yml down -v
 ```
 
-### Headed (local) run — watch it drive the real window
+### Headed (local) run - watch it drive the real window
 
 The suite is never headless by itself; headlessness is purely environmental
 (CI wraps it in `xvfb-run`). For a local run with a **visible** app window, use
@@ -102,18 +102,18 @@ the helper scripts, which build the binary if needed, bring the server up, run
 the suite headed (visible window), and tear down:
 
 ```powershell
-# Windows (PowerShell) — drives the Edge WebView2 window via msedgedriver
+# Windows (PowerShell) - drives the Edge WebView2 window via msedgedriver
 ./scripts/run-local.ps1 -Build           # build + run everything
 ./scripts/run-local.ps1 -Grep "smoke"    # just the smoke test, reusing an existing build
 ```
 
 ```bash
-# Linux/macOS — Linux shows a real window when $DISPLAY is set (no xvfb)
+# Linux/macOS - Linux shows a real window when $DISPLAY is set (no xvfb)
 ./scripts/run-local.sh --build
 ./scripts/run-local.sh --grep "voice"
 ```
 
-Extra prerequisite for headed runs: the native WebDriver must be available —
+Extra prerequisite for headed runs: the native WebDriver must be available -
 `msedgedriver` (Windows, matching your Edge/WebView2 version) or
 `WebKitWebDriver` (Linux). macOS isn't supported by tauri-driver.
 

@@ -160,7 +160,7 @@ export class TauriApp {
    * but is exactly the vector that must be rejected.
    *
    * Resolves once the session reaches `connected` (impersonation would have
-   * SUCCEEDED — the bug) or the server rejects it. The rejection reason and
+   * SUCCEEDED - the bug) or the server rejects it. The rejection reason and
    * `Reject.type` are captured when the backend emits `connection-rejected`
    * (WrongUserPW = 3); `reject_type` may be null on servers that don't set it.
    */
