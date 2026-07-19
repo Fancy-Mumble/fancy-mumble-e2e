@@ -15,10 +15,16 @@ export {
   CALENDAR_VIEW_ATTR,
   STREAM_SOURCE_TITLE_ATTR,
   BROADCASTER_NAME_ATTR,
-  KEBAB_ITEM_ATTR,
-  FORUM_TOPIC_ATTR,
-  FORUM_THREAD_TITLE_ATTR,
 } from "../vendor/client/crates/mumble-tauri/ui/src/testids";
+
+// Forum / kebab attribute keys, declared locally (NOT re-exported from the
+// client) so this module keeps loading when the checked-out client branch
+// predates the forums feature: a re-export of a missing named export throws
+// at import time and would take the whole suite down. Values must match the
+// client's testids.ts on feat/forums-and-scheduled-messages.
+export const KEBAB_ITEM_ATTR = "data-item-id";
+export const FORUM_TOPIC_ATTR = "data-topic";
+export const FORUM_THREAD_TITLE_ATTR = "data-thread-title";
 
 /** `By.css` locator for an element carrying the given `data-testid`. */
 export const byTid = (id: string): By => By.css(`[data-testid="${id}"]`);

@@ -15,6 +15,7 @@ import { AdminPage } from "./pages/admin.page";
 import { StreamPage } from "./pages/stream.page";
 import { ForumPage } from "./pages/forum.page";
 import { ScheduledPage } from "./pages/scheduled.page";
+import { AuditPage } from "./pages/audit.page";
 
 export interface LaunchOptions {
   /**
@@ -96,6 +97,7 @@ export class TauriApp {
   readonly stream: StreamPage;
   readonly forum: ForumPage;
   readonly scheduled: ScheduledPage;
+  readonly audit: AuditPage;
 
   private constructor(
     readonly driver: WebDriver,
@@ -111,6 +113,7 @@ export class TauriApp {
     this.stream = new StreamPage(driver);
     this.forum = new ForumPage(driver);
     this.scheduled = new ScheduledPage(driver);
+    this.audit = new AuditPage(driver);
   }
 
   /** The isolated plugin-store directory for this client (diagnostics/tests). */
