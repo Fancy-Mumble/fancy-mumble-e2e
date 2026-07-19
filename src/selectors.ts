@@ -15,6 +15,9 @@ export {
   CALENDAR_VIEW_ATTR,
   STREAM_SOURCE_TITLE_ATTR,
   BROADCASTER_NAME_ATTR,
+  KEBAB_ITEM_ATTR,
+  FORUM_TOPIC_ATTR,
+  FORUM_THREAD_TITLE_ATTR,
 } from "../vendor/client/crates/mumble-tauri/ui/src/testids";
 
 /** `By.css` locator for an element carrying the given `data-testid`. */
