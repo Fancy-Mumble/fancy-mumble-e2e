@@ -52,43 +52,41 @@ describe("audit log: ingest + admin viewer", () => {
     await user.sidebar.waitForChannel(channelName);
   });
 
-  it("ingests events into the plugin's server-side store (hash chain rows)", async () => {
-    // Find the plugin's SQLite DB inside the container and count its rows.
-    // This proves the ingest pipeline (phases 1-2) works regardless of the
-    // client-facing query surface.
-    const path = execFileSync(
-      "docker",
-      ["exec", CONTAINER, "sh", "-lc",
-        "find /data /var/lib -name '*audit*' \\( -name '*.sqlite' -o -name '*.db' -o -name '*.sqlite3' \\) 2>/dev/null | head -1"],
-      { encoding: "utf8" },
-    ).trim();
-    assert.ok(path, "no audit sqlite database found inside the server container");
-
-    // Poll: ingest is async to the action above.
-    const deadline = Date.now() + 15000;
-    let dump = "";
-    for (;;) {
-      dump = execFileSync(
+  it("initialises the plugin's hash-chain store (server_audit schema)", async () => {
+    // The plugin creates its SQLite store on load; assert the file exists and
+    // is non-empty (schema written). The sqlite3 CLI isn't in the image, so
+    // contents are asserted from the copied file in the ingest test below.
+    const size = Number(
+      execFileSync(
         "docker",
-        ["exec", CONTAINER, "sh", "-lc",
-          `command -v sqlite3 >/dev/null && sqlite3 '${path}' "SELECT count(*) FROM sqlite_master WHERE type='table'; " || echo NO_SQLITE3`],
+        ["exec", CONTAINER, "sh", "-lc", "stat -c %s /data/audit-log.sqlite"],
         { encoding: "utf8" },
-      ).trim();
-      if (dump !== "" || Date.now() > deadline) break;
-      await new Promise((r) => setTimeout(r, 1000));
-    }
-    // The container may not ship the sqlite3 CLI - fall back to asserting the
-    // DB file is non-empty and growing.
-    if (dump.includes("NO_SQLITE3")) {
-      const size = Number(
-        execFileSync("docker", ["exec", CONTAINER, "sh", "-lc", `stat -c %s '${path}'`], {
-          encoding: "utf8",
-        }).trim(),
+      ).trim(),
+    );
+    assert.ok(size > 0, "audit DB /data/audit-log.sqlite missing or empty");
+  });
+
+  it("ingests the channel event into server_audit (hash chain rows)", async () => {
+    // Poll the store for the channel-create event. This is the phase 1-2
+    // ingest pipeline; it activates only once the host gains the
+    // on_server_event fan-out (ABI bump + murmur emitServerEvent calls) -
+    // red until that lands.
+    const tmp = `${process.env.TEMP ?? "/tmp"}/e2e-audit-${stamp}.sqlite`;
+    const deadline = Date.now() + 15000;
+    let rows = 0;
+    while (Date.now() < deadline && rows === 0) {
+      execFileSync("docker", ["cp", `${CONTAINER}:/data/audit-log.sqlite`, tmp]);
+      rows = Number(
+        execFileSync(
+          process.env.E2E_PYTHON ?? "py",
+          ["-c",
+            `import sqlite3;print(sqlite3.connect(r'${tmp}').execute("SELECT count(*) FROM server_audit").fetchone()[0])`],
+          { encoding: "utf8" },
+        ).trim(),
       );
-      assert.ok(size > 0, `audit DB ${path} is empty`);
-    } else {
-      assert.ok(Number(dump) > 0, `audit DB ${path} has no tables`);
+      if (rows === 0) await new Promise((r) => setTimeout(r, 1500));
     }
+    assert.ok(rows > 0, "server_audit has no rows - ingest fan-out not wired");
   });
 
   it("shows the Audit log tab to an admin (0.4.2 gate + Write on root)", async () => {
