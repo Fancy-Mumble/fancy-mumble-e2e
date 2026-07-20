@@ -261,3 +261,45 @@ regenerated artifacts). The e2e tests live in this repo
 the forums build showed 10 failing suites (calendar/friends/meetings/
 registration-related) that persist even after merging 1.6.x — suspected
 pre-existing/registration-related, unresolved, parked.
+
+---
+
+## 9. COMPLETION STATUS (2026-07-20) — opaque rework done + verified
+
+**Server + plugin rework: COMPLETE, pushed, verified.**
+- `GoOneStepBack/mumble-server` branch `wip/audit-opaque-rework` (head `80da199e0`):
+  bridge deleted, `on_server_event` ABI-4 fan-out, 5 emit sites, plugin
+  `on_server_event`→ingest + generic-channel replies + owns pagination.
+- Image `fancy-mumble-server:opaque` built from that branch (via build-rework.sh
+  → vendor/docker `wip/audit-plugin-packaging`). Container `fancy-audit-verify`.
+- Plugin unit tests: **50/50 pass** (`cargo test` in 3rdparty/mumble-plugin-host/audit).
+- **Live ingest verified**: pymumble trigger (~/audit-client) created channels →
+  plugin `server_audit` hash-chain store has rows (queried via ~/rtvenv sqlite).
+
+**Client transport rework: COMPLETE, committed, verified — NOT pushed (token scope).**
+- Commit `ab86239` on top of `feat/audit-log-client` (base `7b9e41c`).
+- Fine-grained PAT can push mumble-server but NOT Fancy-Mumble/FancyMumble fork
+  (403). Commit preserved as patch: `~/fancy-mumble-e2e` + agent /memory/audit-handoff/
+  `audit-client-rework.patch` (git am onto feat/audit-log-client).
+- `cargo check -p mumble-protocol`: **clean** (wire 166-171 removal compiles).
+- **Full client↔plugin contract verified end-to-end** via raw wire-200 round-trip
+  (~/rt/rt_client.py, image rt-client, run on bridge net → server 172.18.0.x):
+    - audit.query   → audit.result  : 2 entries, {has_more,next_before_id,request_id},
+                                        entry shape matches decode_entry (hex entry_hash,
+                                        nested actor/target)
+    - audit.verify  → audit.verify.result : {intact:true, checked:2, head} (was the RED
+                                             test under the bridge — now green)
+    - audit.config.get → audit.config : 21 settings, revision, chain_height
+  Every field the reworked client `handler/audit.rs` decoder reads is present + correct.
+- tauri-crate compile: type/API contracts all confirmed matching (SendPluginMessage,
+  AuditQueryArgs, AuditEntryPayload, AuditConfigSnapshot, ServerSetting). A real
+  `cargo check -p mumble-tauri` needs webkit2gtk-4.1-dev — NOT installable here
+  (no sudo). GUI selenium e2e (audit-log.test.ts) likewise needs webkit +
+  WebKitWebDriver + tauri-driver; unrunnable on this Linux box. Both were validated
+  on the prior Windows machine; here verified at protocol/contract level instead.
+
+**Residual (for a machine with webkit / proper token):**
+1. `git am` the client patch onto feat/audit-log-client; push; update PR #110.
+2. `cargo check -p mumble-tauri --features custom-protocol` (or full build) to
+   typecheck the 4 reworked tauri files (contracts already cross-checked).
+3. Optional: run the 6/6 GUI audit-log.test.ts once webkit infra exists.

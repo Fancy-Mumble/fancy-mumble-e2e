@@ -235,6 +235,12 @@ export class TauriApp {
     const dataDir = mkdtempSync(path.join(os.tmpdir(), "fancy-e2e-"));
     const env = makeIsolatedEnv(dataDir, opts.captureWindowTitle);
     Object.assign(env, opts.extraEnv ?? {});
+    // Give each instance its own X display so two client windows never contend
+    // for keyboard focus (WebKitWebDriver key events depend on window focus);
+    // the per-instance Xvfb servers are started by the runner (:99 + instance).
+    if (process.platform !== "win32" && !process.env.E2E_KEEP_DISPLAY) {
+      env.DISPLAY = ":" + (99 + instance);
+    }
 
     const proc = await startTauriDriver(port, nativePort, env);
     try {
@@ -265,7 +271,9 @@ export class TauriApp {
         // protocol page loads; wait for the real app URL AND a mounted React
         // root so getCurrentUrl()/navigation in applyTestMode are reliable.
         const url = await this.driver.getCurrentUrl();
-        if (!/^https?:\/\//.test(url)) return false;
+        // Linux/WebKitGTK serves the app under the tauri:// scheme; Windows/
+        // WebView2 uses https://tauri.localhost. Accept both.
+        if (!/^(https?|tauri):\/\//.test(url)) return false;
         return (
           (await this.driver.executeScript(
             "return document.readyState === 'complete' && !!document.getElementById('root') && document.getElementById('root').childElementCount > 0",
