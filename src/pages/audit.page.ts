@@ -1,5 +1,48 @@
+import { execFileSync } from "node:child_process";
 import { By, until, type WebDriver } from "selenium-webdriver";
 import { byTid, TID } from "../selectors";
+
+const AUDIT_CONTAINER = process.env.E2E_SERVER_CONTAINER ?? "fancy-e2e-mumble";
+
+/**
+ * Count rows the audit plugin has actually persisted, optionally for one
+ * category. Reads the plugin's SQLite store inside the container (copied out,
+ * since the image has no sqlite3 CLI) rather than the client query surface, so
+ * an assertion can't be satisfied by a UI-only artefact.
+ */
+export function auditStoreCount(category?: string): number {
+  const tmp = `${process.env.TEMP ?? "/tmp"}/e2e-audit-count-${process.pid}.sqlite`;
+  execFileSync("docker", ["cp", `${AUDIT_CONTAINER}:/data/audit-log.sqlite`, tmp]);
+  const where = category ? ` WHERE category = '${category.replace(/'/g, "''")}'` : "";
+  const out = execFileSync(
+    process.env.E2E_PYTHON ?? "py",
+    [
+      "-c",
+      `import sqlite3;print(sqlite3.connect(r'${tmp}').execute("SELECT count(*) FROM server_audit${where}").fetchone()[0])`,
+    ],
+    { encoding: "utf8" },
+  );
+  return Number(out.trim());
+}
+
+/** Poll {@link auditStoreCount} until `category` has at least `min` rows. */
+export async function waitForAuditCategory(
+  category: string,
+  min = 1,
+  timeout = 15000,
+): Promise<number> {
+  const deadline = Date.now() + timeout;
+  let count = 0;
+  for (;;) {
+    count = auditStoreCount(category);
+    if (count >= min || Date.now() >= deadline) break;
+    await new Promise((r) => setTimeout(r, 1000));
+  }
+  if (count < min) {
+    throw new Error(`audit category "${category}" never reached ${min} row(s) (saw ${count})`);
+  }
+  return count;
+}
 
 /**
  * Page object for the admin "Audit log" tab (AuditLogTab.tsx, client PR

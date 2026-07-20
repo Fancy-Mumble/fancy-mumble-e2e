@@ -219,6 +219,45 @@ export class SidebarPage {
   }
 
   /**
+   * Right-click a user row and click an admin action by its menu label.
+   *
+   * The user context menu has no root test id, so items are addressed by their
+   * English label (the suite forces English), matching {@link registerUser}.
+   */
+  private async userMenuAction(name: string, label: string): Promise<void> {
+    const row = await this.d.wait(
+      until.elementLocated(
+        By.css(`[data-testid="${TID.memberItem}"][${MEMBER_NAME_ATTR}="${cssAttrEscape(name)}"]`),
+      ),
+      15000,
+    );
+    await this.d.actions().contextClick(row).perform();
+    await delay(400);
+    const item = await this.d.wait(
+      until.elementLocated(By.xpath(`//button[normalize-space(.)=${xpathLiteral(label)}]`)),
+      8000,
+    );
+    await this.d.wait(until.elementIsVisible(item), 5000);
+    await item.click();
+    await delay(400);
+  }
+
+  /** Server-mute `name` (admin; MuteDeafen on their channel). */
+  async muteUser(name: string): Promise<void> {
+    await this.userMenuAction(name, "Mute");
+  }
+
+  /** Server-deafen `name` (admin; MuteDeafen on their channel). */
+  async deafenUser(name: string): Promise<void> {
+    await this.userMenuAction(name, "Deafen");
+  }
+
+  /** Grant `name` priority speaker (admin; MuteDeafen on their channel). */
+  async setPrioritySpeaker(name: string): Promise<void> {
+    await this.userMenuAction(name, "Priority speaker");
+  }
+
+  /**
    * Right-click a user row and register them on the server (admin only). The
    * relay-based features (calendar, file-server) route by a stable registered
    * `user_id`, so an anonymous peer must be registered before it can be invited.

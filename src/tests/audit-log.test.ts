@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { TauriApp } from "../app";
 import { config } from "../config";
+import { waitForAuditCategory } from "../pages/audit.page";
 import { setSuperUserPassword } from "../util/server";
 
 const CONTAINER = process.env.E2E_SERVER_CONTAINER ?? "fancy-e2e-mumble";
@@ -87,6 +88,32 @@ describe("audit log: ingest + admin viewer", () => {
       if (rows === 0) await new Promise((r) => setTimeout(r, 1500));
     }
     assert.ok(rows > 0, "server_audit has no rows - ingest fan-out not wired");
+  });
+
+  // The categories below have a toggle and a consumer mapping in the plugin
+  // (toggles.rs Part::from_event_kind) but had no producer in the core server
+  // until the emit sites were added, so they logged nothing however the part
+  // was configured. These drive the real UI actions and assert the plugin's
+  // store - not the client query surface - actually gained the rows.
+
+  it("logs a server-mute and a priority-speaker grant (audit.mute_deafen_suppress)", async () => {
+    await admin.sidebar.muteUser(userName);
+    await admin.sidebar.setPrioritySpeaker(userName);
+    const rows = await waitForAuditCategory("audit.mute_deafen_suppress", 2, 20000);
+    assert.ok(rows >= 2, `expected a mute and a priority-speaker entry, saw ${rows}`);
+  });
+
+  it("logs a channel move (audit.move)", async () => {
+    // A self-join is still a channel change, so the server emits `move` with
+    // the actor and target being the same user.
+    await user.sidebar.joinChannel(channelName);
+    await user.sidebar.waitForMembership(channelName, 10000);
+    await waitForAuditCategory("audit.move", 1, 20000);
+  });
+
+  it("logs a user registration (audit.register)", async () => {
+    await admin.sidebar.registerUser(userName);
+    await waitForAuditCategory("audit.register", 1, 20000);
   });
 
   it("shows the Audit log tab to an admin (0.4.2 gate + Write on root)", async () => {
