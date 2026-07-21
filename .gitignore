@@ -4,3 +4,7 @@ node_modules/
 *.log
 test-results/
 screenshots/
+
+# Local-only compose override (pins a locally-built server image; never commit:
+# the tag does not exist on a fresh clone or in CI).
+fixtures/.env
