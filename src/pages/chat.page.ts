@@ -78,6 +78,14 @@ export class ChatPage {
     await send.click();
   }
 
+  /** Type without submitting; useful for exercising typing-indicator transport. */
+  async typeMessage(text: string): Promise<void> {
+    const wrap = await this.d.wait(until.elementLocated(byTid(TID.chatComposerInput)), 15000);
+    const editable = await wrap.findElement(By.css("textarea"));
+    await editable.click();
+    await editable.sendKeys(text);
+  }
+
   /**
    * Open a direct-message conversation with a user by clicking their member
    * row (a single click enters DM mode - see ChannelSidebar.handleUserClick ->
@@ -151,10 +159,92 @@ export class ChatPage {
     return (await this.d.findElements(this.senderRow(sender))).length > 0;
   }
 
+  /** Open the channel menu and create a poll through the shipped UI. */
+  async createPoll(question: string, options: string[], multiple = false): Promise<void> {
+    const menu = await this.d.wait(
+      until.elementLocated(By.css('button[aria-label="Channel options"]')),
+      10000,
+    );
+    await menu.click();
+    await this.d.wait(until.elementLocated(By.id("create-poll")), 5000).then((el) => el.click());
+    const dialog = await this.d.wait(until.elementLocated(By.css('[role="dialog"]')), 5000);
+    const inputs = await dialog.findElements(By.css("input"));
+    await inputs[0].sendKeys(question);
+    for (let i = 0; i < options.length; i++) await inputs[i + 1].sendKeys(options[i]);
+    if (multiple) await dialog.findElement(By.css('input[type="checkbox"]')).click();
+    await dialog.findElement(By.xpath(".//button[normalize-space(.)='Create Poll']")).click();
+  }
+
+  /** Vote in the first rendered poll containing `question`. */
+  async votePoll(question: string, option: string): Promise<void> {
+    const card = await this.d.wait(
+      until.elementLocated(By.xpath(`//*[normalize-space(.)=${xpathLiteral(question)}]/ancestor::*[.//input][1]`)),
+      15000,
+    );
+    const optionInput = await card.findElement(By.xpath(`.//label[contains(normalize-space(.), ${xpathLiteral(option)})]`));
+    await optionInput.click();
+    const vote = await card.findElements(By.xpath(".//button[contains(normalize-space(.), 'Vote')]") );
+    if (vote.length > 0) await vote[0].click();
+  }
+
+  /** Right-click a persistent message and choose Pin/Unpin. */
+  async togglePin(messageText: string): Promise<void> {
+    const wrapper = await this.d.wait(
+      until.elementLocated(By.xpath(`//*[@data-msg-id][contains(normalize-space(.), ${xpathLiteral(messageText)})]`)),
+      15000,
+    );
+    await this.d.actions().contextClick(wrapper).perform();
+    const item = await this.d.wait(
+      until.elementLocated(By.xpath("//button[normalize-space(.)='Pin' or normalize-space(.)='Unpin']")),
+      5000,
+    );
+    await item.click();
+  }
+
+  /** Open the pinned-message panel from the channel menu. */
+  async openPinnedMessages(): Promise<void> {
+    const menu = await this.d.wait(until.elementLocated(By.css('button[aria-label="Channel options"]')), 10000);
+    await menu.click();
+    await this.d.wait(
+      until.elementLocated(By.xpath("//*[@id='pinned-messages' or normalize-space(.)='Pinned messages']")),
+      5000,
+    ).then((el) => el.click());
+  }
+
+  /** Count the currently rendered messages attributed to `sender`. */
+  async messageCountFrom(sender: string): Promise<number> {
+    return (await this.d.findElements(this.senderRow(sender))).length;
+  }
+
+  /** Wait until exactly `count` messages from `sender` are rendered. */
+  async waitForMessageCountFrom(sender: string, count: number, timeout = 20000): Promise<void> {
+    await this.d.wait(
+      async () => (await this.messageCountFrom(sender)) === count,
+      timeout,
+      `expected exactly ${count} messages from "${sender}"`,
+    );
+  }
+
   /** Wait until some element on the page renders `text` (message delivered). */
   async waitForText(text: string, timeout = 15000): Promise<void> {
     const xp = By.xpath(`//*[contains(normalize-space(string(.)), ${xpathLiteral(text)})]`);
     await this.d.wait(until.elementLocated(xp), timeout);
+  }
+
+  /** Wait for the read-receipt state rendered on a message bubble. */
+  async waitForReadReceipt(messageText: string, expectedTitle = "Read"): Promise<void> {
+    const message = By.xpath(
+      `//*[@data-msg-id][contains(normalize-space(.), ${xpathLiteral(messageText)})]`,
+    );
+    await this.d.wait(until.elementLocated(message), 15000);
+    await this.d.wait(
+      until.elementLocated(
+        By.xpath(`//*[@data-msg-id][contains(normalize-space(.), ${xpathLiteral(messageText)})]` +
+          `//*[@aria-label=${xpathLiteral(expectedTitle)} or starts-with(@title, ${xpathLiteral(expectedTitle)})]`),
+      ),
+      15000,
+      `message did not reach read-receipt state ${expectedTitle}`,
+    );
   }
 
   /** Whether `text` is currently rendered anywhere (no waiting). */

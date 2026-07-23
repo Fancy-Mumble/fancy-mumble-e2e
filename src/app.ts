@@ -158,6 +158,29 @@ export class TauriApp {
     }
   }
 
+  /** Invoke a real Tauri command from an E2E test.
+   *
+   * This is deliberately kept as a thin escape hatch for protocol features
+   * that the current UI does not expose with stable controls (for example
+   * FancyWatchSync and the raw drawing command). The command still executes
+   * in the Rust client and traverses the live server connection.
+   */
+  async invoke<T = unknown>(command: string, args?: Record<string, unknown>): Promise<T> {
+    return this.driver.executeAsyncScript<T>(`
+      const cb = arguments[arguments.length - 1];
+      const command = arguments[0];
+      const args = arguments[1];
+      const inv = window.__TAURI_INTERNALS__ && window.__TAURI_INTERNALS__.invoke;
+      if (!inv) { cb({ __e2eError: 'no-invoke' }); return; }
+      inv(command, args || {}).then((value) => cb({ __e2eValue: value }))
+        .catch((error) => cb({ __e2eError: String(error) }));
+    `, command, args ?? {}).then((result) => {
+      const envelope = result as unknown as { __e2eValue?: T; __e2eError?: string };
+      if (envelope.__e2eError) throw new Error(`Tauri command ${command} failed: ${envelope.__e2eError}`);
+      return envelope.__e2eValue as T;
+    });
+  }
+
   /**
    * Attempt a connection straight through the backend `connect` command and
    * report the outcome, bypassing the wizard. Needed for the registered-name
