@@ -1,0 +1,28 @@
+{
+  // rust-analyzer cannot discover these on its own: the folder root is a
+  // Node project and every Cargo workspace sits under vendor/.
+  "rust-analyzer.linkedProjects": [
+    "vendor/starling/Cargo.toml",
+    "vendor/client/Cargo.toml",
+    "vendor/server/3rdparty/mumble-plugin-host/Cargo.toml"
+  ],
+  // Keep the file watcher out of the heavy trees.
+  "rust-analyzer.files.excludeDirs": [
+    "node_modules",
+    "vendor/client/crates/mumble-tauri/ui/node_modules",
+    "target",
+    ".tmp"
+  ],
+
+  // Prettier owns TS/JS/JSON/CSS formatting. Config lives beside the code it
+  // formats (vendor/client/crates/mumble-tauri/ui/.prettierrc.json) so the CLI
+  // and the extension agree; ESLint stays responsible for correctness rules.
+  "editor.formatOnSave": true,
+  "[typescript]": { "editor.defaultFormatter": "esbenp.prettier-vscode" },
+  "[typescriptreact]": { "editor.defaultFormatter": "esbenp.prettier-vscode" },
+  "[javascript]": { "editor.defaultFormatter": "esbenp.prettier-vscode" },
+  "[json]": { "editor.defaultFormatter": "esbenp.prettier-vscode" },
+  "[jsonc]": { "editor.defaultFormatter": "esbenp.prettier-vscode" },
+  "[css]": { "editor.defaultFormatter": "esbenp.prettier-vscode" },
+  "prettier.requireConfig": true
+}
