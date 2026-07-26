@@ -10,3 +10,7 @@
 	path = vendor/docker
 	url = https://github.com/Fancy-Mumble/mumble-docker.git
 	branch = master
+[submodule "vendor/starling"]
+	path = vendor/starling
+	url = https://github.com/Fancy-Mumble/starling.git
+	branch = main
