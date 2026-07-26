@@ -13,4 +13,4 @@
 [submodule "vendor/starling"]
 	path = vendor/starling
 	url = https://github.com/Fancy-Mumble/starling.git
-	branch = main
+	branch = feat/gateway-services
