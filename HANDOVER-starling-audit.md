@@ -373,3 +373,65 @@ made. Fixed in `docker-compose.yml`, `src/Dockerfile`, and a new
 both clean. E2E: user-manager-avatar (5), registration (5),
 registered-name-impersonation (1), hidden-channels (8),
 root-channel-visibility (1), smoke (2), messaging (2) — 24 passing.
+
+## 10. Full suite sweep (2026-07-31)
+
+All 41 files, one node process each with a 420 s timeout, against the
+user-manager stack's Starling. **46 passing, 54 failing; 12 files fully green,
+23 failing, 6 that executed no test at all.**
+
+One process per file on purpose: `npm run test:e2e` sets no `--test-timeout`,
+and `--test-timeout` bounds a *file* rather than a test — which is what
+cascaded ~92 cancellations in §3. A process per file also lets the runner reap
+`tauri-driver`/`msedgedriver` between files, so a timed-out file does not take
+the next one down with a port it never released.
+
+| Green (12) | Failing (23) | No tests run (6) |
+|---|---|---|
+| audio.resample 2/2 | forums 0/10 | fileserver |
+| channels 2/2 | audit-log 1/9 | friend-chat-file-upload |
+| hidden-channels 8/8 | camera-share 0/4 | scheduled-messages |
+| messaging 3/3 | friend-chats 1/4 | screenshare.gpu |
+| qt6ui-disconnect-ghost 1/1 | admin-create-role 2/4 | screenshare.performance |
+| registered-name-impersonation 1/1 | signal-pchat 3/4 | starling-voice |
+| registration 5/5 | channelviewer 0/3 | |
+| root-channel-visibility 1/1 | screenshare 0/3 | |
+| smoke.connect 2/2 | server-compatibility 1/3 | |
+| user-manager-avatar 5/5 | calendar ×4 0/6 | |
+| voice-state 2/2 | pchat 0/1, pchat-control-plane 0/2 | |
+| voice-state-sync 5/5 | meetings 0/2, reactions 0/1 | |
+| | link-preview 0/1, admin-channel-delete 0/1 | |
+| | friend-chat ×2 0/2, fancy-control-plane 1/2 | |
+
+**The failure count overstates the server's part.** Three groups:
+
+1. **The client UI does not exist — 18 failures, and not a server gap at all.**
+   `forums` (0/10) waits for `chat-header-kebab`, which appears **nowhere** in
+   the client; it exists only in `ABSENT_FROM_CLIENT` in `src/selectors.ts`, the
+   28-id shim for things this suite references and the client never had.
+   `meetings` (0/2) and the four `calendar` files (0/6) fail identically. These
+   are plugin-delivered features, missing at both ends — see
+   `vendor/starling/docs/FANCY-PARITY.md` §1.
+2. **Environmental.** `channelviewer` needs its own container (start it with the
+   `channelviewer` compose profile), `camera-share` needs a camera, the
+   screen-share files need the Tk capture helper and `E2E_PYTHON=py`.
+3. **Real Starling defects — the useful residue.** Audit ingest fan-out (the
+   test says so itself: `server_audit has no rows - ingest fan-out not wired`),
+   pchat message delivery, reactions, link previews, admin channel delete, and
+   role creation. Enumerated with citations in `FANCY-PARITY.md` §3.
+
+The six "no tests run" files split three ways, and only three are skips:
+
+- `fileserver`, `friend-chat-file-upload` — `describe(..., { skip })`, blocked
+  on the client never receiving `fancy-file-server-config` plugin-data.
+- `starling-voice` — module-level skip: no Starling binary at
+  `vendor/starling/target/debug/starling.exe`.
+- `scheduled-messages` — **not a skip**: its `before` hook died on
+  `chat-header-kebab`, so it is group 1 above wearing a different hat.
+- `screenshare.gpu`, `screenshare.performance` — `before` died waiting for
+  `screen-share-toggle`. That id *is* rendered (`ChatHeader.tsx:347`), so this
+  is a precondition that was not met, not missing UI. Worth a look; it is the
+  one entry here whose cause is not yet established.
+
+Reproduce with one process per file and reap the drivers between them; the
+raw logs from this sweep are not kept in the repo.
