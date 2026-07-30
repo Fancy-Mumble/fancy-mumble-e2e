@@ -8,7 +8,6 @@ describe("persistent chat control messages", () => {
   let alice: TauriApp;
   let bob: TauriApp;
   const channelName = `e2e-pchat-controls-${Date.now() % 1000000}`;
-  const aliceName = `e2e-pchat-admin-${Date.now() % 100000}`;
   const bobName = `e2e-pchat-reader-${Date.now() % 100000}`;
 
   before(async () => {

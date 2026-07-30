@@ -456,6 +456,45 @@ export class ChatPage {
    * it commits is never persisted; confirm it landed before relying on the
    * registered-user directory to invite them while offline.
    */
+  /**
+   * Whether a member's row shows a real avatar image.
+   *
+   * `UserListItem` renders an `<img>` only when it has resolved a texture; with
+   * none it draws a coloured initial instead (`UserListItem.tsx:365`). So the
+   * presence of the `img` *is* the assertion — and it is a stronger one than a
+   * hash on the wire, because the image only appears once the receiving client
+   * has fetched the blob by hash and decoded it.
+   */
+  async hasAvatar(name: string): Promise<boolean> {
+    await this.ensureMembersTab();
+    const found = await this.d.findElements(this.memberRow(name, " img"));
+    return found.length > 0;
+  }
+
+  /** Wait until a member's avatar image has arrived and rendered. */
+  async waitForAvatar(name: string, timeout = 20000): Promise<void> {
+    await this.ensureMembersTab();
+    await this.d.wait(
+      until.elementLocated(this.memberRow(name, " img")),
+      timeout,
+      `no avatar image rendered for "${name}"`,
+    );
+  }
+
+  /**
+   * Whether a member currently carries the registered badge.
+   *
+   * The immediate counterpart to {@link waitForRegistered}: that one proves a
+   * registration *arrived*, this one proves one has *not* — which needs an
+   * answer now rather than a wait, since waiting for an absence only ever
+   * reports the timeout.
+   */
+  async isRegistered(name: string): Promise<boolean> {
+    await this.ensureMembersTab();
+    const found = await this.d.findElements(this.memberRow(name, ' [title="Registered"]'));
+    return found.length > 0;
+  }
+
   async waitForRegistered(name: string, timeout = 20000): Promise<void> {
     await this.ensureMembersTab();
     await this.d.wait(

@@ -263,6 +263,22 @@ export class SidebarPage {
    * `user_id`, so an anonymous peer must be registered before it can be invited.
    * Synchronisation on the new `user_id` propagating is left to the caller (the
    * calendar invitee autocomplete only resolves once it lands).
+   *
+   * Registration takes two clicks: the menu item and then the confirmation,
+   * which together are what registers anybody.
+   *
+   * "Register" in the context menu only *opens* a `ConfirmDialog`
+   * (`UserContextMenu.tsx:406` sets `registerConfirm`); the request is sent by
+   * that dialog's own button, which is **also** labelled "Register"
+   * (`sidebar.json` `userMenu.register` and `userMenu.registerConfirm`). So an
+   * xpath on the label alone matches the menu item, opens the dialog, and stops
+   * — nothing reaches the server, and the dialog is left on screen to swallow
+   * whatever the test clicks next.
+   *
+   * Both locators are therefore scoped: the first to the menu, the second to
+   * the dialog. Confirming here rather than in a separate method because every
+   * caller wants the user registered — an unconfirmed click registers nobody,
+   * which is not a state any test is written to be in.
    */
   async registerUser(name: string): Promise<void> {
     const row = await this.d.wait(
@@ -273,12 +289,29 @@ export class SidebarPage {
     );
     await this.d.actions().contextClick(row).perform();
     await delay(400);
-    const register = await this.d.wait(
-      until.elementLocated(By.xpath("//button[normalize-space(.)='Register']")),
+
+    const menuItem = await this.d.wait(
+      until.elementLocated(
+        By.xpath("//div[contains(@class,'menu')]//button[normalize-space(.)='Register']"),
+      ),
       8000,
     );
-    await this.d.wait(until.elementIsVisible(register), 5000);
-    await register.click();
+    await this.d.wait(until.elementIsVisible(menuItem), 5000);
+    await menuItem.click();
+
+    // Located after the click, so the wait cannot resolve against the menu item
+    // that is still on screen when it starts.
+    await delay(400);
+    const confirm = await this.d.wait(
+      until.elementLocated(
+        By.xpath(
+          "//*[contains(@class,'dialog') or @role='dialog']//button[normalize-space(.)='Register']",
+        ),
+      ),
+      8000,
+    );
+    await this.d.wait(until.elementIsVisible(confirm), 5000);
+    await confirm.click();
     await delay(400);
   }
 

@@ -59,6 +59,38 @@ export const config = {
   /** Base port for qt6ui's e2e control channel; instance N uses base+N. */
   qt6uiControlPort: Number(process.env.E2E_QT6UI_CONTROL_PORT ?? "4600"),
 
+  /**
+   * Starling's operator API — the admin plane that replaced Ice.
+   *
+   * Starling has no Ice and never will (`GAP-ANALYSIS.md` S6), so anything the
+   * suite used to arrange by shelling into the murmur container is arranged
+   * over this instead.
+   */
+  operatorApiUrl: process.env.E2E_OPERATOR_API_URL ?? "http://127.0.0.1:8081",
+
+  /**
+   * The bearer token for it. Matches `STARLING_ADMIN_TOKEN` in the compose
+   * stack's env file; an operator API with no token configured refuses
+   * everything, which is the fail-closed direction and not something to
+   * default around.
+   */
+  operatorToken: process.env.E2E_OPERATOR_TOKEN ?? "e2e-token",
+
+  /**
+   * mumble-user-manager's API, which owns registration and profiles.
+   *
+   * Its compose stack runs the Starling the client connects to, so this is the
+   * web front door of the same server `serverHost`/`serverPort` reach over the
+   * Mumble protocol — not a second one.
+   */
+  userManagerUrl: process.env.E2E_USER_MANAGER_URL ?? "http://127.0.0.1:8080",
+
+  /**
+   * The mail catcher in that stack. Confirmation links are read out of it, so
+   * the tests follow the same link a real user would click.
+   */
+  mailpitUrl: process.env.E2E_MAILPIT_URL ?? "http://127.0.0.1:8025",
+
   /** How long to wait for connect + post-connect bootstrap to finish (ms). */
   connectTimeout: Number(process.env.E2E_CONNECT_TIMEOUT ?? "45000"),
 

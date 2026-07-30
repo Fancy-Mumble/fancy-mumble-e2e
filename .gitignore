@@ -8,3 +8,10 @@ screenshots/
 # Local-only compose override (pins a locally-built server image; never commit:
 # the tag does not exist on a fresh clone or in CI).
 fixtures/.env
+
+# pnpm's content-addressable store. Nothing in this repo uses pnpm — it is npm
+# and package-lock.json throughout — but a stray `pnpm` invocation drops one of
+# these in whatever directory it ran from, and an untracked 56 KB tree of
+# hashed files is pure noise in `git status` (and one `git add .` from being
+# committed).
+.pnpm-store/
