@@ -107,18 +107,47 @@ list.
 
 | Suite | Symptom |
 |---|---|
-| `pchat-control-plane` 1/2 | `delivers a read watermark`: **Bob never receives Alice's message** in a `fancy_v1_full_archive` channel. The pin test above it passes and sends the same way, so it is not the composer. I tried closing the pinned panel first, on the theory that it covered the composer — it changed nothing, and I reverted it. Probe whether the message is sent at all before assuming the receipt is at fault. |
-| `fancy-control-plane` 1/2 | **Poll votes do not propagate.** Probed directly: after Bob votes, Bob's card reads `1 vote` and Alice's still reads `0 votes`. The test is correct; this is a product bug. Five links traced and all *look* right — see below |
-| `registration` 4/1 | `lets the registered user act as themselves` times out on the message |
-| `friend-chat-tree-visibility` 0/1 | `user "SuperUser" never appeared under a channel in the sidebar tree` |
+| `pchat-control-plane` 1/2 | **Bob fails the pchat key-possession challenge.** Root-caused with server logging — see below |
+| `registration` 4/1 | `lets the registered user act as themselves`: Bob reconnects, sends, and the admin never sees the message. The reconnect *does* `waitLoaded`, so it is not a stale composer |
 | `audit-log` 7/9 | `audit.mute_deafen_suppress` and `audit.register` still not recorded |
 
-Fixed since this file was written: `server-compatibility` is **3/3 green** (fan-out
-counted sender labels, which the client renders once per *group*; and a newline
-could never match because `MarkdownInput` turns it into `<br>`, which contributes
-no whitespace to XPath's `string()`). `pchat-control-plane`'s pin half is fixed
-too — the action bar keeps a hidden Pin button in the DOM, so the first match was
-unclickable.
+**Fixed since this file was written**, all verified against a server built from
+`vendor/server`:
+
+* `fancy-control-plane` **2/2** — poll votes were recorded but never rendered.
+  `PollCard` read a plain module `Map` and only re-rendered from its own click
+  handler, so the local vote always showed and a remote one never did. The store
+  now emits and the card uses `useSyncExternalStore`. Fixed in `vendor/client`.
+* `camera-share` **4/4** — purely environmental. An OBS virtual camera satisfies it.
+* `friend-chat-tree-visibility` **1/1** — green after the client rebuild.
+* `server-compatibility` **3/3**, `audit-log` 1/9 → **7/9**.
+
+#### The pchat failure, root-caused
+
+Server logging (since reverted) showed the message path is **fine** and the key
+path is not:
+
+```
+pchat: handlePchatMessage session=9 ... msgId=2c34851b-...
+pchat: stored msg id=2c34851b-... in channel=1 (payload=494 bytes)
+pchat: challenge for channel 1 - session 10 FAILED (wrong key)
+pchat: REJECTED fetch session=10 channel=1 reason=key_challenge_not_passed
+```
+
+Alice's messages are received and stored. **Bob fails the key-possession
+challenge with the wrong key**, so he can neither fetch history nor receive
+live messages — and `pchatrequireregistration=false` in the fixture, so that
+gate is not it.
+
+The telling part: **no key-distribution message appears in the log at all** — no
+`PchatKeyAnnounce`, `PchatKeyExchange`, `PchatSenderKeyDistribution` or
+`PchatKeyRequest`. Bob joins a `fancy_v1_full_archive` channel and attempts the
+challenge with a key nobody gave him. So the question is not why the challenge
+fails but why the joining member is never sent the channel key.
+
+Start in the client's pchat key management and in
+`PersistentChatManager::onFancyClientJoinedChannel`, which is the point where a
+new member becomes visible to the key holders.
 
 #### What is already ruled out on the poll vote
 
