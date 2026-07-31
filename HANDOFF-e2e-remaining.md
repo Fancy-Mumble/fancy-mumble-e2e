@@ -108,7 +108,7 @@ list.
 | Suite | Symptom |
 |---|---|
 | `pchat-control-plane` 1/2 | `delivers a read watermark`: **Bob never receives Alice's message** in a `fancy_v1_full_archive` channel. The pin test above it passes and sends the same way, so it is not the composer. I tried closing the pinned panel first, on the theory that it covered the composer — it changed nothing, and I reverted it. Probe whether the message is sent at all before assuming the receipt is at fault. |
-| `fancy-control-plane` 1/2 | poll is created and delivered, and the vote is cast, but `1 vote` never appears. Everything up to the count now works |
+| `fancy-control-plane` 1/2 | **Poll votes do not propagate.** Probed directly: after Bob votes, Bob's card reads `1 vote` and Alice's still reads `0 votes`. The test is correct; this is a product bug. Five links traced and all *look* right — see below |
 | `registration` 4/1 | `lets the registered user act as themselves` times out on the message |
 | `friend-chat-tree-visibility` 0/1 | `user "SuperUser" never appeared under a channel in the sidebar tree` |
 | `audit-log` 7/9 | `audit.mute_deafen_suppress` and `audit.register` still not recorded |
@@ -119,6 +119,31 @@ could never match because `MarkdownInput` turns it into `<br>`, which contribute
 no whitespace to XPath's `string()`). `pchat-control-plane`'s pin half is fixed
 too — the action bar keeps a hidden Pin button in the DOM, so the first match was
 unclickable.
+
+#### What is already ruled out on the poll vote
+
+Traced end to end, all five links check out on inspection, so the break is not
+where it looks:
+
+1. **Bob's UI sends it** — `usePolls.ts` calls `invoke("send_fancy_poll_vote")`
+   after registering the vote locally, which is why Bob's own card updates.
+2. **Wire type agrees** — `FancyPollVote = 145` on both sides.
+3. **Fields agree** — the two `Mumble.proto` copies are identical for this
+   message, so the field renumbering is not implicated.
+4. **The server relays** — `Messages.cpp:5348` stamps the voter and sends to
+   every Fancy ≥ 0.3.2 client in the channel. Both clients announce
+   `fancy_version: "0.4.0"` in the server's own `ClientVersion` log, and the
+   server logged **no** `Dropping FancyPollVote`, so neither the version gate nor
+   the plugin rate-limit bucket fired.
+5. **Alice's client would handle it** — `handler/poll.rs` emits `fancy-poll-vote`
+   and `store/index.ts:3330` subscribes.
+
+So the next step needs instrumentation rather than reading: add a log line in
+`msgFancyPollVote` before `sendMessage`, or capture the TCP stream, and find out
+whether the message leaves Bob, reaches the server, and leaves again. Note
+`targetChannel` is `pollData?.channelId ?? selectedChannel ?? 0` — a poll whose
+`channelId` disagrees with where the users actually are would relay into an empty
+channel and log nothing, which fits every observation above.
 
 For each: decide **test bug or product bug**. The method that worked all day is
 to probe the live DOM rather than reason from source — a temporary
