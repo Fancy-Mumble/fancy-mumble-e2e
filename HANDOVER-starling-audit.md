@@ -450,10 +450,20 @@ PATH by the script itself.
 ### Three environment faults came first, and none was a test bug
 
 * **The client binary was 13 days stale.** The harness drives
-  `vendor/client/target/release/mumble-tauri.exe`; it was dated 2026-07-18 and
-  predated the Aurora rework, the wire epoch and the chore/prettier merge.
-  **Every number in §10 was measured against that binary.** Rebuild:
-  `SKIP_QT6UI=1 cargo tauri build --no-bundle` (5m44s).
+  `vendor/client/target/release/mumble-tauri.exe`; it was dated 2026-07-18,
+  built from `b79e5aa`. **Every number in §10 was measured against that
+  binary.** Rebuild: `SKIP_QT6UI=1 cargo tauri build --no-bundle` (5m44s).
+
+  What made it matter, counted rather than assumed — `b79e5aa..HEAD` touches
+  `ui/standard/` **814** times, `testids.ts` in **13** commits, and
+  `mumble-protocol` plus the Rust backend in **36**. That is the UI the suite
+  drives, the ids it selects on, and the wire underneath them.
+
+  It is *not* the Aurora rework, and saying so is a trap worth naming: Aurora
+  changed 438 files in the same range and the suite never loads a line of it.
+  `DEFAULT_UI_DESIGN` is `"standard"` (`ui/registry.ts:4`) and the harness sets
+  no `?ui=` and no `uiDesign` preference, so Aurora is opt-in and inert here.
+  Attributing a test result to it sends the next person to the wrong 438 files.
 * **`msedgedriver` was not on PATH**, so every file died in `before` with
   "native WebDriver is almost certainly missing". The repo ships one at
   `.tools/msedgedriver.exe`; the runner now exports it. It is v149 against Edge
