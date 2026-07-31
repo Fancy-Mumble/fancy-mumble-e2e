@@ -2,6 +2,7 @@ import { By, until, type WebDriver, type WebElement } from "selenium-webdriver";
 import { byTid, TID } from "../selectors";
 import { xpathLiteral } from "../util/xpath";
 import { delay } from "../util/wait";
+import { needsScriptedInput, setReactInputValue } from "../util/astral";
 
 /** Self-mute / self-deafen flags as reflected in the UI. */
 export interface VoiceFlags {
@@ -28,6 +29,14 @@ export class ChatPage {
   async waitLoaded(timeout = 45000): Promise<void> {
     await this.d.wait(until.elementLocated(byTid(TID.chatComposerInput)), timeout);
     await this.dismissWelcomeModal();
+    // Both connect-time modals, so both belong here. The trust prompt only
+    // appears against a server that actually ships plugins, which the published
+    // fixture image did not - so 35 of the 41 files never learned to answer it,
+    // and every one of them broke the moment the server was built from
+    // vendor/server. It renders with `closeOnEsc=false` and an overlay that
+    // swallows clicks, so the symptom is an unrelated
+    // ElementClickInterceptedError several steps later.
+    await this.allowServerPlugins();
   }
 
   /**
@@ -71,7 +80,18 @@ export class ChatPage {
     const wrap = await this.d.wait(until.elementLocated(byTid(TID.chatComposerInput)), 15000);
     const editable = await wrap.findElement(By.css("textarea"));
     await editable.click();
-    await editable.sendKeys(text);
+
+    if (needsScriptedInput(text)) {
+      // The keyboard cannot deliver this faithfully: msedgedriver refuses
+      // astral code points outright, and a newline presses Enter, which
+      // submits and sends the remainder as a second message. Both are
+      // limitations of the harness rather than the product, and the server's
+      // handling of such payloads is exactly what this path exists to test.
+      // So set the value directly and raise the event React listens for.
+      await setReactInputValue(this.d, editable, text);
+    } else {
+      await editable.sendKeys(text);
+    }
 
     const send = await this.d.findElement(byTid(TID.chatSend));
     await this.d.wait(until.elementIsEnabled(send), 5000);
@@ -166,7 +186,18 @@ export class ChatPage {
       10000,
     );
     await menu.click();
-    await this.d.wait(until.elementLocated(By.id("create-poll")), 5000).then((el) => el.click());
+    // `KebabMenu` sets `key={item.id}` — a React key, which never reaches the
+    // DOM — so `By.id("create-poll")` matched nothing and never could. The
+    // rendered item is a `role="menuitem"` carrying only its label, so that is
+    // what identifies it.
+    await this.d
+      .wait(
+        until.elementLocated(
+          By.xpath(`//*[@role='menuitem'][normalize-space(.)=${xpathLiteral("Create poll")}]`),
+        ),
+        5000,
+      )
+      .then((el) => el.click());
     const dialog = await this.d.wait(until.elementLocated(By.css('[role="dialog"]')), 5000);
     const inputs = await dialog.findElements(By.css("input"));
     await inputs[0].sendKeys(question);
@@ -177,13 +208,25 @@ export class ChatPage {
 
   /** Vote in the first rendered poll containing `question`. */
   async votePoll(question: string, option: string): Promise<void> {
+    // `PollCard` renders each option as a <button> holding a <span> of the
+    // option text — there is no <label> and no <input>, so both halves of the
+    // old locator were wrong: the ancestor axis looked for a card containing an
+    // <input>, and the option for a <label>. Anchor on the question and take
+    // the nearest ancestor that actually holds the option buttons.
     const card = await this.d.wait(
-      until.elementLocated(By.xpath(`//*[normalize-space(.)=${xpathLiteral(question)}]/ancestor::*[.//input][1]`)),
+      until.elementLocated(
+        By.xpath(
+          `//*[contains(normalize-space(.), ${xpathLiteral(question)})]` +
+            `[.//button][not(.//*[contains(normalize-space(.), ${xpathLiteral(question)})][.//button])]`,
+        ),
+      ),
       15000,
     );
-    const optionInput = await card.findElement(By.xpath(`.//label[contains(normalize-space(.), ${xpathLiteral(option)})]`));
-    await optionInput.click();
-    const vote = await card.findElements(By.xpath(".//button[contains(normalize-space(.), 'Vote')]") );
+    const choice = await card.findElement(
+      By.xpath(`.//button[contains(normalize-space(.), ${xpathLiteral(option)})]`),
+    );
+    await choice.click();
+    const vote = await card.findElements(By.xpath(".//button[contains(normalize-space(.), 'Vote')]"));
     if (vote.length > 0) await vote[0].click();
   }
 
@@ -227,7 +270,14 @@ export class ChatPage {
 
   /** Wait until some element on the page renders `text` (message delivered). */
   async waitForText(text: string, timeout = 15000): Promise<void> {
-    const xp = By.xpath(`//*[contains(normalize-space(string(.)), ${xpathLiteral(text)})]`);
+    // Normalise the needle the same way the haystack is normalised. XPath's
+    // `normalize-space()` collapses every run of whitespace in the rendered
+    // text to one space, so a needle that still contains a newline is compared
+    // against text where that newline is already a space, and `contains()` can
+    // never be true. A multi-line message therefore failed to be found even
+    // though it had arrived and rendered correctly.
+    const needle = text.replace(/\s+/gu, " ").trim();
+    const xp = By.xpath(`//*[contains(normalize-space(string(.)), ${xpathLiteral(needle)})]`);
     await this.d.wait(until.elementLocated(xp), timeout);
   }
 
