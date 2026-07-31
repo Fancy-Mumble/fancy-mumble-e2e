@@ -2,7 +2,13 @@
 
 Scope: `vendor/server/src/murmur/pchat/` (3 007 lines) and the 24 wire messages
 `PchatMessage` (100) through `PchatPinFetchResponse` (130). Audited 2026-07-31
-against `vendor/server` at `6fe0f06e5`.
+against `vendor/server` at `6fe0f06e5`. Part 2 covers the Rust port,
+`vendor/starling/crates/services/pchat/`.
+
+**Status: findings 1, 2, 4, 5, 6, 7 and 8 are fixed** (see "What was fixed"),
+with 9 regression tests in `TestPersistentChatManager` and 2 in
+`starling-pchat`. **Finding 3 is mitigated, not closed** — closing it needs a
+protocol change, and that is argued below rather than assumed.
 
 **Method and its limits.** Every finding below is read from the source and cited
 by line. **None has been demonstrated by exploit** — there is no proof-of-concept
@@ -18,16 +24,25 @@ is anyone who can reach the port.
 
 ## Summary
 
-| # | Finding | Severity |
-|---|---|---|
-| 1 | `PchatKeyHolderReport` has no authorization check of any kind | **High** |
-| 2 | `cert_hash` in that report is attacker-chosen and never bound to the session | **High** |
-| 3 | The key-possession challenge is first-prover-wins | **High** |
-| 4 | Challenge poisoning locks legitimate key holders out | **Medium** (DoS) |
-| 5 | Auto-verify delivers stored sender keys with no permission check | **Medium** |
-| 6 | Rate limiting misses the key-management messages, and resets on reconnect | **Low** |
-| 7 | The rate limiter's eviction method has no callers | **Low** |
-| 8 | Verified sessions are never cleared for certificate-less clients, and session ids are recycled | **Medium** |
+| # | Finding | Severity | Status |
+|---|---|---|---|
+| 1 | `PchatKeyHolderReport` has no authorization check of any kind | **High** | fixed |
+| 2 | `cert_hash` in that report is attacker-chosen and never bound to the session | **High** | fixed |
+| 3 | The key-possession challenge is first-prover-wins | **High** | mitigated |
+| 4 | Challenge poisoning locks legitimate key holders out | **Medium** (DoS) | fixed |
+| 5 | Auto-verify delivers stored sender keys with no permission check | **Medium** | fixed |
+| 6 | Rate limiting misses the key-management messages, and resets on reconnect | **Low** | fixed |
+| 7 | The rate limiter's eviction method has no callers | **Low** | fixed |
+| 8 | Verified sessions are never cleared for certificate-less clients, and session ids are recycled | **Medium** | fixed |
+
+Starling (part 2):
+
+| # | Finding | Severity | Status |
+|---|---|---|---|
+| S1 | `Fetch` served any channel's archive to any client, unchecked | **High** | fixed |
+| S2 | Messages are stored into whatever channel id the client names | **High** | fixed |
+| S3 | Every relay reaches all authenticated sessions, not the channel | **High** | reported |
+| S4 | No rate limiting, though the module doc claims the service owns it | **Medium** | reported |
 
 The three High findings **chain**: 1 and 2 give an attacker a seat at the
 challenge, and 3 lets them win it. Finding 8 is independent — it reaches the
@@ -114,7 +129,7 @@ That set is the key-possession gate for the whole subsystem:
 
 * `handlePchatFetch:275` — read stored history
 * `handlePchatReaction:1302` — react
-* `handlePchatSenderKeyDistribution:727` — publish a sender key
+* `handlePchatSenderKeyDistribution:1520` — publish a sender key
 * `handlePchatPin` — pin
 
 **Severity is bounded by two things.** `handlePchatFetch` *also* checks
@@ -279,36 +294,137 @@ not a description of the system.
 
 ---
 
-## Recommendations, in dependency order
+## What was fixed
 
-1. **Bind `cert_hash` to the session in `handlePchatKeyHolderReport`**, exactly
-   as `handlePchatMessage` already does. One comparison, and it closes finding 2.
-2. **Add `hasEnterPermission` to `handlePchatKeyHolderReport`** and to
-   `sendStoredSenderKeyDistributions`. Closes finding 1 and most of 5.
-3. **Make the challenge verify something.** First-prover-wins cannot be made safe
-   by tightening who reaches it — it is trust-on-first-use with no pinning and a
-   reference that resets on restart. Options, roughly increasing cost:
-   * derive the reference from a value the *server* can recompute (a channel key
-     commitment stored with the channel), so no client defines the truth;
-   * persist `referenceHmac` alongside the channel so a restart does not reopen
-     the window, and require an existing holder to countersign a reset;
-   * treat the first prover as unverified until a second, independent holder
-     agrees — quorum rather than first-come.
-4. **Bind verified status to identity, not to the session id.** Key
-   `verifiedSessions` on certificate hash, or on (session id, cert hash) — which
-   makes finding 8 unreachable regardless of when cleanup runs. Failing that, the
-   narrow fix is to drop the `!u->qsHash.isEmpty()` guard at `Server.cpp:1856`
-   and the matching one inside `onUserDisconnected`, so the cleanup that already
-   exists actually runs for anonymous clients. The pending-key-request cleanup in
-   that handler genuinely does need a hash, so it should be the part that is
-   guarded — not the whole call.
-5. **Rate-limit the key-management messages**, and key the limiter on
-   certificate hash rather than session id.
-6. **Audit-log holder changes and challenge resets.** Both are security-relevant
-   state transitions and currently reach only `qWarning`. `audit.pchat_moderation`
-   already exists as a category.
-7. **Call `TokenBucketRateLimiter::reset`** on disconnect. The method is already
-   implemented; it has no callers.
+All in `vendor/server`, verified by a build that compiles and runs
+`ctest -R TestPersistentChatManager` as a build step (so a failing test fails
+the image), plus an e2e run showing no regression.
+
+**Findings 1 and 2 — `handlePchatKeyHolderReport`.** The handler now takes the
+certificate hash from the session rather than the wire and refuses a report
+whose `cert_hash` names anyone else, the way `handlePchatMessage` always has. A
+session with no certificate is refused outright: every identity in this
+subsystem *is* a certificate hash. It then requires `hasEnterPermission`,
+checked after the takeover dispatch because takeover carries its own, stronger,
+KeyOwner check.
+
+**Finding 4 — the sole-holder reset.** `!otherHolderExists` was not the same
+question as "is the sole holder": on a channel with *no* recorded holders — the
+state right after a takeover or a wipe — it handed the reset to whoever asked
+first. It now requires `selfIsHolder && !otherHolderExists`.
+
+**Finding 5 — stored sender keys.** `sendStoredSenderKeyDistributions` carries
+its own `hasEnterPermission` check rather than trusting its caller, because its
+caller reaches it from the auto-verify path where "verified" is granted on the
+strength of a self-report.
+
+**Findings 6 and 7 — rate limiting.** Six previously unlimited operations
+(`key_holder_report`, `key_challenge_response`, `key_holders_query`,
+`sender_key_distribution`, `epoch_countersig`, `delete_messages`) now have
+budgets. All buckets are keyed on the certificate hash instead of the session
+id, so a limit is no longer cleared by reconnecting; certificate-less clients
+fall back to the session id, because keying them all on one shared empty string
+would let any one of them drain the bucket for every other.
+`IRateLimiter::reset` — implemented, documented "e.g. on disconnect", and never
+called — is now called on disconnect.
+
+**Finding 8 — verified sessions outliving their session.** The guard at
+`Server.cpp:1856` and its twin inside `onUserDisconnected` are gone; only the
+pending-key-request cleanup, which genuinely needs a hash, is still conditional
+on one. The cleanup that already existed now runs for every disconnect.
+
+**Audit logging.** Holder writes, rejected reports, challenge resets and
+takeovers now emit `pchat.key_holder_report`, `pchat.key_holder_rejected`,
+`pchat.challenge_reset` and `pchat.key_takeover` through a new
+`IServerBridge::emitAuditEvent`. They previously reached nothing but
+`qWarning`, which is not a record anyone can query. The interface takes a flat
+key/value list so `pchat` stays free of any JSON type.
+
+### Finding 3 is mitigated, not closed
+
+The three High findings chained; fixing 1 and 2 breaks the chain, because
+reaching the challenge now requires Enter permission on the channel and a
+certificate that is your own. That reduces the attack from *any authenticated
+client* to *a member of the channel*.
+
+It does **not** restore the distinction the challenge exists to enforce — "in
+the channel" versus "holds the key" — because the server still has no ground
+truth to check a proof against. The first prover still defines the reference.
+Closing it needs a value the server can recompute: a channel key commitment
+stored with the channel, so no client defines the truth. Options, roughly
+increasing cost:
+
+* derive the reference from a stored key commitment (needs a client change, and
+  pchat is entirely a Fancy extension so the wire is ours to change);
+* persist `referenceHmac` alongside the channel so a restart does not reopen the
+  window, and require an existing holder to countersign a reset (needs a schema
+  migration);
+* treat the first prover as unverified until a second, independent holder agrees
+  — quorum rather than first-come.
+
+I did not pick one. Each changes the client contract, and that is a design
+decision rather than a defect fix.
+
+---
+
+# Part 2: Starling (`vendor/starling/crates/services/pchat/`)
+
+328 lines against murmur's 3 007. The key-holder and challenge subsystem does
+not exist yet, so findings 1–8 have no counterpart. What is there had gaps of
+its own, and they are not "not implemented yet" gaps: Starling already has the
+facilities — `Permit`, which asks the `permissions` service, and `Perm` — and
+`text` uses them on exactly this path. `pchat` simply did not.
+
+**What Starling gets right, and murmur gets right only by a check:** the sender
+is taken from the connection (`message.sender = inbound.session`), overwriting
+whatever the client claimed. That is finding 2 made structurally impossible
+rather than validated.
+
+## S1. `Fetch` served any channel's archive, unchecked — High (fixed)
+
+`self.fetch(inbound.scope, &request)` ran on a channel id straight off the wire,
+with no permission check of any kind. Any authenticated client could page
+through the stored ciphertext of any channel on the server, including ones it
+cannot see. Now gated on `Perm::ENTER`, matching murmur's `handlePchatFetch`.
+
+## S2. Messages stored into any channel the client names — High (fixed)
+
+Same root cause on the write side. Now gated on `Perm::TEXT_MESSAGE`, checked
+*before* the store rather than before the relay — refusing only the relay still
+leaves the row in someone else's archive.
+
+Both use `Permit`, which denies when `permissions` is unreachable, so a broken
+dependency closes the archive rather than opening it.
+
+## S3. Every relay reaches all authenticated sessions — High (reported)
+
+`broadcast_except(inbound.session, ...)` builds a `Send` with no `conns` and no
+`sessions`, and the gateway's `deliver` falls back to
+`registry.authenticated()` — every connection whose session is non-zero
+(`crates/gateway/src/connection.rs:254`). So a stored pchat message, and every
+verbatim-relayed key-distribution frame, goes to every client on the server
+rather than to the channel.
+
+The ciphertext stays opaque. What leaks is who sent a message, when, in which
+channel — and the ciphertext itself, which is what an offline attack wants.
+
+**Not fixed, deliberately.** `text` relays the same way
+(`crates/services/text/src/lib.rs`), so this is a property of the plane, not of
+this one service; `voice` is the one that addresses `sessions` explicitly, using
+the roster from `session-view`. Fixing it in `pchat` alone would leave the same
+hole one service over and add a `session-view` dependency to settle a question
+that belongs at the plane. Both relay sites are now commented with what they do
+and why it is a finding.
+
+## S4. No rate limiting — Medium (reported)
+
+The module doc claims the service owns "storage, fan-out, offline queues,
+key-holder bookkeeping and rate limiting". There is no limiter in it. The only
+rate limiting in Starling is at the gateway (`crates/gateway/src/listener.rs`),
+which is per connection rather than per operation, so a client can store
+messages and issue fetches as fast as its socket allows. Not fixed: it needs a
+limiter abstraction the service tier does not yet have, and inventing one for a
+single service is the wrong place to start.
 
 ## What this audit did not cover
 
@@ -319,8 +435,30 @@ not a description of the system.
 * **`handlePchatEpochCountersig`** (`:451`) and `handleKeyOwnerTakeover`
   (`:889`), both of which look security-relevant and neither of which I read in
   full.
-* **Exploitability.** Nothing here was run. Before acting on severities, write
-  the proof-of-concept for finding 3 — it is a few lines against a test server
-  and it either confirms the chain or refutes it. Finding 8 is the other one
-  worth measuring rather than arguing: connect and disconnect anonymously until
-  the id pool wraps, and check whether the inherited session is verified.
+* **Exploitability.** No finding was demonstrated by exploit. The fixes are
+  covered by unit tests that assert the *refusal* — which proves the gate is
+  there, not that it was reachable before. Finding 3 remains the one worth
+  measuring rather than arguing, and finding 8's pool-wrap timing was argued
+  from three cited lines, never run.
+* **Starling's key-holder subsystem**, because it does not exist yet. When it is
+  ported, findings 1–8 are the checklist: the C++ fixes are in
+  `PersistentChatManager.cpp` and the tests naming them are in
+  `TestPersistentChatManager.cpp`.
+
+## Verification
+
+* `vendor/server`: builds, and `ctest -R TestPersistentChatManager` runs as a
+  build step with `--no-tests=error` and no `|| true`, so the image cannot be
+  produced if a test fails. 9 new regression tests.
+* e2e after the change: `audit-log` 7/2, `pchat-control-plane` 1/1,
+  `pchat` 1/0, `signal-pchat` 2/0 — unchanged from before it, i.e. no
+  regression. (`signal-pchat` timed out once on the known connect-wizard flake
+  and passed on re-run.) The pre-existing `pchat-control-plane` and `audit-log`
+  failures are unrelated to this audit and tracked in
+  `HANDOFF-e2e-remaining.md`.
+* The e2e logs also settled the one assumption the fixes rest on: clients do
+  present certificates (`hash=46f2feef...` in the server log), so requiring one
+  for a holder report locks nobody out.
+* `vendor/starling`: `cargo test -p starling-pchat` 4/4, clippy and fmt clean
+  for that crate. Other crates have pre-existing fmt/clippy failures that this
+  change neither caused nor fixed.
