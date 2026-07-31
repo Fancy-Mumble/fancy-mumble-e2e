@@ -6,9 +6,10 @@ against `vendor/server` at `6fe0f06e5`. Part 2 covers the Rust port,
 `vendor/starling/crates/services/pchat/`.
 
 **Status: findings 1, 2, 4, 5, 6, 7 and 8 are fixed** (see "What was fixed"),
-with 9 regression tests in `TestPersistentChatManager` and 2 in
-`starling-pchat`. **Finding 3 is mitigated, not closed** — closing it needs a
-protocol change, and that is argued below rather than assumed.
+with 9 regression tests in `TestPersistentChatManager`. **Finding 3 is
+mitigated, not closed** — closing it needs a protocol change, and that is argued
+below rather than assumed. **All seven Starling findings are fixed**, with 13
+tests in `starling-pchat` and 5 for the new runtime `Roster`.
 
 **Method and its limits.** Every finding below is read from the source and cited
 by line. **None has been demonstrated by exploit** — there is no proof-of-concept
@@ -41,8 +42,13 @@ Starling (part 2):
 |---|---|---|---|
 | S1 | `Fetch` served any channel's archive to any client, unchecked | **High** | fixed |
 | S2 | Messages are stored into whatever channel id the client names | **High** | fixed |
-| S3 | Every relay reaches all authenticated sessions, not the channel | **High** | reported |
-| S4 | No rate limiting, though the module doc claims the service owns it | **Medium** | reported |
+| S3 | Every relay reaches all authenticated sessions, not the channel | **High** | fixed |
+| S4 | No rate limiting, though the module doc claims the service owns it | **Medium** | fixed |
+| S5 | `KeyDeliver` names one recipient and was relayed to the whole channel | **High** | fixed |
+| S6 | Server-to-client bodies were relayed on from clients that forged them | **High** | fixed |
+| S7 | Relayed bodies were never permission-checked at all | **High** | fixed |
+
+S5–S7 were found while fixing S3, not in the original read.
 
 The three High findings **chain**: 1 and 2 give an attacker a seat at the
 challenge, and 3 lets them win it. Finding 8 is independent — it reaches the
@@ -369,11 +375,16 @@ decision rather than a defect fix.
 
 # Part 2: Starling (`vendor/starling/crates/services/pchat/`)
 
-328 lines against murmur's 3 007. The key-holder and challenge subsystem does
-not exist yet, so findings 1–8 have no counterpart. What is there had gaps of
-its own, and they are not "not implemented yet" gaps: Starling already has the
-facilities — `Permit`, which asks the `permissions` service, and `Perm` — and
-`text` uses them on exactly this path. `pchat` simply did not.
+328 lines at the time of the audit, against murmur's 3 007. The key-holder and
+challenge subsystem does not exist yet, so findings 1–8 have no counterpart.
+What is there had gaps of its own, and they are not "not implemented yet" gaps:
+Starling already has the facilities — `Permit`, which asks the `permissions`
+service, and `Perm` — and `text` uses them on exactly this path. `pchat` simply
+did not.
+
+Every relay was also unaddressed and unauthorised, which turned out to be one
+defect wearing four faces (S3, S5, S6, S7) — the routing and the authorisation
+are the same question, and answering it needed the same field.
 
 **What Starling gets right, and murmur gets right only by a check:** the sender
 is taken from the connection (`message.sender = inbound.session`), overwriting
@@ -396,35 +407,72 @@ leaves the row in someone else's archive.
 Both use `Permit`, which denies when `permissions` is unreachable, so a broken
 dependency closes the archive rather than opening it.
 
-## S3. Every relay reaches all authenticated sessions — High (reported)
+## S3. Every relay reached all authenticated sessions — High (fixed)
 
 `broadcast_except(inbound.session, ...)` builds a `Send` with no `conns` and no
 `sessions`, and the gateway's `deliver` falls back to
 `registry.authenticated()` — every connection whose session is non-zero
 (`crates/gateway/src/connection.rs:254`). So a stored pchat message, and every
-verbatim-relayed key-distribution frame, goes to every client on the server
+verbatim-relayed key-distribution frame, went to every client on the server
 rather than to the channel.
 
-The ciphertext stays opaque. What leaks is who sent a message, when, in which
+The ciphertext stays opaque. What leaked is who sent a message, when, in which
 channel — and the ciphertext itself, which is what an offline attack wants.
 
-**Not fixed, deliberately.** `text` relays the same way
-(`crates/services/text/src/lib.rs`), so this is a property of the plane, not of
-this one service; `voice` is the one that addresses `sessions` explicitly, using
-the roster from `session-view`. Fixing it in `pchat` alone would leave the same
-hole one service over and add a `session-view` dependency to settle a question
-that belongs at the plane. Both relay sites are now commented with what they do
-and why it is a finding.
+**Fixed** with a `Roster` in the runtime (`crates/runtime/src/roster.rs`):
+subscribe to `session-view`, fold the events, and answer "who is in this
+channel" from local state. It is the shape `voice` already uses for the packet
+path, lifted rather than written a third time, and it is deliberately reusable
+because `text` relays the same way and should adopt it.
 
-## S4. No rate limiting — Medium (reported)
+The important property is what a **cold** roster does: it addresses nobody
+rather than everybody. Falling back to a broadcast when membership is unknown is
+the leak itself, so readiness gates on the first snapshot the way `voice` gates
+on its cache being warm — a pod that cannot address a channel is not handed
+traffic.
 
-The module doc claims the service owns "storage, fan-out, offline queues,
-key-holder bookkeeping and rate limiting". There is no limiter in it. The only
-rate limiting in Starling is at the gateway (`crates/gateway/src/listener.rs`),
-which is per connection rather than per operation, so a client can store
-messages and issue fetches as fast as its socket allows. Not fixed: it needs a
-limiter abstraction the service tier does not yet have, and inventing one for a
-single service is the wrong place to start.
+## S4. No rate limiting — Medium (fixed)
+
+The module doc claimed the service owned "storage, fan-out, offline queues,
+key-holder bookkeeping and rate limiting". There was no limiter in it. The only
+rate limiting in Starling is at the gateway
+(`crates/gateway/src/listener.rs`), which is per connection and per route rather
+than per operation, so a client could store messages and make the database page
+through the archive as fast as its socket allowed.
+
+**Fixed** in `crates/services/pchat/src/limits.rs`, reusing the runtime's
+existing `TokenBucket` rather than inventing a limiter. Three buckets — message,
+fetch, key management — so a burst of one cannot exhaust another. Keyed on the
+**connection**, because that is the identity `ClientService::closed` reports and
+therefore the one that can actually be evicted; evicting it is the point, since
+this is exactly where the C++ limiter had a `reset` method and no caller.
+
+## S5. `KeyDeliver` was broadcast to the channel — High (fixed)
+
+`KeyDeliver` carries `sealed_key` and names a single `recipient`. The verbatim
+relay sent it to everyone, handing every member of the channel a copy of key
+material addressed to one of them. It is a unicast now.
+
+## S6. Forged server-to-client bodies were relayed — High (fixed)
+
+`FetchResponse` and `PinList` are answers the *server* sends. The catch-all
+relayed whatever a client sent, unaltered, so a client could hand another client
+a fabricated history page or pin list. A client may not originate them at all.
+
+## S7. Relayed bodies were never authorised — High (fixed)
+
+I originally wrote that the verbatim relay "cannot check a permission without
+teaching the service every body type — which is the coupling the verbatim relay
+exists to avoid". **That was wrong.** Every body except `Ack` carries a
+`channel` field, and reading it is not understanding the payload: it is the
+routing address, sitting beside the ciphertext rather than inside it.
+
+Each body is now routed *and* authorised from that field — `Enter` for key
+management and receipts, `TextMessage` for reactions and pins, `DeleteMessage`
+for deletes — while still being relayed byte-for-byte, because re-encoding a
+body whose meaning this service does not know is how a relay corrupts things.
+The claim that this required coupling was the thing standing between the audit
+and the fix, which is worth recording.
 
 ## What this audit did not cover
 
@@ -459,6 +507,10 @@ single service is the wrong place to start.
 * The e2e logs also settled the one assumption the fixes rest on: clients do
   present certificates (`hash=46f2feef...` in the server log), so requiring one
   for a holder report locks nobody out.
-* `vendor/starling`: `cargo test -p starling-pchat` 4/4, clippy and fmt clean
-  for that crate. Other crates have pre-existing fmt/clippy failures that this
-  change neither caused nor fixed.
+* `vendor/starling`: `starling-pchat` 13/13 and `starling-runtime` 247/247,
+  clippy and fmt clean for both files touched. Verified again in a throwaway
+  worktree at the commit itself — 13/13 and 230/230 — because the runtime's
+  `lib.rs` carried unrelated uncommitted work and only the one line adding the
+  roster module was staged; the point of that check was that the commit builds
+  without the rest of the working tree. Other crates have pre-existing
+  fmt/clippy failures this change neither caused nor fixed.
