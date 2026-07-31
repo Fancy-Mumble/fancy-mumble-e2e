@@ -1,11 +1,11 @@
 [submodule "vendor/client"]
 	path = vendor/client
 	url = https://github.com/Fancy-Mumble/FancyMumble.git
-	branch = feature/e2e-testability
+	branch = new-ui-implementation
 [submodule "vendor/server"]
 	path = vendor/server
 	url = https://github.com/Fancy-Mumble/mumble-server.git
-	branch = 1.6.x
+	branch = pr-4-audit
 [submodule "vendor/docker"]
 	path = vendor/docker
 	url = https://github.com/Fancy-Mumble/mumble-docker.git
