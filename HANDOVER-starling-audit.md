@@ -435,3 +435,84 @@ The six "no tests run" files split three ways, and only three are skips:
 
 Reproduce with one process per file and reap the drivers between them; the
 raw logs from this sweep are not kept in the repo.
+
+---
+
+## 11. Baseline against vendor/server, the gold standard (2026-07-31)
+
+**67 passing, 25 failing, 41 files: 25 green, 11 with failures, 5 ran no test.**
+Against Starling the same suite was 46/54 with 12 green.
+
+Run it with `scripts/run-per-file.sh` (new, replaces the scratchpad script §3
+asked for). One node process per file, drivers reaped between, `.tools` put on
+PATH by the script itself.
+
+### Three environment faults came first, and none was a test bug
+
+* **The client binary was 13 days stale.** The harness drives
+  `vendor/client/target/release/mumble-tauri.exe`; it was dated 2026-07-18 and
+  predated the Aurora rework, the wire epoch and the chore/prettier merge.
+  **Every number in §10 was measured against that binary.** Rebuild:
+  `SKIP_QT6UI=1 cargo tauri build --no-bundle` (5m44s).
+* **`msedgedriver` was not on PATH**, so every file died in `before` with
+  "native WebDriver is almost certainly missing". The repo ships one at
+  `.tools/msedgedriver.exe`; the runner now exports it. It is v149 against Edge
+  v150 and works — the version warning is not the problem.
+* **Docker was not running.** `docker compose -f fixtures/docker-compose.e2e.yml
+  up -d --wait`, then set the password with
+  `docker exec fancy-e2e-mumble mumble-server --ini /config/mumble-server.ini
+  --set-su-pw testpassword`. From Git Bash prefix `MSYS_NO_PATHCONV=1`, or MSYS
+  rewrites `/config/...` to `C:/Program Files/Git/config/...`.
+
+### §10 and FANCY-PARITY §4 are wrong, and the stale client is why
+
+These were called "UI the client does not render". They pass against the fork
+with a current client:
+
+| Suite | §10 said | Actually |
+|---|---|---|
+| `meetings` | 0/2, missing UI | **2/2** |
+| `calendar` ×4 | 0/6, missing UI | **6 passing** |
+| `screenshare` | 0/3 | **3/3** |
+| `screenshare.gpu` / `.performance` | "no tests run" | **1/1** and **2/2** |
+| `admin-create-role` | 2/4, "role creation half-works" | **4/4** |
+| `friend-chats` | 1/4 | **4/4** |
+
+`forums` is the exception and is genuinely missing: `chat-header-kebab` appears
+nowhere in the client, only in `ABSENT_FROM_CLIENT`. It is skipped now, with the
+reason on the `describe`.
+
+### Genuine Starling gaps — green here, failing there
+
+`pchat` 1/1, `link-preview` 1/1, `admin-channel-delete` 1/1 and
+`signal-pchat` 2/2 all pass against the fork. Those four are real, and they are
+the trustworthy target.
+
+**But three of them share one cause, and it is not the service.** The client
+hard-codes `FANCY_PROTOCOL_EPOCH = 0` (`fancy_codec.rs:33`) so it emits flat
+types 100–999, and the gateway refuses exactly that range by design
+(`router.rs:8`: those numbers shipped under the interleaved layout and must
+never land on a new service). pchat, reactions and link-preview messages are
+therefore dropped at the gateway before any service sees them —
+`pchat/src/lib.rs` already broadcasts correctly and is never reached. Patching
+those services fixes nothing.
+
+The fix is the client migration §2a already names, not a gateway shim: wrapping
+a flat type into a service envelope needs that service's schema, which destroys
+the property the architecture rests on — the gateway parses no payload.
+
+### Still failing against the fork, so not Starling's
+
+| Suite | Cause |
+|---|---|
+| `audit-log` 1/9 | `/data/audit-log.sqlite` is absent — the audit plugin is not in this image. Environmental. |
+| `channelviewer` 0/3 | needs its own container |
+| `camera-share` 0/3 | needs a camera |
+| `reactions` 0/1 | **real defect, client or fork.** The selector is right: `ReactionBar.tsx:59` renders `aria-label={emoji + " " + count}`, so `starts-with(@aria-label,'👍')` is correct and the pill never appears. |
+| `registered-name-impersonation` 0/1 | **security, against the fork**: an anonymous client was admitted under a registered user's name |
+| `registration` 4/1, `friend-chat-tree-visibility` 0/1, `fancy-control-plane` 1/1, `server-compatibility` 1/2, `pchat-control-plane` 0/2 | real behaviour failures against the gold standard |
+
+`fancy-control-plane` is worth a look: `#create-poll` **does** exist
+(`ChatHeader.tsx`), so it is a precondition, not missing UI — the same shape as
+the `screen-share-toggle` mystery in §10, which turned out to be the stale
+binary.
