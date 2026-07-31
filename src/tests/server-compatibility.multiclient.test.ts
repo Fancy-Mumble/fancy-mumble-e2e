@@ -64,10 +64,17 @@ describe("server compatibility: control-path boundaries", () => {
       ]);
     }
 
-    await Promise.all([
-      bob.chat.waitForMessageCountFrom(aliceName, messages.length),
-      carol.chat.waitForMessageCountFrom(aliceName, messages.length),
-    ]);
+    // "Exactly once" is per message, not per sender label. The label is
+    // rendered only for the first message of a consecutive same-sender group
+    // (`MessageItem`'s `isFirstInGroup`, documented on `chatMessageSender` in
+    // the client's testids), so eight messages in a row from Alice produce one
+    // label and counting them measured grouping rather than fan-out.
+    for (const message of messages) {
+      await Promise.all([
+        bob.chat.waitForExactlyOnce(message),
+        carol.chat.waitForExactlyOnce(message),
+      ]);
+    }
   });
 
   it("preserves UTF-8, line breaks, markup-looking text, and a large message", async () => {

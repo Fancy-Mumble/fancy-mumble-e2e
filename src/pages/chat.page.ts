@@ -236,12 +236,23 @@ export class ChatPage {
       until.elementLocated(By.xpath(`//*[@data-msg-id][contains(normalize-space(.), ${xpathLiteral(messageText)})]`)),
       15000,
     );
+    // Hover first: the per-message action bar is revealed on hover, and the
+    // context menu is the other way in. Both render a Pin button, and the
+    // action bar's copy stays in the DOM while hidden — so taking the first
+    // match gets an element that exists, is found, and cannot be clicked
+    // (ElementNotInteractableError). `reactToMessage` already had to learn
+    // this; click whichever copy is actually displayed.
+    await this.d.actions().move({ origin: wrapper }).perform();
     await this.d.actions().contextClick(wrapper).perform();
-    const item = await this.d.wait(
-      until.elementLocated(By.xpath("//button[normalize-space(.)='Pin' or normalize-space(.)='Unpin']")),
-      5000,
-    );
-    await item.click();
+    const selector = By.xpath("//button[normalize-space(.)='Pin' or normalize-space(.)='Unpin']");
+    await this.d.wait(until.elementLocated(selector), 5000);
+    for (const candidate of await this.d.findElements(selector)) {
+      if (await candidate.isDisplayed()) {
+        await candidate.click();
+        return;
+      }
+    }
+    throw new Error(`no visible Pin/Unpin button for message "${messageText}"`);
   }
 
   /** Open the pinned-message panel from the channel menu. */
@@ -264,21 +275,69 @@ export class ChatPage {
     await this.d.wait(
       async () => (await this.messageCountFrom(sender)) === count,
       timeout,
-      `expected exactly ${count} messages from "${sender}"`,
+      `expected exactly ${count} sender labels for "${sender}"`,
+    );
+  }
+
+  /**
+   * How many times `token` is rendered on the page.
+   *
+   * For "delivered exactly once". Counting sender labels cannot answer that:
+   * `chat-message-sender` is emitted only for the **first message of a
+   * consecutive same-sender group** — the client's own `testids.ts` says so,
+   * and `MessageItem` gates it on `isFirstInGroup`. Eight messages in a row
+   * from one person therefore render one label, so a count of them is a count
+   * of groups.
+   *
+   * Counting elements is no better: an XPath `contains()` matches every
+   * ancestor too, so one message inflates to its whole chain. Occurrences in
+   * the rendered text are what "exactly once" actually means.
+   */
+  async textOccurrences(token: string): Promise<number> {
+    return await this.d.executeScript<number>(
+      `const [token] = arguments;
+       const text = document.body.innerText || "";
+       let count = 0;
+       let at = text.indexOf(token);
+       while (at !== -1) { count += 1; at = text.indexOf(token, at + token.length); }
+       return count;`,
+      token,
+    );
+  }
+
+  /** Wait until `token` is rendered exactly once. */
+  async waitForExactlyOnce(token: string, timeout = 20000): Promise<void> {
+    let seen = -1;
+    await this.d.wait(
+      async () => {
+        seen = await this.textOccurrences(token);
+        return seen === 1;
+      },
+      timeout,
+      `expected "${token}" to be rendered exactly once`,
     );
   }
 
   /** Wait until some element on the page renders `text` (message delivered). */
   async waitForText(text: string, timeout = 15000): Promise<void> {
-    // Normalise the needle the same way the haystack is normalised. XPath's
-    // `normalize-space()` collapses every run of whitespace in the rendered
-    // text to one space, so a needle that still contains a newline is compared
-    // against text where that newline is already a space, and `contains()` can
-    // never be true. A multi-line message therefore failed to be found even
-    // though it had arrived and rendered correctly.
-    const needle = text.replace(/\s+/gu, " ").trim();
-    const xp = By.xpath(`//*[contains(normalize-space(string(.)), ${xpathLiteral(needle)})]`);
-    await this.d.wait(until.elementLocated(xp), timeout);
+    // A newline in the needle can never match, whichever way the client renders
+    // it. `MarkdownInput` turns "\n" into `<br>`, and XPath's `string()`
+    // contributes *nothing* for an element — so "a\nb" is in the DOM as "ab",
+    // while the raw needle asks for "a\nb" and a whitespace-collapsed one asks
+    // for "a b". Both fail on a message that arrived perfectly.
+    //
+    // So match each line independently on the same element. That holds whether
+    // the newline became a `<br>` (no separator) or survived under
+    // `white-space: pre-wrap` (a real newline), and it still proves every line
+    // arrived and landed together.
+    const lines = text
+      .split("\n")
+      .map((line) => line.replace(/\s+/gu, " ").trim())
+      .filter((line) => line.length > 0);
+    const conditions = (lines.length > 0 ? lines : [""])
+      .map((line) => `contains(normalize-space(string(.)), ${xpathLiteral(line)})`)
+      .join(" and ");
+    await this.d.wait(until.elementLocated(By.xpath(`//*[${conditions}]`)), timeout);
   }
 
   /** Wait for the read-receipt state rendered on a message bubble. */
