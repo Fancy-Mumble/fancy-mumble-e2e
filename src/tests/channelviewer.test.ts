@@ -113,7 +113,27 @@ async function readFirstSseSnapshot(timeoutMs = 20000): Promise<Snapshot> {
   }
 }
 
-describe("channel viewer (Ice): reads channels, filters hidden", () => {
+/**
+ * Why this whole file is skipped.
+ *
+ * The suite needs the `channelviewer` container, which compose builds from
+ * `vendor/channelviewer`. That path is an **empty directory holding a recorded
+ * gitlink (2f5da4a0) with no `.gitmodules` entry**, so `git submodule update
+ * --init` cannot fetch it - git has no URL for it - and the compose build fails
+ * with "failed to read dockerfile".
+ *
+ * The source is not merely uninitialised, it is unavailable: no `channelviewer`
+ * repository exists in the Fancy-Mumble organisation, and the gitlink commit is
+ * in no local object store. Nothing in this repo can restore it.
+ *
+ * Unskip by registering the submodule once the repository exists, then:
+ *   docker compose -f fixtures/docker-compose.e2e.yml --profile channelviewer up -d --wait
+ */
+const SKIP_REASON =
+  "blocked: vendor/channelviewer is an unregistered, empty gitlink and no such " +
+  "repository exists in the org, so the container cannot be built";
+
+describe("channel viewer (Ice): reads channels, filters hidden", { skip: SKIP_REASON }, () => {
   let admin: TauriApp;
   const sfx = Date.now() % 100000;
   const publicName = `cv-public-${sfx}`;

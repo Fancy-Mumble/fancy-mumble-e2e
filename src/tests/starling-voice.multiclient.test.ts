@@ -118,17 +118,31 @@ async function bestToneOver(file: string, ms: number): Promise<number> {
 }
 
 /**
- * Skip rather than fail when there is no binary to test.
+ * Skip rather than fail when Starling is not the server under test.
  *
- * The suite also runs against murmur on machines with no Rust toolchain, where
- * a missing Starling build is a configuration fact rather than a defect. Decided
- * at module load so the reason appears in the runner's output instead of as a
- * thrown error inside a hook.
+ * Two conditions, and the second is the one that bites. A missing binary is a
+ * configuration fact on a machine with no Rust toolchain, not a defect.
+ *
+ * But having a binary is **not** sufficient, because the connect wizard only
+ * offers a port field in expert mode — in normal mode it always dials 64738
+ * (`src/pages/connect.page.ts`). The instance this file starts on its own port
+ * is therefore never the one the client reaches: the clients connect to
+ * whatever already owns 64738, and against a murmur fixture this suite asserts
+ * Starling's behaviour of a different server entirely. It then fails on
+ * `encrypts with XChaCha20-Poly1305, not OCB2` — which murmur is *correct* to
+ * not do.
+ *
+ * So it runs only when told that 64738 is Starling. Opt in with
+ * `E2E_SERVER_IMPL=starling`.
  */
-const skip = StarlingServer.available()
-  ? false
-  : `no Starling binary at ${StarlingServer.binary} — build it with ` +
-    `\`cargo build -p starling --manifest-path vendor/starling/Cargo.toml\``;
+const serverIsStarling = (process.env.E2E_SERVER_IMPL ?? "").toLowerCase() === "starling";
+const skip = !StarlingServer.available()
+  ? `no Starling binary at ${StarlingServer.binary} — build it with ` +
+    `\`cargo build -p starling --manifest-path vendor/starling/Cargo.toml\``
+  : serverIsStarling
+    ? false
+    : "the server on 64738 is not Starling — set E2E_SERVER_IMPL=starling to run this file " +
+      "(the client always dials 64738, so this suite cannot reach its own instance)";
 
 describe("Starling carries voice", { concurrency: 1, skip }, () => {
   let server: StarlingServer;
