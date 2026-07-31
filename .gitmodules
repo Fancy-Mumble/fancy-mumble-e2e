@@ -14,3 +14,7 @@
 	path = vendor/starling
 	url = https://github.com/Fancy-Mumble/starling.git
 	branch = feat/gateway-services
+[submodule "vendor/channelviewer"]
+	path = vendor/channelviewer
+	url = https://github.com/SetZero/channelviewer.git
+	branch = feat/starling-source
