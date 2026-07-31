@@ -107,13 +107,18 @@ list.
 
 | Suite | Symptom |
 |---|---|
-| `server-compatibility` | `expected exactly 8 messages from "e2e-compat-A-…"` — fan-out count |
-| `server-compatibility` | multi-line message never renders, even with the needle fixed |
-| `fancy-control-plane` | poll is created and delivered, but `1 vote` never appears after voting |
-| `pchat-control-plane` | `togglePin` → `ElementNotInteractableError` (pin control likely hover-revealed) |
-| `registration` | `lets the registered user act as themselves` times out on the message |
-| `friend-chat-tree-visibility` | `user "SuperUser" never appeared under a channel in the sidebar tree` |
+| `pchat-control-plane` 1/2 | `delivers a read watermark`: **Bob never receives Alice's message** in a `fancy_v1_full_archive` channel. The pin test above it passes and sends the same way, so it is not the composer. I tried closing the pinned panel first, on the theory that it covered the composer — it changed nothing, and I reverted it. Probe whether the message is sent at all before assuming the receipt is at fault. |
+| `fancy-control-plane` 1/2 | poll is created and delivered, and the vote is cast, but `1 vote` never appears. Everything up to the count now works |
+| `registration` 4/1 | `lets the registered user act as themselves` times out on the message |
+| `friend-chat-tree-visibility` 0/1 | `user "SuperUser" never appeared under a channel in the sidebar tree` |
 | `audit-log` 7/9 | `audit.mute_deafen_suppress` and `audit.register` still not recorded |
+
+Fixed since this file was written: `server-compatibility` is **3/3 green** (fan-out
+counted sender labels, which the client renders once per *group*; and a newline
+could never match because `MarkdownInput` turns it into `<br>`, which contributes
+no whitespace to XPath's `string()`). `pchat-control-plane`'s pin half is fixed
+too — the action bar keeps a hidden Pin button in the DOM, so the first match was
+unclickable.
 
 For each: decide **test bug or product bug**. The method that worked all day is
 to probe the live DOM rather than reason from source — a temporary
