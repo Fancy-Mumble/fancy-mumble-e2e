@@ -422,8 +422,27 @@ channel — and the ciphertext itself, which is what an offline attack wants.
 **Fixed** with a `Roster` in the runtime (`crates/runtime/src/roster.rs`):
 subscribe to `session-view`, fold the events, and answer "who is in this
 channel" from local state. It is the shape `voice` already uses for the packet
-path, lifted rather than written a third time, and it is deliberately reusable
-because `text` relays the same way and should adopt it.
+path, lifted rather than written a third time.
+
+### The same leak in `text` — fixed, **not committed**
+
+`text` relayed identically, and its module doc said so as a design decision:
+"Fan-out names the speaker as an *exclusion* rather than filtering here: only
+the gateway knows which sessions it holds." That reasoning is the defect. The
+gateway does know which sessions it holds — *all of them* — so excluding the
+speaker from a `Send` that names nobody leaves everyone else **on the server**,
+not everyone else in the channel. Plain-text chat, so not even ciphertext.
+
+The fix is in the working tree: `text` takes the same `Roster`, and
+`recipients_of` unions the sessions a message names outright, the members of
+every channel it names, and the members of every channel under a `tree_id`,
+minus the sender. Four tests cover it, including the cold-roster case.
+
+It is **deliberately not committed.** `crates/services/text/src/lib.rs` carries
+unrelated in-progress work — a `bound_body` extraction, the `filter` module,
+`refused` — in the same function, and hand-splicing my hunks out of somebody
+else's mid-refactor is how a broken merge gets made. It should land with that
+work. `starling-text` is 22/22 with the fix applied.
 
 The important property is what a **cold** roster does: it addresses nobody
 rather than everybody. Falling back to a broadcast when membership is unknown is
@@ -507,7 +526,8 @@ and the fix, which is worth recording.
 * The e2e logs also settled the one assumption the fixes rest on: clients do
   present certificates (`hash=46f2feef...` in the server log), so requiring one
   for a holder report locks nobody out.
-* `vendor/starling`: `starling-pchat` 13/13 and `starling-runtime` 247/247,
+* `vendor/starling`: `starling-pchat` 13/13, `starling-runtime` 252/252 and
+  `starling-text` 22/22,
   clippy and fmt clean for both files touched. Verified again in a throwaway
   worktree at the commit itself — 13/13 and 230/230 — because the runtime's
   `lib.rs` carried unrelated uncommitted work and only the one line adding the
