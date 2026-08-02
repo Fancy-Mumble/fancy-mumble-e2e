@@ -26,18 +26,29 @@ branches — if you clone fresh, check these out, they are not merged anywhere.
 | `vendor/wren` | `main` | `b547661`, no changes |
 | `vendor/docker` | detached, **no changes** | untouched |
 
-`vendor/mumble-admin-frontend` and `vendor/wren` were loose git repos inside the
-tree — tracked as bare gitlinks with nothing behind them, which a fresh clone
-resolves to an empty directory it cannot fill. Both are now real submodules:
-`.gitmodules` entry, URL, branch, and local `submodule.*` config.
+### Submodules
 
-Nothing in the e2e harness references wren yet — no compose service, no fixture,
-no test. It is now *tracked* so it travels with the repo; wiring it into the stack
-is still to do.
+All nine are now real submodules — `.gitmodules` entry, URL, branch key and local
+`submodule.*` config. Three were not, and each failed in its own way:
 
-**`vendor/channelviewer-frontend` has the same defect and is not fixed** — it is a
-gitlink with no `.gitmodules` entry, which predates this work. A fresh clone will
-not fetch it.
+* `vendor/mumble-admin-frontend`, `vendor/wren` and `vendor/channelviewer-frontend`
+  were tracked as **bare gitlinks with no `.gitmodules` entry**. A clone resolves
+  those to an empty directory it has no way to fill.
+* `vendor/mumble-user-manager-backend` **was not tracked at all**, yet
+  `src/util/user-manager.ts` and `src/tests/user-manager-avatar.multiclient.test.ts`
+  reach into it by path. It was absent from this working tree entirely, so those
+  tests could not run from a clean checkout. Pinned on
+  `feat/starling-operator-api` — that branch carries
+  `database/init/05-ef-baseline.sql` and the operator-API work
+  `HANDOVER-starling-audit.md` §8.6 describes; `main` has neither.
+
+The `branch` keys for `starling` and `channelviewer` also named branches that no
+longer carried their pinned commits (`feat/gateway-services`,
+`feat/starling-source`), so `git submodule update --remote` followed the wrong
+ref. Both now point where the commits actually are.
+
+Nothing in the harness references **wren** yet — no compose service, no fixture,
+no test. It is tracked so it travels with the repo; wiring it in is still to do.
 
 ## What the feature does now
 
