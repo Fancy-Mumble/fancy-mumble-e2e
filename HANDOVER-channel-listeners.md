@@ -23,12 +23,21 @@ branches — if you clone fresh, check these out, they are not merged anywhere.
 | `vendor/client` | `new-ui-implementation` | `3091ed1` |
 | `vendor/mumble-admin-frontend` | `master` | `421f85d` |
 | `vendor/channelviewer-frontend` | `master` | `3e6f157` |
+| `vendor/wren` | `main` | `b547661`, no changes |
 | `vendor/docker` | detached, **no changes** | untouched |
 
 `vendor/mumble-admin-frontend` and `vendor/wren` were loose git repos inside the
-tree; they are now registered in `.gitmodules`. **`vendor/channelviewer-frontend`
-still is not** — it is a gitlink with no `.gitmodules` entry, which predates this
-work. A fresh clone will not fetch it.
+tree — tracked as bare gitlinks with nothing behind them, which a fresh clone
+resolves to an empty directory it cannot fill. Both are now real submodules:
+`.gitmodules` entry, URL, branch, and local `submodule.*` config.
+
+Nothing in the e2e harness references wren yet — no compose service, no fixture,
+no test. It is now *tracked* so it travels with the repo; wiring it into the stack
+is still to do.
+
+**`vendor/channelviewer-frontend` has the same defect and is not fixed** — it is a
+gitlink with no `.gitmodules` entry, which predates this work. A fresh clone will
+not fetch it.
 
 ## What the feature does now
 

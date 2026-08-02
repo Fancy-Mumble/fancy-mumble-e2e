@@ -13,11 +13,11 @@
 [submodule "vendor/starling"]
 	path = vendor/starling
 	url = https://github.com/Fancy-Mumble/starling.git
-	branch = feat/gateway-services
+	branch = feat/channel-listeners
 [submodule "vendor/channelviewer"]
 	path = vendor/channelviewer
 	url = https://github.com/SetZero/channelviewer.git
-	branch = feat/starling-source
+	branch = wip/starling-source-and-keycloak-auth
 [submodule "vendor/mumble-admin-frontend"]
 	path = vendor/mumble-admin-frontend
 	url = https://github.com/SetZero/mumble-admin-frontend.git
