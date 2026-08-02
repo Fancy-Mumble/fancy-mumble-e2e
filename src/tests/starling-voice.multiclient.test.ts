@@ -285,7 +285,14 @@ describe("Starling carries voice", { concurrency: 1, skip }, () => {
     const before = speaker(doc);
     assert.ok(before, "Alice was not speaking before the mute");
 
-    await alice.chat.selfMute();
+    // One tap, not `selfMute()`. The control cycles
+    // `inactive -> active -> muted -> active` (`voice-state-sync` walks all
+    // four), and `selfMute()` is two taps — right from `inactive`, wrong from
+    // here. `before()` already tapped once to bring the pipelines up, so Alice
+    // is `active`: two more taps would mute her and immediately unmute her
+    // again, and this test would then assert that an unmuted speaker had gone
+    // quiet. It failed exactly that way, blaming the packet path.
+    await alice.chat.tapMute();
     await bob.chat.waitForMemberMuted(aliceName);
 
     // Let anything already in flight land, then measure a clean window.
@@ -313,9 +320,15 @@ describe("Starling carries voice", { concurrency: 1, skip }, () => {
     //
     // OCB2's tag is three bytes against sixteen: one accepted forgery per 2^24
     // attempts, which at 50 packets a second is about four days of trying.
+    //
+    // Matched without the hyphen, which is not cosmetic. The server logs the
+    // *`CipherChoice` variant* — `cipher=XChaCha20Poly1305` — and only
+    // `VoiceCipher::name()` spells it `XChaCha20-Poly1305`, which is never
+    // logged. The hyphenated pattern therefore could not match a correct server,
+    // and this assertion could only ever fail.
     assert.match(
       server.log,
-      /XChaCha20-Poly1305/,
+      /XChaCha20-?Poly1305/,
       `Starling keyed a Fancy 0.4.0 client with something other than the modern ` +
         `cipher; audio still works, which is exactly why this needs asserting. ` +
         `Server log:

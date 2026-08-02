@@ -12,11 +12,30 @@
 #   E2E_SERVER_IMAGE=fancy-mumble-server:e2e docker compose -f fixtures/docker-compose.e2e.yml up -d --wait
 #
 # Usage:
-#   docker compose -f fixtures/docker-compose.e2e.yml up -d --wait
+#   docker compose -f fixtures/docker-compose.e2e.yml --profile server up -d --wait
 #   npm run test:e2e
-#   docker compose -f fixtures/docker-compose.e2e.yml down -v
+#   docker compose -f fixtures/docker-compose.e2e.yml --profile "*" down -v
+#
+# Two independent stacks live here, and **neither is in the default profile**:
+#
+#   --profile server         the Mumble server the e2e suite drives
+#   --profile channelviewer  the viewer API, its UI, and the admin UI
+#
+# They were not always separate. `mumble-server` had no profile, so it was in
+# the default set and *every* invocation started it — including
+# `--profile channelviewer`, which enables a profile *in addition to* the
+# default one rather than instead of it. Bringing up the viewer therefore
+# always dragged a Mumble server along, which fought for port 64738 with
+# whatever else was already there and served no purpose: the viewer talks to
+# its server over Ice on 6502, and with CHANNELVIEWER_TEST_LOGIN it reads
+# Starling and ignores the Mumble server entirely.
+#
+# Compose offers no "default, except with that profile", so the fix is for
+# both stacks to be opt-in. Ask for both when you want both:
+#   docker compose ... --profile server --profile channelviewer up -d --wait
 services:
   mumble-server:
+    profiles: ["server"]
     image: ${E2E_SERVER_IMAGE:-ghcr.io/fancy-mumble/mumble-server:latest}
     container_name: fancy-e2e-mumble
     hostname: fancy-e2e-mumble
@@ -67,12 +86,37 @@ services:
       context: ../vendor/channelviewer
     container_name: fancy-e2e-channelviewer
     restart: "no"
-    depends_on:
-      mumble-server:
-        condition: service_healthy
+    extra_hosts:
+      # So `host.docker.internal` resolves from inside this container. Docker
+      # Desktop provides it automatically for *its* own default networks, but
+      # not for a user-defined compose network — which is why the Starling
+      # default below looked right and still failed with "Network is
+      # unreachable". `host-gateway` is the documented spelling and works on
+      # Linux too, where the name does not otherwise exist at all.
+      - "host.docker.internal:host-gateway"
+    # **No `depends_on`.** The viewer is a separate concern from whichever
+    # server it reads: it used to declare `mumble-server: service_healthy`,
+    # which meant `up -d channelviewer` started the murmur fixture too — and
+    # that then fought a standalone Starling for port 64738 and failed the whole
+    # command with "port is already allocated".
+    #
+    # `required: false` looks like the fix and is not: Compose still starts and
+    # health-waits the dependency, verified against Compose 5.1.1. Only removing
+    # it actually decouples the two.
+    #
+    # Nothing is lost. The e2e run asks for the server by profile
+    # (`--profile server`), so it still gets one. And the viewer tolerates its
+    # server being absent at boot: the Ice subscriber retries on
+    # `POLL_INTERVAL`, and `channelviewer.test.ts` polls readiness itself
+    # rather than trusting start order.
     environment:
-      MUMBLE_HOST: "fancy-e2e-mumble" # server container hostname (internal network)
-      MUMBLE_PORT: "6502"
+      # Whatever server this viewer should read. Defaults to the compose
+      # fixture's murmur; point it at something you run yourself with
+      #   $env:E2E_CHANNELVIEWER_MUMBLE_HOST = "host.docker.internal"
+      # (that name resolves to the host from inside a container on Windows and
+      # macOS; on Linux add --add-host=host.docker.internal:host-gateway).
+      MUMBLE_HOST: "${E2E_CHANNELVIEWER_MUMBLE_HOST:-fancy-e2e-mumble}"
+      MUMBLE_PORT: "${E2E_CHANNELVIEWER_MUMBLE_PORT:-6502}"
       MUMBLE_TIMEOUT: "5000"
       ICE_SECRET: "" # Ice is open (no secret) on the test fixture
       ICE_MESSAGE_SIZE_MAX: "65536"
@@ -94,8 +138,41 @@ services:
       AUTH_USERNAME: "admin"
       AUTH_PASSWORD: "YWRtaW4=" # base64("admin")
       JWT_SECRET: "e2e-channelviewer-jwt-secret"
+      # Passwordless admin login, off unless you ask for it:
+      #   $env:CHANNELVIEWER_TEST_LOGIN = "1"
+      #   docker compose ... --profile channelviewer up -d channelviewer
+      # Only reachable from this host, because the port above binds loopback.
+      # See vendor/channelviewer/LOCAL-TEST-LOGIN.md.
+      #
+      # Setting it also forces SERVER_INTERFACE=starling, because that is what
+      # the test login is for and Starling has no Ice plane (GAP-ANALYSIS S6).
+      # So the viewer then reads the two variables below and ignores the Ice
+      # ones above.
+      CHANNELVIEWER_TEST_LOGIN: "${CHANNELVIEWER_TEST_LOGIN:-}"
+      # Starling's admin plane. The default points at the *host*, because a
+      # Starling started with `cargo run` is not on this compose network —
+      # `host.docker.internal` is how a container reaches it on Windows and
+      # macOS. Override for a Starling running as a container.
+      STARLING_API_URL: "${STARLING_API_URL:-http://host.docker.internal:8081}"
+      STARLING_ADMIN_TOKEN: "${STARLING_ADMIN_TOKEN:-e2e-token}"
+      # The admin UI is served from its own origin and calls this API directly
+      # from the browser, so those requests are cross-origin and `CORS(app)`
+      # refuses them unless the origin is named. Deliberately *not* a wildcard:
+      # `flask_init.py` explains that `*` on the admin routes turned any XSS in
+      # a frontend into a full admin session.
+      #
+      # Direct rather than proxied on purpose. Routing admin calls through the
+      # UI's nginx would make them arrive from the *nginx container*, which the
+      # test-login fence refuses — correctly, since the bypass is for the host.
+      # Calling 127.0.0.1 from the browser keeps the source the host itself.
+      ADMIN_CORS_ORIGINS: "${ADMIN_CORS_ORIGINS:-http://127.0.0.1:5007,http://localhost:5007}"
     ports:
-      - "${E2E_CHANNELVIEWER_PORT:-5005}:5000"
+      # Bound to loopback, not to every interface. That matters beyond tidiness
+      # once CHANNELVIEWER_TEST_LOGIN is on: Docker's proxy rewrites the source
+      # address, so a request from another machine reaches the container from
+      # the same gateway address the host's own loopback does, and the app
+      # cannot tell them apart. The binding is what separates them.
+      - "127.0.0.1:${E2E_CHANNELVIEWER_PORT:-5005}:5000"
     healthcheck:
       # gunicorn is listening (Ice readiness is polled by the test itself).
       test:
@@ -105,3 +182,97 @@ services:
       timeout: 5s
       retries: 20
       start_period: 10s
+
+  # The viewer's web UI (vendor/channelviewer-frontend). Same `channelviewer`
+  # profile, because the API on its own is JSON and nobody can read a channel
+  # tree out of `curl`.
+  #
+  # It *does* depend on the API — unlike the API's late dependency on a Mumble
+  # server, which was removed. These two are one unit: the frontend is a static
+  # bundle whose every request is proxied to `channelviewer`, so starting it
+  # alone would serve a page that cannot load anything. Nothing here starts a
+  # Mumble or Starling server.
+  channelviewer-frontend:
+    profiles: ["channelviewer"]
+    build:
+      context: ../vendor/channelviewer-frontend
+    container_name: fancy-e2e-channelviewer-ui
+    restart: "no"
+    depends_on:
+      channelviewer:
+        condition: service_healthy
+    volumes:
+      # Serves the bundle and proxies `/api/v1` to the API container, so the
+      # browser talks to one origin and the frontend's relative `API_BASE`
+      # default works untouched. See the file for why this is not a build arg.
+      - ./channelviewer-frontend.nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    ports:
+      # Loopback, for the same reason as the API above.
+      - "127.0.0.1:${E2E_CHANNELVIEWER_UI_PORT:-5006}:80"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1/ || exit 1"]
+      interval: 3s
+      timeout: 5s
+      retries: 20
+      start_period: 5s
+
+  # The admin UI (vendor/mumble-admin-frontend). Separate from the viewer above:
+  # that one is the public channel tree, this one is the operator's console —
+  # broadcasts, the config editor, the log viewer.
+  #
+  # It calls the API **from the browser**, not through this nginx, which is why
+  # `SERVER_URL` is a host address rather than a compose service name. Proxying
+  # would make every admin call arrive from this container, and the test-login
+  # fence refuses that — rightly, since the bypass is for the host alone.
+  mumble-admin-frontend:
+    profiles: ["channelviewer"]
+    build:
+      context: ../vendor/mumble-admin-frontend
+      args:
+        # Baked into the bundle at build time, so changing either means
+        # rebuilding: `docker compose ... up -d --build mumble-admin-frontend`.
+        SERVER_URL: "${E2E_ADMIN_API_URL:-http://127.0.0.1:5005}"
+        BASE_URL: "${E2E_ADMIN_UI_URL:-http://127.0.0.1:5007}"
+        # Starling's operator API, which is what the Health page reads. A
+        # different server from `SERVER_URL` above — that one is the Mumble
+        # admin backend — so it gets its own address, and the same host default
+        # as `STARLING_API_URL` on the viewer: a Starling started with
+        # `cargo run` is on the host, not this network.
+        #
+        # Requires `operator-api` to be enabled in Starling's config; it is
+        # off by default. Left unset and the Health page says the endpoint is
+        # unreachable, which is the truth rather than a broken build.
+        # A *relative* base, deliberately. The Health page's fetch runs in the
+        # browser, so an absolute `host.docker.internal` names a host only a
+        # container can resolve — that produced "Failed to fetch" against a
+        # name the browser could never look up. Relative keeps it same-origin,
+        # nginx below proxies it to Starling, and the CORS that `operator-api`
+        # does not implement is never needed.
+        STARLING_URL: "${E2E_ADMIN_STARLING_BASE:-/starling}"
+    container_name: fancy-e2e-mumble-admin-ui
+    restart: "no"
+    extra_hosts:
+      # So nginx can resolve the host running Starling. Docker Desktop provides
+      # this name for its own networks but not for a user-defined compose
+      # network, which is why the proxy target below would otherwise fail to
+      # resolve at startup.
+      - "host.docker.internal:host-gateway"
+    volumes:
+      # Serves the bundle and proxies `/starling/` to Starling's operator API,
+      # so the Health page is a same-origin call. See the file for why this one
+      # is proxied when the rest of the admin UI is not.
+      - ./mumble-admin-frontend.nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      channelviewer:
+        condition: service_healthy
+    ports:
+      # Loopback, and the port must match BASE_URL above and the API's
+      # ADMIN_CORS_ORIGINS — three places that have to agree, because the
+      # browser enforces the origin and the bundle has the URL compiled in.
+      - "127.0.0.1:${E2E_ADMIN_UI_PORT:-5007}:80"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1/ || exit 1"]
+      interval: 3s
+      timeout: 5s
+      retries: 20
+      start_period: 5s

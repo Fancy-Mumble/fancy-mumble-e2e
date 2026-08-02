@@ -84,14 +84,14 @@ npm install
 
 ```bash
 # 1. start the server
-docker compose -f fixtures/docker-compose.e2e.yml up -d --wait
+docker compose -f fixtures/docker-compose.e2e.yml --profile server up -d --wait
 
 # 2. run the suite (Linux: wrap in xvfb-run for headless)
 npm run test:e2e
 xvfb-run -a npm run test:e2e        # Linux headless
 
 # 3. tear down
-docker compose -f fixtures/docker-compose.e2e.yml down -v
+docker compose -f fixtures/docker-compose.e2e.yml --profile "*" down -v
 ```
 
 ### Headed (local) run — watch it drive the real window

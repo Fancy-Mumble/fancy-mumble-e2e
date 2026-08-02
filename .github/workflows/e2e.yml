@@ -64,7 +64,7 @@ jobs:
         run: npm ci
 
       - name: Start Mumble test server
-        run: docker compose -f fixtures/docker-compose.e2e.yml up -d --wait
+        run: docker compose -f fixtures/docker-compose.e2e.yml --profile server up -d --wait
 
       - name: Run e2e suite (headless)
         env:
@@ -73,7 +73,7 @@ jobs:
 
       - name: Stop Mumble test server
         if: always()
-        run: docker compose -f fixtures/docker-compose.e2e.yml down -v
+        run: docker compose -f fixtures/docker-compose.e2e.yml --profile "*" down -v
 
       - name: Upload artifacts on failure
         if: failure()

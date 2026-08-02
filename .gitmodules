@@ -18,3 +18,11 @@
 	path = vendor/channelviewer
 	url = https://github.com/SetZero/channelviewer.git
 	branch = feat/starling-source
+[submodule "vendor/mumble-admin-frontend"]
+	path = vendor/mumble-admin-frontend
+	url = https://github.com/SetZero/mumble-admin-frontend.git
+	branch = master
+[submodule "vendor/wren"]
+	path = vendor/wren
+	url = https://github.com/Fancy-Mumble/wren.git
+	branch = main

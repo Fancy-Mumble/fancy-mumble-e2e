@@ -140,7 +140,7 @@ Get-Process tauri-driver, msedgedriver -ErrorAction SilentlyContinue |
 # -- server up --------------------------------------------------------------
 $compose = "fixtures/docker-compose.e2e.yml"
 Step "Starting Mumble test server"
-docker compose -f $compose up -d --wait
+docker compose -f $compose --profile server up -d --wait
 if ($LASTEXITCODE) { throw "docker compose up failed" }
 
 $code = 0
@@ -153,10 +153,10 @@ try {
   $code = $LASTEXITCODE
 } finally {
   if ($KeepServer) {
-    Write-Host "Leaving server running (-KeepServer). Stop with: docker compose -f $compose down -v"
+    Write-Host "Leaving server running (-KeepServer). Stop with: docker compose -f $compose --profile * down -v"
   } else {
     Step "Stopping Mumble test server"
-    docker compose -f $compose down -v
+    docker compose -f $compose --profile "*" down -v
   }
 }
 
