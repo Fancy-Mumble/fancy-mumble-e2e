@@ -56,6 +56,14 @@ export class StarlingServer {
     private readonly proc: ChildProcess,
     private readonly dataDir: string,
     private readonly output: string[],
+    /**
+     * Where its operator API listens.
+     *
+     * On an ephemeral port, like everything else here, so two runs on one
+     * machine do not collide. The runner exports it as `E2E_OPERATOR_API_URL`
+     * so the tests find it; nothing hard-codes 8081 any more.
+     */
+    readonly operatorPort: number = 0,
   ) {}
 
   /** Whether a Starling binary exists to test. */
@@ -109,6 +117,12 @@ export class StarlingServer {
         // that asserts on it fails describing a cipher choice that was in fact
         // correct. Everything else stays at info; voice logs nothing per packet.
         RUST_LOG: process.env.E2E_STARLING_LOG ?? "info,starling_voice=debug",
+        // The operator API's bearer token, which its config names by
+        // environment variable rather than holding in plaintext. Without it
+        // the API refuses every request, and the suite's SuperUser setup —
+        // which eleven files depend on in `before` — fails against a server
+        // that is otherwise perfectly healthy.
+        STARLING_ADMIN_TOKEN: process.env.E2E_OPERATOR_TOKEN ?? "e2e-token",
       },
       stdio: ["ignore", "pipe", "pipe"],
       detached: process.platform !== "win32",
@@ -116,7 +130,7 @@ export class StarlingServer {
     proc.stdout?.on("data", (chunk) => output.push(String(chunk)));
     proc.stderr?.on("data", (chunk) => output.push(String(chunk)));
 
-    const server = new StarlingServer(port, proc, dataDir, output);
+    const server = new StarlingServer(port, proc, dataDir, output, http + 1);
     await server.waitUntilListening();
     return server;
   }
@@ -225,6 +239,18 @@ function config(port: number, http: number): string {
     .replace(/^udp_listen = "0\.0\.0\.0:64738"/m, `udp_listen = "127.0.0.1:${port}"`)
     .replace(/^listen = "0\.0\.0\.0:8080"$/m, `listen = "127.0.0.1:${http}"`)
     .replace(/^listen = "127\.0\.0\.1:8081"$/m, `listen = "127.0.0.1:${http + 1}"`)
+    // The operator API ships disabled, which is right for a real deployment
+    // and wrong here: it is the only administrative surface Starling has, and
+    // the suite sets the SuperUser password through it.
+    //
+    // Matched on its section header, not on the first `enabled = false` in the
+    // file — that one belongs to `[services.directory]`, the public server-list
+    // announcer, and turning *that* on would have every e2e run phone a public
+    // directory while leaving the operator API off.
+    .replace(
+      /^\[services\.operator-api\]\r?\nenabled = false$/m,
+      '[services.operator-api]\nenabled = true',
+    )
     .replace(/^endpoint = "unix:\/run\/starling\/(.*)\.sock"$/gm, 'endpoint = "inproc:$1"');
 }
 
