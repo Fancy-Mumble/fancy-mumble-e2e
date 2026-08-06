@@ -34,3 +34,6 @@
 	path = vendor/mumble-user-manager-backend
 	url = https://github.com/SetZero/mumble-user-manager-backend.git
 	branch = feat/starling-operator-api
+[submodule "vendor/mumble-user-manager"]
+	path = vendor/mumble-user-manager
+	url = git@github.com:SetZero/mumble-user-manager.git
