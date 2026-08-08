@@ -135,12 +135,27 @@ invitee flow.
 `Fancy control-plane fan-out` (polls, typing indicators), `reactions:
 cross-client`, `multi-client: scheduled messages`.
 
-### 3.6 Known flake (1 test)
+### 3.6 Flaky under load - the number has a noise floor of about +/-4 tests
 
-`admin: creating a role via the Roles wizard` - "the wizard's top Back button
-returns to the Roles tab". Times out under full-sweep load, passes in isolation
-in ~750 ms, twice. Counted in the 34 the runner reports; not counted in the 33
-above.
+Two suites flip between runs and pass reliably in isolation, so **any change
+smaller than roughly four tests is invisible in a full sweep**. Read a
+sweep-to-sweep difference as noise until a per-file re-run says otherwise.
+
+| Suite | Tests | Evidence |
+|---|---|---|
+| `admin: creating a role via the Roles wizard` | 1 | times out under load; passes in ~750 ms in isolation, twice |
+| `server compatibility: control-path boundaries` | 3 | green in one sweep, all three red in the next, 3/3 in isolation |
+
+Both are timing races in multiclient message assertions - the same class as the
+fixed sleeps removed from `signal-pchat`. Worth fixing before chasing further
+green, because until then the scoreboard cannot show small progress.
+
+A second sweep taken after the `pchat_protocol` and handshake fixes read
+`38 pass / 40 fail / 88 tests`. Every part of that delta is accounted for:
+`server compatibility` flaked red (-3), the role wizard flaked green (+1), and
+`discord-rich-presence` arrived as 7 new tests for a feature still in progress.
+The server fixes moved no counter, which is expected - they unblocked channel
+state, and the pchat suites now fail one layer deeper, on message delivery.
 
 ## 4. How to run it
 
