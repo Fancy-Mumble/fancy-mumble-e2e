@@ -132,6 +132,7 @@ export class StarlingServer {
 
     const server = new StarlingServer(port, proc, dataDir, output, http + 1);
     await server.waitUntilListening();
+    await server.waitUntilSuperuserProvisioned();
     return server;
   }
 
@@ -191,6 +192,33 @@ export class StarlingServer {
       await delay(150);
     }
     throw new Error(`Starling did not listen on ${this.port} within ${timeout} ms:\n${this.log}`);
+  }
+
+  /**
+   * Wait until the virtual server's SuperUser account exists.
+   *
+   * `--all-in-one` spawns each service as a detached task and opens the
+   * gateway's TLS listener — which {@link waitUntilListening} catches — before
+   * `userdata` has run `ensure_superuser`. For that window the only SuperUser
+   * record is the random-password one userdata is still writing, and a test
+   * that sets the password there loses the race: userdata announces its
+   * generated password after storing it, so the operator-API update sent first
+   * is overwritten, and every SuperUser login then fails with WrongUserPw.
+   *
+   * The announcement is logged only once the account is written, so waiting for
+   * it means a later password-set lands on an existing record and holds. A fresh
+   * data dir — which every run uses — always logs the line; if it somehow does
+   * not, give up quietly and let the caller proceed rather than fail the run.
+   */
+  private async waitUntilSuperuserProvisioned(timeout = 20_000): Promise<void> {
+    const deadline = Date.now() + timeout;
+    while (Date.now() < deadline) {
+      if (!this.running) {
+        throw new Error(`Starling exited during startup:\n${this.log}`);
+      }
+      if (this.log.includes("superuser account created")) return;
+      await delay(150);
+    }
   }
 }
 
