@@ -66,9 +66,27 @@ export class ConnectPage {
    * dialog closes, which only happens when the server accepts the password.
    */
   private async submitPassword(password: string): Promise<void> {
-    const input = await this.d.wait(until.elementLocated(By.css("#pw-dialog-input")), 15000);
-    await input.clear();
-    await input.sendKeys(password, Key.ENTER);
+    // The dialog remounts after the client's "Connection to server was lost."
+    // transition, so a #pw-dialog-input handle taken just before that re-render
+    // is stale by the time clear()/sendKeys() run — the most common flake in
+    // the multi-client suites. Re-locate and retry the fill as one unit, within
+    // the same 15s, so a remount costs a retry rather than the test.
+    const deadline = Date.now() + 15000;
+    for (;;) {
+      try {
+        const input = await this.d.wait(
+          until.elementLocated(By.css("#pw-dialog-input")),
+          Math.max(1, deadline - Date.now()),
+        );
+        await input.clear();
+        await input.sendKeys(password, Key.ENTER);
+        break;
+      } catch (error) {
+        const stale = (error as { name?: string }).name === "StaleElementReferenceError";
+        if (!stale || Date.now() >= deadline) throw error;
+        await delay(200);
+      }
+    }
     await this.d.wait(
       async () => (await this.d.findElements(By.css("#pw-dialog-input"))).length === 0,
       15000,
