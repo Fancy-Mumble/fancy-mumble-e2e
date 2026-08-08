@@ -1,4 +1,4 @@
-import { mkdtempSync, mkdirSync, rmSync } from "node:fs";
+import { mkdtempSync, mkdirSync, rmSync, existsSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { type ChildProcess } from "node:child_process";
@@ -261,8 +261,14 @@ export class TauriApp {
     // Give each instance its own X display so two client windows never contend
     // for keyboard focus (WebKitWebDriver key events depend on window focus);
     // the per-instance Xvfb servers are started by the runner (:99 + instance).
+    //
+    // Only remap when that Xvfb is actually up. Without the check every instance
+    // was pointed at a display that does not exist unless something started it,
+    // and the second and third clients — the multi-client suites — failed to
+    // launch. Where the display is absent (a Wayland desktop, or no Xvfb) the
+    // ambient DISPLAY is kept and the clients share it.
     if (process.platform !== "win32" && !process.env.E2E_KEEP_DISPLAY) {
-      env.DISPLAY = ":" + (99 + instance);
+      if (existsSync(`/tmp/.X11-unix/X${99 + instance}`)) env.DISPLAY = ":" + (99 + instance);
     }
 
     const proc = await startTauriDriver(port, nativePort, env);
