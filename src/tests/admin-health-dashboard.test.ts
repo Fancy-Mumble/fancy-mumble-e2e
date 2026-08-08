@@ -1,5 +1,6 @@
 import { describe, it, before } from "node:test";
 import assert from "node:assert/strict";
+import { adminUiMissing } from "../util/preconditions";
 
 /**
  * The admin UI's Health page, from the browser's side of the wire.
@@ -7,7 +8,7 @@ import assert from "node:assert/strict";
  * This guards a bug that no unit test could see and no server-side check could
  * either, because both halves were individually correct: Starling served
  * `/v1/health` fine, and the page fetched the URL it had been given. The URL
- * was `http://host.docker.internal:8081` — a name that resolves *inside a
+ * was `http://host.docker.internal:8081` - a name that resolves *inside a
  * container* and never in a browser, baked into a bundle that runs only in a
  * browser. The page said "Failed to fetch" against a server that was up.
  *
@@ -17,7 +18,7 @@ import assert from "node:assert/strict";
  *      absolute host in a browser bundle is the whole defect, and it is
  *      invisible until somebody opens the page.
  *   2. That path really is proxied, and answers with a health document.
- *   3. No service is reported unreachable — the collector once dialled
+ *   3. No service is reported unreachable - the collector once dialled
  *      `operator-api`, which serves REST and has no gRPC surface, and called
  *      the failure an outage. The overview's state is the worst state present,
  *      so that one false row painted the whole dashboard red.
@@ -27,7 +28,7 @@ import assert from "node:assert/strict";
  *     up -d --wait --build
  *
  * and a Starling with its admin plane on, which the compose file does not
- * start — it is a host process here:
+ * start - it is a host process here:
  *   cd vendor/starling
  *   $env:STARLING_ADMIN_TOKEN = 'e2e-token'
  *   target/release/starling.exe --all-in-one \
@@ -103,7 +104,7 @@ async function fetchText(path: string, timeoutMs = 30000): Promise<string> {
   );
 }
 
-describe("admin UI health dashboard", () => {
+describe("admin UI health dashboard", { skip: adminUiMissing() }, () => {
   let bundle = "";
 
   before(async () => {
@@ -123,7 +124,7 @@ describe("admin UI health dashboard", () => {
     // is exactly why it looked right in every place it was tested.
     assert.ok(
       !bundle.includes("host.docker.internal"),
-      "the browser bundle contains `host.docker.internal`, which a browser cannot resolve — " +
+      "the browser bundle contains `host.docker.internal`, which a browser cannot resolve - " +
         "build the admin UI with a relative STARLING_URL (e.g. /starling) and let nginx proxy it",
     );
     assert.ok(
@@ -169,7 +170,7 @@ describe("admin UI health dashboard", () => {
     // The bug this guards is a column of zeroes that looks like working
     // instrumentation. Every service shares one process under `--all-in-one`,
     // so a check takes tens of microseconds and *every* honest measurement
-    // truncated to `0 ms` — the figure was not wrong so much as absent, and
+    // truncated to `0 ms` - the figure was not wrong so much as absent, and
     // nothing about it said so.
     const doc = JSON.parse(await fetchText("/starling/v1/health")) as HealthDoc;
 
@@ -177,7 +178,7 @@ describe("admin UI health dashboard", () => {
       assert.equal(
         typeof service.latency_us,
         "number",
-        `${service.service} reports no latency_us — is the API still on milliseconds?`,
+        `${service.service} reports no latency_us - is the API still on milliseconds?`,
       );
     }
     assert.ok(
@@ -199,15 +200,15 @@ describe("admin UI health dashboard", () => {
       );
       assert.ok(
         service.load.some((load) => load.name === "requests in flight"),
-        `${service.service} reports no in-flight gauge — the runtime layer is not wrapping it`,
+        `${service.service} reports no in-flight gauge - the runtime layer is not wrapping it`,
       );
     }
   });
 
   it("includes the gateway, which holds the queues that actually fill", async () => {
     // The gateway served no gRPC and so answered no health check, which left
-    // the one process every client connects to — holding every control queue
-    // and every audio buffer in the server — absent from the health page.
+    // the one process every client connects to - holding every control queue
+    // and every audio buffer in the server - absent from the health page.
     const doc = JSON.parse(await fetchText("/starling/v1/health")) as HealthDoc;
 
     const gateway = doc.services.find((s) => s.service === "gateway");
