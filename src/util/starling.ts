@@ -106,7 +106,7 @@ export class StarlingServer {
 
     const http = await freePort();
     const configFile = path.join(dataDir, "starling.toml");
-    writeFileSync(configFile, config(port, http), "utf8");
+    writeFileSync(configFile, config(port, http, dataDir), "utf8");
 
     const proc = spawn(STARLING_BIN, ["--all-in-one", "--config", configFile], {
       cwd: dataDir,
@@ -227,11 +227,12 @@ export class StarlingServer {
  * gateway then serves a port with nothing behind it. `inproc:` is what
  * all-in-one actually uses and is the same on every platform.
  */
-function config(port: number, http: number): string {
+function config(port: number, http: number, dataDir: string): string {
   const template = readFileSync(
     path.join(repoRoot, "vendor", "starling", "starling.example.toml"),
     "utf8",
   );
+  const auditLog = path.join(dataDir, "operator-audit.log");
   return template
     .replace(/^all_in_one = false$/m, "all_in_one = true")
     .replace(/^port = 64738$/m, `port = ${port}`)
@@ -251,7 +252,16 @@ function config(port: number, http: number): string {
       /^\[services\.operator-api\]\r?\nenabled = false$/m,
       '[services.operator-api]\nenabled = true',
     )
-    .replace(/^endpoint = "unix:\/run\/starling\/(.*)\.sock"$/gm, 'endpoint = "inproc:$1"');
+    .replace(/^endpoint = "unix:\/run\/starling\/(.*)\.sock"$/gm, 'endpoint = "inproc:$1"')
+    // The operator API's audit sink ships as /var/log/starling with
+    // fail_closed = true, so a non-root runner cannot write it and every
+    // operator-API call 503s — including the SuperUser-password setup the suite
+    // relies on. Point it at the per-run temp dir, which always exists and is
+    // writable.
+    .replace(
+      /^path = "\/var\/log\/starling\/operator-audit\.log"$/m,
+      `path = "${auditLog.replace(/\\/g, "\\\\")}"`,
+    );
 }
 
 /**
