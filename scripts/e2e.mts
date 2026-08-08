@@ -82,10 +82,11 @@ function runTests(files: string[], operatorApi?: string): Promise<number> {
 
 /** What is about to be measured, so a run can be read back and believed. */
 function announce(): void {
+  const starlingExe = process.platform === "win32" ? "starling.exe" : "starling";
   for (const [what, where] of [
     ["client", config.appBin],
     ["starling", process.env.E2E_STARLING_BIN ??
-      path.join(repoRoot, "vendor", "starling", "target", "release", "starling.exe")],
+      path.join(repoRoot, "vendor", "starling", "target", "debug", starlingExe)],
   ] as const) {
     if (!existsSync(where)) {
       console.error(`e2e: no ${what} binary at ${where}`);
