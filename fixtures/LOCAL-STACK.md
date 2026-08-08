@@ -28,16 +28,16 @@ $env:STARLING_ADMIN_TOKEN = "e2e-token"
 ./target/release/starling.exe --all-in-one --config ../../fixtures/starling.local.toml
 ```
 
-`fixtures/starling.local.toml` is generated from `vendor/starling/starling.example.toml`
-with three edits (all-in-one, `unix:` → `inproc:` endpoints, operator-api on
-`0.0.0.0:8081` with token auth). Regenerate it after changing the example rather
-than editing it by hand.
+`fixtures/starling.local.toml` names only the delta: all-in-one, and the
+operator API on `0.0.0.0:8081` with token auth.
 
-**`--config` replaces the defaults; it does not merge with them.** A file naming
-only the keys you want to change gives you a server with an empty service map.
-That is why the local config is derived from the full example, and why
-`units.rs` has a test asserting the example configures every service that can be
-started.
+**A config file overlays the defaults rather than replacing them**
+(`Config::load` builds `with_defaults` and then `merge::overlay`s the file over
+it), so everything the file does not mention - the service map, the routing
+table, the rate-limit buckets - still comes from the defaults. It used to be a
+full copy of `starling.example.toml`, back when `--config` replaced the defaults
+outright and a partial file produced a server with an empty service map. There
+is nothing to regenerate now.
 
 ## 2. The containers
 
