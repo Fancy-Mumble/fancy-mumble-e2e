@@ -3,8 +3,6 @@
 Status dump for the "Rust-native screen sharing + custom picker + e2e regression
 tests" effort. Living scratchpad; delete once the work lands.
 
-Approved plan file (full detail): `<plan file>`.
-
 ---
 
 ## Goal

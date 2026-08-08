@@ -1,4 +1,4 @@
-# Handover — channel listeners in Starling
+# Handover - channel listeners in Starling
 
 Written 2026-08-02. Everything described here is **committed**; nothing is left
 in a working tree.
@@ -6,13 +6,13 @@ in a working tree.
 ## What was asked
 
 "The listen to a specific channel feature from mumble (`vendor/server`) is
-currently missing in starling" — implemented to **full murmur parity**, which
+currently missing in starling" - implemented to **full murmur parity**, which
 was the scope explicitly chosen.
 
 ## Where the branches are
 
 Every repo is committed. Three were in **detached HEAD** and now sit on real
-branches — if you clone fresh, check these out, they are not merged anywhere.
+branches - if you clone fresh, check these out, they are not merged anywhere.
 
 | Repo | Branch | Head |
 |---|---|---|
@@ -28,7 +28,7 @@ branches — if you clone fresh, check these out, they are not merged anywhere.
 
 ### Submodules
 
-All nine are now real submodules — `.gitmodules` entry, URL, branch key and local
+All nine are now real submodules - `.gitmodules` entry, URL, branch key and local
 `submodule.*` config. Three were not, and each failed in its own way:
 
 * `vendor/mumble-admin-frontend`, `vendor/wren` and `vendor/channelviewer-frontend`
@@ -38,7 +38,7 @@ All nine are now real submodules — `.gitmodules` entry, URL, branch key and lo
   `src/util/user-manager.ts` and `src/tests/user-manager-avatar.multiclient.test.ts`
   reach into it by path. It was absent from this working tree entirely, so those
   tests could not run from a clean checkout. Pinned on
-  `feat/starling-operator-api` — that branch carries
+  `feat/starling-operator-api` - that branch carries
   `database/init/05-ef-baseline.sql` and the operator-API work
   `HANDOVER-starling-audit.md` §8.6 describes; `main` has neither.
 
@@ -47,46 +47,45 @@ longer carried their pinned commits (`feat/gateway-services`,
 `feat/starling-source`), so `git submodule update --remote` followed the wrong
 ref. Both now point where the commits actually are.
 
-Nothing in the harness references **wren** yet — no compose service, no fixture,
+Nothing in the harness references **wren** yet - no compose service, no fixture,
 no test. It is tracked so it travels with the repo; wiring it in is still to do.
 
 ## What the feature does now
 
 The gap was never the routing core. `RoutingSnapshot` could already fan out to a
-listener and the tree could already hold one — but `UserState.listening_channel_add`
+listener and the tree could already hold one - but `UserState.listening_channel_add`
 was read nowhere, so a client clicked "listen", the server parsed the message and
-ignored it. Every piece worked and the feature did not exist. That was
-`GAP-ANALYSIS` V5, now removed.
+ignored it. That was `GAP-ANALYSIS` V5, now removed.
 
 Implemented, service by service:
 
-* **voice** (`crates/services/voice/src/routing.rs`) — `RoutingSnapshot::fan_out`
+* **voice** (`crates/services/voice/src/routing.rs`) - `RoutingSnapshot::fan_out`
   returns a `Reception` per recipient carrying **context** and **gain**, folded
   the way murmur's `AudioReceiverBuffer.cpp:87` does: `min` on context, `max` on
   gain. So standing in a channel you also listen to is heard **once**, as normal
-  speech, at unity — and a listener who turned a room down to 0.2 and then walked
+  speech, at unity - and a listener who turned a room down to 0.2 and then walked
   into it hears it at 1.0. `named_directly` and `context_for` are gone; the
   router just encodes what the snapshot decided.
-* **metadata** (`tree_actor.rs`, `lib.rs`) — `Trees::listen` takes volume
+* **metadata** (`tree_actor.rs`, `lib.rs`) - `Trees::listen` takes volume
   adjustments; `Trees::restore` puts a returning user's listeners back;
   `Trees::remove` cancels listeners on the channel *and its descendants* and
   reports them so clients can be told. **Fixed in passing:** entering a channel
   used to overwrite the membership wholesale, silently wiping every listener the
   session had.
-* **session-lifecycle** (`lib.rs::on_listen`, `handshake.rs`) — the three wire
+* **session-lifecycle** (`lib.rs::on_listen`, `handshake.rs`) - the three wire
   fields are handled, `Perm::LISTEN` is checked per channel (continuing past a
   refused one, as murmur does), limits come back as `ChannelListenerLimit` /
   `UserListenerLimit` rather than as a missing permission, and a user's listeners
-  are announced **after `ServerSync`** — upstream is explicit that a client may
+  are announced **after `ServerSync`** - upstream is explicit that a client may
   need its own session id first (`Messages.cpp:843`).
-* **persistence** — new table `channel_listener`, keyed by **account** (guests get
+* **persistence** - new table `channel_listener`, keyed by **account** (guests get
   nothing, as upstream) and **disabled rather than deleted**, so a gain survives
   un-listening. Temporary channels are never written: the id is reused when the
   channel is collected.
-* **config** — `broadcast_listener_volume_adjustments`, **off** by default as in
+* **config** - `broadcast_listener_volume_adjustments`, **off** by default as in
   murmur. Off means channels to everyone, gains to their owner alone; that takes
   two messages, because one message cannot have two audiences.
-* **privacy** — a pre-1.4 client is warned it can be listened to without seeing
+* **privacy** - a pre-1.4 client is warned it can be listened to without seeing
   it, gated on both ceilings being set, exactly as upstream gates it.
 
 Cross-session listener changes are **refused**, including the volume adjustments.
@@ -111,7 +110,7 @@ cascade.
 **1. A start-up race in the e2e harness, now easier to hit.**
 
 `a_client_holding_write_can_save_an_acl_table_and_read_it_back` (pre-existing, part
-of the in-flight work — it does not exist at `HEAD`) fails intermittently. It is a
+of the in-flight work - it does not exist at `HEAD`) fails intermittently. It is a
 boot-timing race, and adding *any* migration to `metadata` widens the window.
 Measured, on this machine:
 
@@ -125,11 +124,11 @@ Measured, on this machine:
 The mechanism: `wait_until_serving` waits for metadata's **gRPC socket** to bind,
 but its **client-plane attach to the gateway** lands ~50 ms later and nothing
 waits for that. Under load the extra migration pushed metadata's boot out by
-**1.39 s** — services each `fsync` their own SQLite file at once, with no WAL and
+**1.39 s** - services each `fsync` their own SQLite file at once, with no WAL and
 no `busy_timeout`.
 
 Mitigated by cutting the migration to a single statement (the index on
-`(server_id, account_id)` was redundant — the primary key is a left prefix of it,
+`(server_id, account_id)` was redundant - the primary key is a left prefix of it,
 so it was a second copy of an index the table already had, paid for on every
 write). **Not fixed**, because the real fix is in the harness's readiness wait,
 which belongs to the in-flight work rather than to this feature.
@@ -139,7 +138,7 @@ which belongs to the in-flight work rather than to this feature.
 Noticed while reading the routing core, unrelated to listeners and **not fixed**.
 murmur sends regular speech into linked channels when the speaker holds `Speak`
 there (`Server.cpp:1380`). Starling's `Target::Normal` only ever gathers the
-speaker's own channel — `links` is consulted for shouts and nowhere else. Two
+speaker's own channel - `links` is consulted for shouts and nowhere else. Two
 linked channels therefore cannot hear each other at all, which is most of what an
 operator links channels *for*. Worth its own gap entry.
 

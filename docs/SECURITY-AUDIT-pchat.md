@@ -7,18 +7,18 @@ against `vendor/server` at `6fe0f06e5`. Part 2 covers the Rust port,
 
 **Status: findings 1, 2, 4, 5, 6, 7 and 8 are fixed** (see "What was fixed"),
 with 9 regression tests in `TestPersistentChatManager`. **Finding 3 is
-mitigated, not closed** — closing it needs a protocol change, and that is argued
+mitigated, not closed** - closing it needs a protocol change, and that is argued
 below rather than assumed. **All seven Starling findings are fixed**, with 13
 tests in `starling-pchat` and 5 for the new runtime `Roster`.
 
 **Method and its limits.** Every finding below is read from the source and cited
-by line. **None has been demonstrated by exploit** — there is no proof-of-concept
+by line. **None has been demonstrated by exploit** - there is no proof-of-concept
 here, and severities are argued from the code path, not measured. Anything marked
 *inferred* is reasoning I could not close by reading alone.
 
 The threat model this assumes: an **authenticated Mumble client**, because
 pchat handlers run after `MSG_SETUP(ServerUser::Authenticated)`. On a server that
-allows anonymous connections — the default, and what the e2e fixture uses — that
+allows anonymous connections - the default, and what the e2e fixture uses - that
 is anyone who can reach the port.
 
 ---
@@ -51,16 +51,12 @@ Starling (part 2):
 S5–S7 were found while fixing S3, not in the original read.
 
 The three High findings **chain**: 1 and 2 give an attacker a seat at the
-challenge, and 3 lets them win it. Finding 8 is independent — it reaches the
+challenge, and 3 lets them win it. Finding 8 is independent - it reaches the
 same `verifiedSessions` set by a different route, and survives fixes to 1–3.
-
-What is *not* broken is worth stating, because it bounds every finding: the
-message path validates identity, and the read path checks channel permission.
-See "Controls that hold" below.
 
 ---
 
-## 1. `handlePchatKeyHolderReport` performs no authorization — High
+## 1. `handlePchatKeyHolderReport` performs no authorization - High
 
 `PersistentChatManager.cpp:944`. The entire gate is:
 
@@ -79,11 +75,11 @@ id on the server**, including channels they cannot see or enter. Contrast
 `handlePchatFetch:282`, which does check `hasEnterPermission`, and
 `handlePchatDeleteMessages:1225`, which checks `hasDeleteMessagePermission`.
 
-Consequences: the holder table — which the client UI renders as "who can read
-this channel" — is attacker-writable, and reaching this handler is the entry
+Consequences: the holder table - which the client UI renders as "who can read
+this channel" - is attacker-writable, and reaching this handler is the entry
 condition for findings 3 and 5.
 
-## 2. The reported `cert_hash` is never bound to the session — High
+## 2. The reported `cert_hash` is never bound to the session - High
 
 `PersistentChatManager.cpp:953`:
 
@@ -94,7 +90,7 @@ const std::string &certHash = msg.cert_hash();   // straight from the wire
 It is never compared against `m_bridge.getCertHash(senderSession)`.
 
 **The same file gets this right elsewhere**, which is what makes it a defect
-rather than a design choice — `handlePchatMessage:132`:
+rather than a design choice - `handlePchatMessage:132`:
 
 ```cpp
 if (msg.sender_hash() != senderHash) {
@@ -105,11 +101,11 @@ if (msg.sender_hash() != senderHash) {
 
 So an attacker can record *another user's* certificate hash as a key holder for
 a channel, or a hash belonging to nobody. Combined with finding 1, the holder
-list for any channel can be fabricated wholesale — a spoofing and
+list for any channel can be fabricated wholesale - a spoofing and
 misattribution primitive, and one that survives in the database
 (`m_holdersTable.recordHolder`).
 
-## 3. The key-possession challenge is first-prover-wins — High
+## 3. The key-possession challenge is first-prover-wins - High
 
 `PersistentChatManager.cpp:1117`:
 
@@ -127,16 +123,16 @@ verified; the server has none to verify against. `m_challengeState` is in-memory
 only, so `referenceHmac` is empty after **every server restart**, and again
 after any `m_challengeState.erase(channelId)` (`:1157`, and at `:657` and `:913`).
 
-An attacker who reaches the challenge — which findings 1 and 2 let them do
-unconditionally — can answer with arbitrary bytes and be inserted into
+An attacker who reaches the challenge - which findings 1 and 2 let them do
+unconditionally - can answer with arbitrary bytes and be inserted into
 `verifiedSessions`.
 
 That set is the key-possession gate for the whole subsystem:
 
-* `handlePchatFetch:275` — read stored history
-* `handlePchatReaction:1302` — react
-* `handlePchatSenderKeyDistribution:1520` — publish a sender key
-* `handlePchatPin` — pin
+* `handlePchatFetch:275` - read stored history
+* `handlePchatReaction:1302` - react
+* `handlePchatSenderKeyDistribution:1520` - publish a sender key
+* `handlePchatPin` - pin
 
 **Severity is bounded by two things.** `handlePchatFetch` *also* checks
 `hasEnterPermission`, so the archive is not readable by someone who cannot enter
@@ -144,12 +140,12 @@ the channel. And the stored payloads are E2E ciphertext the server never holds
 keys for, so what leaks is ciphertext, not plaintext.
 
 What is defeated is the distinction the challenge exists to enforce: **"in the
-channel" versus "holds the key"**. A member without the key — an ex-member whose
+channel" versus "holds the key"**. A member without the key - an ex-member whose
 access was revoked at the key layer, or a user who can enter a channel they were
-never given the key to — becomes verified and receives the full ciphertext
+never given the key to - becomes verified and receives the full ciphertext
 archive and all live traffic, for offline attack or later disclosure.
 
-## 4. Challenge poisoning locks out legitimate holders — Medium
+## 4. Challenge poisoning locks out legitimate holders - Medium
 
 Once a bogus `referenceHmac` is set, every genuine key holder's proof mismatches
 and they fall to `:1130`. They are denied fetch, sending, reactions and pins:
@@ -157,7 +153,7 @@ the channel stops working for exactly the people entitled to it.
 
 The recovery path at `:1153` makes this worse rather than better. If the
 mismatching session is the **sole recorded holder**, the server erases the
-challenge state and re-challenges — so whoever answers first wins again. Since
+challenge state and re-challenges - so whoever answers first wins again. Since
 finding 1 lets an attacker write holder rows freely, they can arrange to be the
 sole recorded holder and win the reset race repeatedly.
 
@@ -165,7 +161,7 @@ The comment there documents the trade-off honestly (a sole holder whose key
 legitimately changed would otherwise be locked out forever), so this is a known
 compromise made unsafe by findings 1 and 2, not an oversight on its own.
 
-## 5. Auto-verify delivers stored sender keys unchecked — Medium
+## 5. Auto-verify delivers stored sender keys unchecked - Medium
 
 `PersistentChatManager.cpp:988`, for protocols where
 `handler->autoVerifiesOnReport()` (Signal-style per-sender keys):
@@ -176,8 +172,8 @@ state.verifiedSessions.insert(senderSession);
 sendStoredSenderKeyDistributions(senderSession, channelId, certHash);   // :1004
 ```
 
-Reporting yourself as a holder is **sufficient to be verified** — no challenge at
-all — and immediately triggers delivery of every stored sender-key distribution
+Reporting yourself as a holder is **sufficient to be verified** - no challenge at
+all - and immediately triggers delivery of every stored sender-key distribution
 message for the channel. `sendStoredSenderKeyDistributions:1472` iterates the
 map and relays, with **no permission check of its own**, and its caller has none
 either (finding 1).
@@ -186,12 +182,12 @@ So on a Signal-protocol channel, a client that cannot even enter the channel can
 obtain every stored SKDM for it.
 
 *Inferred, not verified:* SKDMs should be encrypted to a specific recipient, so
-the contents are probably not readable by the attacker. I did not confirm this —
+the contents are probably not readable by the attacker. I did not confirm this -
 it depends on client-side crypto I did not audit. Even if they are opaque, this
 is unauthorized delivery of key material plus verified status for a channel the
 attacker has no access to.
 
-## 6. Rate limiting misses key management, and resets on reconnect — Low
+## 6. Rate limiting misses key management, and resets on reconnect - Low
 
 Limits are defined for `msg`, `fetch`, `reaction`, `pin`, `key_announce` and
 `key_exchange`. **Not** limited: `key_holder_report`, `key_challenge_response`,
@@ -202,27 +198,27 @@ The unlimited set is exactly the set implicated above, so findings 1–5 can be
 attempted at line speed.
 
 Separately, `TokenBucketRateLimiter::allow` is keyed on the **session id**
-(`std::to_string(senderSession)`), which changes on reconnect — so any limit is
+(`std::to_string(senderSession)`), which changes on reconnect - so any limit is
 reset by disconnecting. Keying on certificate hash would survive it.
 
-## 7. The rate limiter's eviction method has no callers — Low
+## 7. The rate limiter's eviction method has no callers - Low
 
 `TokenBucketRateLimiter::reset(key)` (`TokenBucketRateLimiter.cpp:48`) exists and
-is correct — it erases every bucket whose key has the `key + ":"` prefix. It is
+is correct - it erases every bucket whose key has the `key + ":"` prefix. It is
 **called from nowhere**: a search across `src/murmur/` finds no call site.
 
 So `m_buckets` grows one entry per (session, operation)
 (`TokenBucketRateLimiter.cpp:31`) and nothing ever
 removes them. A long-lived server accumulates a bucket for every session that has
 ever connected, reachable by reconnecting in a loop. Slow unbounded growth, not a
-crash — but the fix is a one-line call, because the implementation is already
+crash - but the fix is a one-line call, because the implementation is already
 written and waiting.
 
 The natural call site is `onUserDisconnected` (`PersistentChatManager.cpp:616`),
 which already performs the analogous cleanup for challenge state. Note that
 adding it there inherits finding 8's guard problem.
 
-## 8. Verified sessions outlive certificate-less clients, and session ids are recycled — Medium
+## 8. Verified sessions outlive certificate-less clients, and session ids are recycled - Medium
 
 `onUserDisconnected` (`PersistentChatManager.cpp:616`) exists precisely to prevent
 this, and says so:
@@ -246,7 +242,7 @@ if (m_pchatManager && !u->qsHash.isEmpty()) {
 ```
 
 `qsHash` is set only from a presented peer certificate (`Server.cpp:1692`), so it
-is empty for every anonymous client — the population this audit's threat model is
+is empty for every anonymous client - the population this audit's threat model is
 about, and what the e2e fixture uses. The handler repeats the same guard
 internally (`certHash.empty()` → return), so both layers exclude the same users.
 
@@ -264,8 +260,8 @@ that channel having proven nothing.
 
 **What bounds this.** `qqIds` is a FIFO `QQueue` initialised with
 `1 .. iMaxUsers * 2 - 1` (`Server.cpp:245`), and a freed id is enqueued at the
-*back*. Redrawing a specific id requires cycling the whole pool — roughly 200
-connections at the default `iMaxUsers` of 100 — which is noisy and not
+*back*. Redrawing a specific id requires cycling the whole pool - roughly 200
+connections at the default `iMaxUsers` of 100 - which is noisy and not
 instantaneous. A `maxusers` reload rebuilds the pool entirely (`Server.cpp:665`),
 which reshuffles it.
 
@@ -282,8 +278,7 @@ argued, not measured.
 
 ## Controls that hold
 
-Stated because they bound every severity above, and because a list of holes is
-not a description of the system.
+These bound every severity above.
 
 * **Message identity is validated.** `handlePchatMessage:132` rejects a
   `sender_hash` that does not match the session's certificate.
@@ -292,10 +287,10 @@ not a description of the system.
   channels the attacker cannot enter.
 * **Reactions are triply gated** (`:1281`, `:1292`, `:1302`): rate limit, enter
   permission, and key verification.
-* **Deletion is permission-checked** — `hasDeleteMessagePermission:1225`.
+* **Deletion is permission-checked** - `hasDeleteMessagePermission:1225`.
 * **The server holds no plaintext.** Payloads are opaque envelopes with a size
   bound (`m_config.maxPayloadSize`), and the server never decrypts.
-* **Challenge nonces use a CSPRNG** — `CryptographicRandom::fillBuffer`, 32
+* **Challenge nonces use a CSPRNG** - `CryptographicRandom::fillBuffer`, 32
   bytes, shared per channel so proofs are comparable.
 
 ---
@@ -306,7 +301,7 @@ All in `vendor/server`, verified by a build that compiles and runs
 `ctest -R TestPersistentChatManager` as a build step (so a failing test fails
 the image), plus an e2e run showing no regression.
 
-**Findings 1 and 2 — `handlePchatKeyHolderReport`.** The handler now takes the
+**Findings 1 and 2 - `handlePchatKeyHolderReport`.** The handler now takes the
 certificate hash from the session rather than the wire and refuses a report
 whose `cert_hash` names anyone else, the way `handlePchatMessage` always has. A
 session with no certificate is refused outright: every identity in this
@@ -314,27 +309,27 @@ subsystem *is* a certificate hash. It then requires `hasEnterPermission`,
 checked after the takeover dispatch because takeover carries its own, stronger,
 KeyOwner check.
 
-**Finding 4 — the sole-holder reset.** `!otherHolderExists` was not the same
-question as "is the sole holder": on a channel with *no* recorded holders — the
-state right after a takeover or a wipe — it handed the reset to whoever asked
+**Finding 4 - the sole-holder reset.** `!otherHolderExists` was not the same
+question as "is the sole holder": on a channel with *no* recorded holders - the
+state right after a takeover or a wipe - it handed the reset to whoever asked
 first. It now requires `selfIsHolder && !otherHolderExists`.
 
-**Finding 5 — stored sender keys.** `sendStoredSenderKeyDistributions` carries
+**Finding 5 - stored sender keys.** `sendStoredSenderKeyDistributions` carries
 its own `hasEnterPermission` check rather than trusting its caller, because its
 caller reaches it from the auto-verify path where "verified" is granted on the
 strength of a self-report.
 
-**Findings 6 and 7 — rate limiting.** Six previously unlimited operations
+**Findings 6 and 7 - rate limiting.** Six previously unlimited operations
 (`key_holder_report`, `key_challenge_response`, `key_holders_query`,
 `sender_key_distribution`, `epoch_countersig`, `delete_messages`) now have
 budgets. All buckets are keyed on the certificate hash instead of the session
 id, so a limit is no longer cleared by reconnecting; certificate-less clients
 fall back to the session id, because keying them all on one shared empty string
 would let any one of them drain the bucket for every other.
-`IRateLimiter::reset` — implemented, documented "e.g. on disconnect", and never
-called — is now called on disconnect.
+`IRateLimiter::reset` - implemented, documented "e.g. on disconnect", and never
+called - is now called on disconnect.
 
-**Finding 8 — verified sessions outliving their session.** The guard at
+**Finding 8 - verified sessions outliving their session.** The guard at
 `Server.cpp:1856` and its twin inside `onUserDisconnected` are gone; only the
 pending-key-request cleanup, which genuinely needs a hash, is still conditional
 on one. The cleanup that already existed now runs for every disconnect.
@@ -353,8 +348,8 @@ reaching the challenge now requires Enter permission on the channel and a
 certificate that is your own. That reduces the attack from *any authenticated
 client* to *a member of the channel*.
 
-It does **not** restore the distinction the challenge exists to enforce — "in
-the channel" versus "holds the key" — because the server still has no ground
+It does **not** restore the distinction the challenge exists to enforce - "in
+the channel" versus "holds the key" - because the server still has no ground
 truth to check a proof against. The first prover still defines the reference.
 Closing it needs a value the server can recompute: a channel key commitment
 stored with the channel, so no client defines the truth. Options, roughly
@@ -366,7 +361,7 @@ increasing cost:
   window, and require an existing holder to countersign a reset (needs a schema
   migration);
 * treat the first prover as unverified until a second, independent holder agrees
-  — quorum rather than first-come.
+  - quorum rather than first-come.
 
 I did not pick one. Each changes the client contract, and that is a design
 decision rather than a defect fix.
@@ -378,12 +373,12 @@ decision rather than a defect fix.
 328 lines at the time of the audit, against murmur's 3 007. The key-holder and
 challenge subsystem does not exist yet, so findings 1–8 have no counterpart.
 What is there had gaps of its own, and they are not "not implemented yet" gaps:
-Starling already has the facilities — `Permit`, which asks the `permissions`
-service, and `Perm` — and `text` uses them on exactly this path. `pchat` simply
+Starling already has the facilities - `Permit`, which asks the `permissions`
+service, and `Perm` - and `text` uses them on exactly this path. `pchat` simply
 did not.
 
 Every relay was also unaddressed and unauthorised, which turned out to be one
-defect wearing four faces (S3, S5, S6, S7) — the routing and the authorisation
+defect wearing four faces (S3, S5, S6, S7) - the routing and the authorisation
 are the same question, and answering it needed the same field.
 
 **What Starling gets right, and murmur gets right only by a check:** the sender
@@ -391,45 +386,45 @@ is taken from the connection (`message.sender = inbound.session`), overwriting
 whatever the client claimed. That is finding 2 made structurally impossible
 rather than validated.
 
-## S1. `Fetch` served any channel's archive, unchecked — High (fixed)
+## S1. `Fetch` served any channel's archive, unchecked - High (fixed)
 
 `self.fetch(inbound.scope, &request)` ran on a channel id straight off the wire,
 with no permission check of any kind. Any authenticated client could page
 through the stored ciphertext of any channel on the server, including ones it
 cannot see. Now gated on `Perm::ENTER`, matching murmur's `handlePchatFetch`.
 
-## S2. Messages stored into any channel the client names — High (fixed)
+## S2. Messages stored into any channel the client names - High (fixed)
 
 Same root cause on the write side. Now gated on `Perm::TEXT_MESSAGE`, checked
-*before* the store rather than before the relay — refusing only the relay still
+*before* the store rather than before the relay - refusing only the relay still
 leaves the row in someone else's archive.
 
 Both use `Permit`, which denies when `permissions` is unreachable, so a broken
 dependency closes the archive rather than opening it.
 
-## S3. Every relay reached all authenticated sessions — High (fixed)
+## S3. Every relay reached all authenticated sessions - High (fixed)
 
 `broadcast_except(inbound.session, ...)` builds a `Send` with no `conns` and no
 `sessions`, and the gateway's `deliver` falls back to
-`registry.authenticated()` — every connection whose session is non-zero
+`registry.authenticated()` - every connection whose session is non-zero
 (`crates/gateway/src/connection.rs:254`). So a stored pchat message, and every
 verbatim-relayed key-distribution frame, went to every client on the server
 rather than to the channel.
 
 The ciphertext stays opaque. What leaked is who sent a message, when, in which
-channel — and the ciphertext itself, which is what an offline attack wants.
+channel - and the ciphertext itself, which is what an offline attack wants.
 
 **Fixed** with a `Roster` in the runtime (`crates/runtime/src/roster.rs`):
 subscribe to `session-view`, fold the events, and answer "who is in this
 channel" from local state. It is the shape `voice` already uses for the packet
 path, lifted rather than written a third time.
 
-### The same leak in `text` — fixed, **not committed**
+### The same leak in `text` - fixed, **not committed**
 
 `text` relayed identically, and its module doc said so as a design decision:
 "Fan-out names the speaker as an *exclusion* rather than filtering here: only
 the gateway knows which sessions it holds." That reasoning is the defect. The
-gateway does know which sessions it holds — *all of them* — so excluding the
+gateway does know which sessions it holds - *all of them* - so excluding the
 speaker from a `Send` that names nobody leaves everyone else **on the server**,
 not everyone else in the channel. Plain-text chat, so not even ciphertext.
 
@@ -439,18 +434,18 @@ every channel it names, and the members of every channel under a `tree_id`,
 minus the sender. Four tests cover it, including the cold-roster case.
 
 It is **deliberately not committed.** `crates/services/text/src/lib.rs` carries
-unrelated in-progress work — a `bound_body` extraction, the `filter` module,
-`refused` — in the same function, and hand-splicing my hunks out of somebody
+unrelated in-progress work - a `bound_body` extraction, the `filter` module,
+`refused` - in the same function, and hand-splicing my hunks out of somebody
 else's mid-refactor is how a broken merge gets made. It should land with that
 work. `starling-text` is 22/22 with the fix applied.
 
 The important property is what a **cold** roster does: it addresses nobody
 rather than everybody. Falling back to a broadcast when membership is unknown is
 the leak itself, so readiness gates on the first snapshot the way `voice` gates
-on its cache being warm — a pod that cannot address a channel is not handed
+on its cache being warm - a pod that cannot address a channel is not handed
 traffic.
 
-## S4. No rate limiting — Medium (fixed)
+## S4. No rate limiting - Medium (fixed)
 
 The module doc claimed the service owned "storage, fan-out, offline queues,
 key-holder bookkeeping and rate limiting". There was no limiter in it. The only
@@ -460,50 +455,48 @@ than per operation, so a client could store messages and make the database page
 through the archive as fast as its socket allowed.
 
 **Fixed** in `crates/services/pchat/src/limits.rs`, reusing the runtime's
-existing `TokenBucket` rather than inventing a limiter. Three buckets — message,
-fetch, key management — so a burst of one cannot exhaust another. Keyed on the
+existing `TokenBucket` rather than inventing a limiter. Three buckets - message,
+fetch, key management - so a burst of one cannot exhaust another. Keyed on the
 **connection**, because that is the identity `ClientService::closed` reports and
 therefore the one that can actually be evicted; evicting it is the point, since
 this is exactly where the C++ limiter had a `reset` method and no caller.
 
-## S5. `KeyDeliver` was broadcast to the channel — High (fixed)
+## S5. `KeyDeliver` was broadcast to the channel - High (fixed)
 
 `KeyDeliver` carries `sealed_key` and names a single `recipient`. The verbatim
 relay sent it to everyone, handing every member of the channel a copy of key
 material addressed to one of them. It is a unicast now.
 
-## S6. Forged server-to-client bodies were relayed — High (fixed)
+## S6. Forged server-to-client bodies were relayed - High (fixed)
 
 `FetchResponse` and `PinList` are answers the *server* sends. The catch-all
 relayed whatever a client sent, unaltered, so a client could hand another client
 a fabricated history page or pin list. A client may not originate them at all.
 
-## S7. Relayed bodies were never authorised — High (fixed)
+## S7. Relayed bodies were never authorised - High (fixed)
 
 I originally wrote that the verbatim relay "cannot check a permission without
-teaching the service every body type — which is the coupling the verbatim relay
+teaching the service every body type - which is the coupling the verbatim relay
 exists to avoid". **That was wrong.** Every body except `Ack` carries a
 `channel` field, and reading it is not understanding the payload: it is the
 routing address, sitting beside the ciphertext rather than inside it.
 
-Each body is now routed *and* authorised from that field — `Enter` for key
+Each body is now routed *and* authorised from that field - `Enter` for key
 management and receipts, `TextMessage` for reactions and pins, `DeleteMessage`
-for deletes — while still being relayed byte-for-byte, because re-encoding a
+for deletes - while still being relayed byte-for-byte, because re-encoding a
 body whose meaning this service does not know is how a relay corrupts things.
-The claim that this required coupling was the thing standing between the audit
-and the fix, which is worth recording.
 
 ## What this audit did not cover
 
-* **Client-side cryptography** — key derivation, the Signal implementation, SKDM
+* **Client-side cryptography** - key derivation, the Signal implementation, SKDM
   encryption. Finding 5's residual severity depends on it.
-* **The database layer** — `PChat*` tables, SQL construction, and whether
+* **The database layer** - `PChat*` tables, SQL construction, and whether
   `deleteBySender` and friends are parameterised.
 * **`handlePchatEpochCountersig`** (`:451`) and `handleKeyOwnerTakeover`
   (`:889`), both of which look security-relevant and neither of which I read in
   full.
 * **Exploitability.** No finding was demonstrated by exploit. The fixes are
-  covered by unit tests that assert the *refusal* — which proves the gate is
+  covered by unit tests that assert the *refusal* - which proves the gate is
   there, not that it was reachable before. Finding 3 remains the one worth
   measuring rather than arguing, and finding 8's pool-wrap timing was argued
   from three cited lines, never run.
@@ -518,7 +511,7 @@ and the fix, which is worth recording.
   build step with `--no-tests=error` and no `|| true`, so the image cannot be
   produced if a test fails. 9 new regression tests.
 * e2e after the change: `audit-log` 7/2, `pchat-control-plane` 1/1,
-  `pchat` 1/0, `signal-pchat` 2/0 — unchanged from before it, i.e. no
+  `pchat` 1/0, `signal-pchat` 2/0 - unchanged from before it, i.e. no
   regression. (`signal-pchat` timed out once on the known connect-wizard flake
   and passed on re-run.) The pre-existing `pchat-control-plane` and `audit-log`
   failures are unrelated to this audit and tracked in
@@ -529,7 +522,7 @@ and the fix, which is worth recording.
 * `vendor/starling`: `starling-pchat` 13/13, `starling-runtime` 252/252 and
   `starling-text` 22/22,
   clippy and fmt clean for both files touched. Verified again in a throwaway
-  worktree at the commit itself — 13/13 and 230/230 — because the runtime's
+  worktree at the commit itself - 13/13 and 230/230 - because the runtime's
   `lib.rs` carried unrelated uncommitted work and only the one line adding the
   roster module was staged; the point of that check was that the commit builds
   without the rest of the working tree. Other crates have pre-existing
