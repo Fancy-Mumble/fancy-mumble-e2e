@@ -39,7 +39,24 @@ const PRIVATE_SERVER = [
   "src/tests/starling-voice.multiclient.test.ts",
 ];
 
-/** Every test file, minus the ones that bring their own server. */
+/**
+ * Files this run refuses to start, by basename, from `E2E_SKIP`.
+ *
+ * The suite's own preconditions skip what a machine cannot do, but they cannot
+ * see what a machine does *badly*: the screen-share fps floors are real
+ * assertions that a software-rendered display fails on merit. Named here, they
+ * stay opt-out for the nightly and mandatory everywhere else.
+ *
+ *   E2E_SKIP=screenshare.gpu.test.ts,screenshare.performance.test.ts
+ */
+const skipped = new Set(
+  (process.env.E2E_SKIP ?? "")
+    .split(",")
+    .map((name) => name.trim())
+    .filter(Boolean),
+);
+
+/** Every test file, minus the ones that bring their own server or are skipped. */
 function sharedFiles(): string[] {
   const listing = spawnSync(
     process.execPath,
@@ -50,7 +67,8 @@ function sharedFiles(): string[] {
     .split("\n")
     .filter((name) => name.endsWith(".test.ts"))
     .map((name) => `src/tests/${name}`)
-    .filter((file) => !PRIVATE_SERVER.includes(file));
+    .filter((file) => !PRIVATE_SERVER.includes(file))
+    .filter((file) => !skipped.has(path.basename(file)));
 }
 
 /**
@@ -128,6 +146,8 @@ function announce(): void {
       `  starling ${describeTree(path.join(repoRoot, "vendor", "starling"))}` +
       `  waits ${config.waitTimeout}ms`,
   );
+  // A run that quietly covered less than it looks like is worse than a red one.
+  if (skipped.size) console.log(`e2e: skipping  ${[...skipped].join(" ")}`);
 }
 
 const argv = process.argv.slice(2);
