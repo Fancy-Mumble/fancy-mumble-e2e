@@ -1,112 +1,162 @@
 # The suite against Starling, measured
 
-The first full run of the e2e suite against **Starling** rather than the C++
-fork, on **2026-08-06**. `vendor/server` is obsolete, so this is now the number
-that matters.
-
-Both sides were release builds of that day's code: the client carrying the
-epoch-1 canon codec, Starling carrying the whole protocol port. Run with
-`npm run e2e`, which starts one Starling on 64738 for the whole sweep.
+Baseline of **2026-08-08**, and the first one taken with a working instrument.
 
 ```
-47 suites   23 ok (5 of them skips)   24 not ok
-106 tests   50 pass   40 fail   16 cancelled        37m 39s
+47 suites   15 gated   14 green   18 red
+81 tests    40 pass    34 fail    7 cancelled       31 min 33 s
+harness 6545238  client 8f5599f  starling 063432b   waits 15000ms
 ```
 
-A cancelled test is one whose `before` hook failed, so the count of failures
-understates nothing: a hook that cannot reach a server cancels every test under
-it, and those sixteen are the same story as the failure above them.
+Every run now prints that last line, because a sweep is evidence about a
+*state*, and two sweeps that disagree are only interesting once you know
+whether the code differed.
 
----
+## What changed since 2026-08-06, and why the numbers are not comparable
 
-## 1. What passes
+The previous sweep read `50 pass / 40 fail / 16 cancelled` out of 106 tests.
+That number was measured through three faults that have since been fixed, so it
+was never a statement about Starling:
 
-Not a smoke test. These drive two real client windows against a real server.
+* **The client aborted on every message notification.** `tauri-plugin-notification`
+  runs notify-rust's blocking D-Bus call on the async runtime; with zbus in
+  tokio mode that panics, and `panic = "abort"` killed the process. Only
+  *receivers* died, which is why multi-client suites failed in ways that looked
+  like delivery bugs. Fixed in the client; proven by a control experiment.
+* **Dropdowns stopped working.** The WebKitWebDriver that ships with 26.04
+  refuses to click `<option>`, so every channel created through the editor
+  silently lost its pchat protocol, expiry mode and room settings.
+* **Confirmed joins reported failure.** `waitForMembership` used WebDriver's
+  `getText()`, which returns only *rendered* text, on a sidebar row the CSS
+  clips to an avatar initial. The user had moved; the check could not see it.
+
+And the artifact was incomplete: `cargo tauri build` alone ships no
+`libsignal_bridge.so`, no DeepFilterNet and no qt6ui. `scripts/build-client.sh`
+now produces a complete one and checks it. DeepFilterNet went green on that
+alone.
+
+**Tests are also no longer counted the same way.** 15 suites now gate
+themselves and drop out of the totals entirely, rather than failing on a
+15-second timeout per assertion. 81 registered tests instead of 106 is that
+change, not lost coverage.
+
+## 1. Green (14 suites)
+
+Two and three real client windows against a real server.
 
 | Suite | What it proves |
 |---|---|
-| `signal pchat: full E2E decryption across members` | the key ladder works end to end |
-| `signal pchat: forward secrecy for late joiners` | a joiner cannot read history |
 | `multi-client: presence + messaging` | the thing a chat server is for |
-| `voice fidelity` | real speech, correlation 0.748 against a 0.55 floor, 0 ms dropout |
-| `voice-state sync`, `multi-client: voice UI state` | mute/deafen across clients and reconnects |
-| `channels: SuperUser create + cross-client visibility` | the tree, live, to a second client |
-| `channels: hidden, expiring + meeting rooms` | the Fancy channel kinds |
 | `registration` | sign up, confirm, use the account |
-| `security: registered-name impersonation is rejected` | the guard that name is identity |
+| `security: registered-name impersonation is rejected` | name is identity |
+| `channels: SuperUser create + cross-client visibility` | the tree, live, to a second client |
+| `root channel: occupants stay visible in the tree` | the root-channel regression guard |
+| `voice fidelity` | real speech through the round trip |
+| `voice-state sync`, `multi-client: voice UI state` | mute/deafen across clients and reconnects |
+| `audio resampling 44.1k / 192k` | the capture path at both rates |
+| `DeepFilterNet noise suppression` | the denoiser, once built with its feature |
+| `link preview` | server-generated embeds |
 | `server compatibility: control-path boundaries` | the frame limits |
-| `admin: creating a role via the Roles wizard` | ACL groups from the admin UI |
-| `audio resampling 44.1k / 192k`, `DeepFilterNet` | the audio path |
-| `root channel occupants`, `qt6ui ghost session`, `smoke` | |
+| `smoke: connect + chat` | the whole rig |
 
-## 2. What fails, and which of it is Starling's
+## 2. Gated (15 suites) - not a statement about Starling
 
-**Read the categories, not the total.** Half of the failing suites are not
-measuring the server at all.
+These skip in under a millisecond with a reason that names the fix. They are
+not failures and are not counted as any.
 
-### 2.1 Missing infrastructure - not Starling (5 suites)
+| Why | Suites | To run them |
+|---|---|---|
+| Starling has no `fancy-calendar` plugin | calendar x4 | `E2E_SERVER_PLUGINS=fancy-calendar` once it ships |
+| Starling has no `fancy-friends` plugin | friend-chat x3 | `E2E_SERVER_PLUGINS=fancy-friends` once it ships |
+| Local service down | admin UI dashboard, channel viewer (Ice), user manager | bring up the compose profile / user-manager stack |
+| murmur-only by design | `murmur: temporary group membership` | `E2E_SERVER_IMPL=murmur` with the Ice fixture |
+| Artifact not built | `qt6ui: disconnect leaves no ghost session` | `scripts/build-client.sh` |
+| Client feature not merged | forums, file-server upload, friend-chat upload | (unchanged; static skips) |
 
-| Suite | Needs |
-|---|---|
-| `admin UI health dashboard` | the admin UI on `127.0.0.1:5007` (`channelviewer` compose profile) |
-| `channel viewer (Ice)` | murmur's Ice port 6502 |
-| `murmur: temporary group membership` | Ice; it is a *parity* test against the fork by design |
-| `user manager: sign up…` | the user-manager stack |
-| `file-server upload`, `forums`, `friend chat file upload` | client UI that is not merged |
+`friends.open` / `friends.room` / `__dm:` provisioning and the calendar surface
+appear nowhere in Starling's source. Those suites measure roadmap features, and
+belong on a roadmap rather than in a failure count.
 
-These skip or fail for want of a container. None of them is a statement about
-the port.
+## 3. Red (18 suites, 33 real failures)
 
-### 2.2 Real gaps in Starling (18 suites)
+### 3.1 Blocked by one gap: Starling drops `pchat_protocol` (6 suites, 9 tests)
 
-The list `FANCY-PARITY.md` §3 predicted, now measured rather than remembered:
+`signal pchat` x3, `persistent chat control messages`, `persistent chat: history
+replay`, `meetings: server-provisioned E2E rooms`.
 
-* **persistent chat delivery** - `persistent chat control messages`,
-  `persistent chat: history replay`, `friend chat 1:1: no pchat message loss`,
-  `friend chats: E2E persisted channels`, `signal pchat: bridge smoke`.
-  The cryptography works (§1) and the *delivery* does not: the control plane
-  answers and the message does not arrive.
-* **reactions** - `reactions: cross-client`. A reaction never appears on the
-  other client.
-* **the Fancy control-plane fan-out** - `Fancy control-plane fan-out`.
-* **calendar** - four suites: notifications, offline invite, constellations,
-  plugin gating. The calendar is plugin territory (`FANCY-PARITY.md` §1), which
-  is the structural gap, not a defect.
-* **screen share** - four suites: delivery health, GPU pipeline fps, pixel
-  fidelity, performance. The SFU is wired now (`crates/sfu`), but these measure
-  frames arriving, which needs the media path end to end.
-* **camera share**, **scheduled messages**, **meetings: server-provisioned E2E
-  rooms**, **admin: deleting a detached channel**, **audit log ingest**.
+`pchat_protocol` exists **only** in Starling's `.proto` files. No Rust file
+reads, stores or echoes it, and the `channel` table has no such column:
 
-### 2.3 Fixed since the run (1 suite)
-
-* **`link preview`** - the client sent `FancyLinkPreviewRequest` as flat type
-  132, which had no canon arm, so it took the `PluginData` relay; the service
-  only ever decodes a `LinkPreviewEnvelope` under outer type 1016. The server
-  fetched correctly and the request never arrived. Both ends now speak the
-  canon, and `PreviewRequest` carries `repeated urls`, because a chat message
-  has as many links as somebody typed.
-
----
-
-## 3. How to run it
-
-```sh
-npm run e2e                      # every shared-server file
-npm run e2e -- src/tests/x.ts    # one file
-npm run e2e:private              # the two files that start their own server
+```
+server_id, id, parent_id, name, description, position, max_users, flags,
+expiry_mode, expiry_duration_s, created_at_ms
 ```
 
-Two things the harness cannot do for you:
+So the client sends `SetChannelState { pchat_protocol: SignalV1 }`, Starling
+keeps every other field and silently discards that one. No channel can ever
+*be* encrypted, the persistence banner never renders, and every E2E suite fails
+on its first assertion. Verified end to end: a channel created as `signal_v1`
+comes back from the operator API with no persistence field at all.
 
-* **`msedgedriver` must match the machine's WebView2 version**, and it is not
-  in any repo. `scripts/install-msedgedriver.ps1`, then point
-  `E2E_NATIVE_DRIVER` at it.
-* **Build first.** The runner deliberately does not: it prints both binaries
-  and their timestamps instead, because the trap that has cost this suite the
-  most time is a stale release binary quietly passing tests against code from
-  days ago.
+The pchat message store already exists and is wired (`pchat_message` even has a
+`protocol` column), so this is plumbing rather than a new subsystem: add the
+column and serialize it in `crates/services/metadata` the way `expiry_mode` and
+`expiry_duration_s` already are, then echo it in ChannelState.
 
-`E2E_SERVER_IMPL=murmur` still selects the fork for a parity run. It is not the
-default, deliberately - a default that fell back to the fork would make an
-unported feature look ported.
+**Highest-yield fix on the board.** Nothing else in this cluster is worth
+debugging until it lands, because none of it can currently be exercised.
+
+### 3.2 Media path (6 suites, 13 tests)
+
+`screen sharing` x3 (pixel fidelity, GPU fps, performance), `screen share:
+delivery health`, `camera share` x1 suite / 4 tests.
+
+The SFU is wired (`crates/sfu`); these measure frames actually arriving, decoded
+and on time. Largest single effort on the list - schedule it last of the server
+work. Note the fps floors are real assertions that a software-rendered display
+fails on merit, which is what `E2E_SKIP` exists for on a machine without a GPU.
+
+### 3.3 Audit (1 suite, 8 tests)
+
+`audit log: ingest + admin viewer` - the hash-chain store, ingest, the admin tab
+gate, the query and the chain-status card. Starling has an audit service, so
+this is wiring rather than absence. Biggest single-suite win after 3.1.
+
+### 3.4 Channel lifecycle (2 suites, 6 tests)
+
+`channels: hidden, expiring + meeting rooms` (5 of 8 tests fail; **expiry and
+sliding-expiry reaping now pass** - they went green the moment the harness bugs
+were fixed, which is the whole argument for re-measuring before debugging), and
+`admin: deleting a detached channel`. What remains is the meeting-room and
+invitee flow.
+
+### 3.5 Control plane and social (3 suites, 6 tests)
+
+`Fancy control-plane fan-out` (polls, typing indicators), `reactions:
+cross-client`, `multi-client: scheduled messages`.
+
+### 3.6 Known flake (1 test)
+
+`admin: creating a role via the Roles wizard` - "the wizard's top Back button
+returns to the Roles tab". Times out under full-sweep load, passes in isolation
+in ~750 ms, twice. Counted in the 34 the runner reports; not counted in the 33
+above.
+
+## 4. How to run it
+
+```sh
+npm run e2e                      # every shared-server file (~32 min)
+npm run e2e -- --private         # the two files that bring their own server
+scripts/red-set.sh               # only the red files (~21 min)
+scripts/red-set.sh pchat         # one cluster
+E2E_WAIT_MS=8000 scripts/red-set.sh   # a faster local loop
+```
+
+Build the client with `scripts/build-client.sh`, not a bare `cargo tauri build`
+- see `docs/HANDOFF-e2e-remaining.md` for what the plain build leaves out.
+
+## 5. The rule
+
+**Zero unexplained reds.** Every red is either an open bug with an owner, or a
+gate with a reason. The moment one is neither, it is the top priority - that
+discipline is what keeps this file worth reading.
