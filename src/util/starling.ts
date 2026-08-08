@@ -1,5 +1,5 @@
 import { spawn, type ChildProcess } from "node:child_process";
-import { mkdtempSync, rmSync, existsSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdtempSync, rmSync, existsSync, writeFileSync } from "node:fs";
 import net from "node:net";
 import os from "node:os";
 import path from "node:path";
@@ -223,89 +223,73 @@ export class StarlingServer {
 }
 
 /**
- * The shipped deployment TOML with every port moved out of the way.
+ * The configuration this run needs, as a delta.
  *
- * **Derived rather than written.** `--config` replaces the configuration
- * outright — `Config::load` deserialises the file over `Config::default()` and
- * never merges `with_defaults`, so a hand-written fixture naming only the ports
- * produces a server with an empty service map: no routes, no rate-limit
- * buckets, and a client that handshakes into a server which answers nothing.
- * Starting from the file the project ships also means this fixture cannot drift
- * from production about which service owns which wire type, which is the one
- * disagreement that would make these tests prove the wrong thing.
+ * **Written, not derived.** `Config::load` builds `with_defaults` and then
+ * overlays the file onto it, so everything not named here - the service map,
+ * the routing table, the rate-limit buckets - comes from the defaults. This
+ * used to be a copy of `starling.example.toml` with a dozen regex edits
+ * applied, back when `--config` replaced the defaults outright and a partial
+ * file produced a server with an empty service map.
+ *
+ * That derivation broke silently the day the example was rewritten as its own
+ * delta: `all_in_one = false` and the whole `[services.operator-api]` block
+ * stopped existing, every `.replace()` matched nothing, and the run got a
+ * server with no admin plane. The visible symptom was eleven `before` hooks
+ * failing to set the SuperUser password, several minutes and one misleading
+ * error away from the cause. A file we write cannot drift out from under us
+ * like that.
  *
  * Three ports move together and for different reasons. `listen_tcp` is the
  * control connection; `virtual_servers[].port` is what the server reports about
- * itself; and voice's `udp_listen` is where audio actually goes — murmur binds
+ * itself; and voice's `udp_listen` is where audio actually goes - murmur binds
  * TCP and UDP on one number and every Mumble client sends its datagrams to
  * whatever port it made TCP to, so a voice socket left on the default is a
  * server that handshakes perfectly and carries no audio.
- *
- * The two HTTP listeners move as well. They are unrelated to the protocol under
- * test, and a fixed 8080 collides with the previous instance that has not
- * finished releasing it — which fails as a *server* start-up error, several
- * assertions away from the cause.
- *
- * # The endpoints are rewritten, not kept
- *
- * The shipped file names `unix:` sockets, and the documentation says
- * `--all-in-one` ignores endpoints. It does not: an endpoint is still required
- * and still validated, so on Windows every service fails to start with *"is not
- * an endpoint: write http://host:port, pipe:name or inproc:name"* and the
- * gateway then serves a port with nothing behind it. `inproc:` is what
- * all-in-one actually uses and is the same on every platform.
  */
 function config(port: number, http: number, dataDir: string): string {
-  // The template must come from the same tree as the binary: a binary built
-  // from one commit refuses a template written for another (unknown or missing
-  // fields are startup errors). E2E_STARLING_BIN points at
-  // <tree>/target/<profile>/starling, so the tree root is two directories up;
-  // fall back to the vendored copy when the binary lives somewhere bare.
-  const binTreeTemplate = path.resolve(path.dirname(STARLING_BIN), "..", "..", "starling.example.toml");
-  const templatePath = existsSync(binTreeTemplate)
-    ? binTreeTemplate
-    : path.join(repoRoot, "vendor", "starling", "starling.example.toml");
-  const template = readFileSync(templatePath, "utf8");
-  const auditLog = path.join(dataDir, "operator-audit.log");
-  return template
-    .replace(/^all_in_one = false$/m, "all_in_one = true")
-    .replace(/^port = 64738$/m, `port = ${port}`)
-    .replace(/^listen_tcp = "0\.0\.0\.0:64738"$/m, `listen_tcp = "127.0.0.1:${port}"`)
-    .replace(/^udp_listen = "0\.0\.0\.0:64738"/m, `udp_listen = "127.0.0.1:${port}"`)
-    .replace(/^listen = "0\.0\.0\.0:8080"$/m, `listen = "127.0.0.1:${http}"`)
-    .replace(/^listen = "127\.0\.0\.1:8081"$/m, `listen = "127.0.0.1:${http + 1}"`)
-    // The operator API ships disabled, which is right for a real deployment
-    // and wrong here: it is the only administrative surface Starling has, and
-    // the suite sets the SuperUser password through it.
-    //
-    // Matched on its section header, not on the first `enabled = false` in the
-    // file — that one belongs to `[services.directory]`, the public server-list
-    // announcer, and turning *that* on would have every e2e run phone a public
-    // directory while leaving the operator API off.
-    .replace(
-      /^\[services\.operator-api\]\r?\nenabled = false$/m,
-      '[services.operator-api]\nenabled = true',
-    )
-    .replace(/^endpoint = "unix:\/run\/starling\/(.*)\.sock"$/gm, 'endpoint = "inproc:$1"')
-    // The operator API's audit sink ships as /var/log/starling with
-    // fail_closed = true, so a non-root runner cannot write it and every
-    // operator-API call 503s — including the SuperUser-password setup the suite
-    // relies on. Point it at the per-run temp dir, which always exists and is
-    // writable.
-    .replace(
-      /^path = "\/var\/log\/starling\/operator-audit\.log"$/m,
-      `path = "${auditLog.replace(/\\/g, "\\\\")}"`,
-    );
+  const auditLog = path.join(dataDir, "operator-audit.log").replace(/\\/g, "/");
+  return `# Written by the e2e harness; overlaid on Starling's built-in defaults.
+[runtime]
+all_in_one = true
+data_dir = "${dataDir.replace(/\\/g, "/")}"
+
+[gateway]
+listen_tcp = "127.0.0.1:${port}"
+
+[services.voice]
+udp_listen = "127.0.0.1:${port}"
+
+[[virtual_servers]]
+id = 1
+port = ${port}
+
+[services.web]
+listen = "127.0.0.1:${http}"
+
+# The only administrative surface Starling has, and how the suite sets the
+# SuperUser password. Ships disabled, which is right for a deployment and
+# wrong here.
+[services.operator-api]
+enabled = true
+listen = "127.0.0.1:${http + 1}"
+tier = "optional"
+
+[services.operator-api.auth]
+mode = "token"
+
+[services.operator-api.auth.token]
+tokens = [{ value_env = "STARLING_ADMIN_TOKEN", scopes = ["*"] }]
+
+# Ships as /var/log/starling with fail_closed = true, which a non-root runner
+# cannot write - every operator-API call then 503s, including the SuperUser
+# setup eleven files depend on.
+[services.operator-api.audit]
+path = "${auditLog}"
+fail_closed = true
+`;
 }
 
-/**
- * Wait until nothing is accepting on `port` any more.
- *
- * Bounded, and it gives up quietly: a port still held after this is a problem
- * for whoever tries to bind it next, and that failure names the port. Throwing
- * here would replace it with a teardown error in a test that had already
- * finished.
- */
 async function released(port: number, timeout = 10_000): Promise<void> {
   const deadline = Date.now() + timeout;
   while (Date.now() < deadline) {
