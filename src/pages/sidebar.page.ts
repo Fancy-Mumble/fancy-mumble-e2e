@@ -4,6 +4,7 @@ import { delay } from "../util/wait";
 import { xpathLiteral } from "../util/xpath";
 import { setReactInputValue, setReactSelectValue } from "../util/input";
 import { config } from "../config";
+import { selectTab } from "../util/tabs";
 
 /**
  * Page object for the channel sidebar (ChannelSidebar.tsx + the flat
@@ -34,14 +35,7 @@ export class SidebarPage {
    * ElementNotInteractable). Switching back is idempotent via aria-selected.
    */
   private async ensureChannelsTab(): Promise<void> {
-    const tab = await this.d.wait(
-      until.elementLocated(By.xpath("//button[@role='tab' and normalize-space(.)='Channels']")),
-      10000,
-    );
-    if ((await tab.getAttribute("aria-selected")) !== "true") {
-      await tab.click();
-      await delay(200);
-    }
+    await selectTab(this.d, "Channels");
   }
 
   /** Wait for a channel with the given name to appear in the sidebar. */

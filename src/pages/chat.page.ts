@@ -4,6 +4,7 @@ import { xpathLiteral } from "../util/xpath";
 import { delay } from "../util/wait";
 import { needsScriptedInput, setReactInputValue } from "../util/astral";
 import { config } from "../config";
+import { selectTab } from "../util/tabs";
 
 /** Self-mute / self-deafen flags as reflected in the UI. */
 export interface VoiceFlags {
@@ -627,17 +628,10 @@ export class ChatPage {
 
   /** Activate the Members tab without requiring the member list to mount. */
   private async selectMembersTab(): Promise<void> {
-    // Activate the Members tab. Checking only DOM presence of the member list is
-    // not enough: once mounted the pane stays in the DOM (display:none) when the
-    // Channels tab is active, so its rows would be located but not interactable.
-    // Gate on the tab's aria-selected, mirroring sidebar.ensureChannelsTab.
-    const tab = await this.d.wait(
-      until.elementLocated(By.xpath("//button[@role='tab' and normalize-space(.)='Members']")),
-      10000,
-    );
-    if ((await tab.getAttribute("aria-selected")) !== "true") {
-      await tab.click();
-    }
+    // Gate on aria-selected, not on DOM presence of the member list: once
+    // mounted the pane stays in the DOM (display:none) while the Channels tab
+    // is active, so its rows would be located but not interactable.
+    await selectTab(this.d, "Members");
   }
 
   /**

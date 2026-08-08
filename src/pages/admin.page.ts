@@ -36,13 +36,38 @@ export class AdminPage {
     await tab.click();
   }
 
-  /** Switch to the "Roles" tab. */
+  /**
+   * Switch to the "Roles" tab, and confirm it took.
+   *
+   * A single unverified click was the flake here: under load the click can be
+   * swallowed by a re-render, the panel stays on Users, and the failure lands
+   * 15 s later in `waitForWizardReady` as "the wizard never rendered its name
+   * field" - a message about the wizard, for a tab that never opened.
+   *
+   * Confirmed by the pane's own content, because the two obvious signals are
+   * not available: these tab buttons carry no `aria-selected`, and the URL
+   * stays `/admin` until a *back* navigation adds `?tab=roles`. The create
+   * button is what the caller needs next anyway, so waiting for it is both the
+   * check and the precondition.
+   */
   async openRolesTab(): Promise<void> {
-    const tab = await this.d.wait(
-      until.elementLocated(By.xpath("//button[normalize-space(.)='Roles']")),
-      10000,
+    const onRoles = async () =>
+      (await this.d.findElements(byTid(TID.rolesCreateButton))).length > 0;
+    await this.d.wait(
+      async () => {
+        if (await onRoles()) return true;
+        const [tab] = await this.d.findElements(By.xpath("//button[normalize-space(.)='Roles']"));
+        if (!tab) return false;
+        try {
+          await tab.click();
+        } catch {
+          return false; // re-render mid-click; the next pass re-finds it
+        }
+        return onRoles();
+      },
+      config.waitTimeout,
+      "the Roles tab never showed its create button",
     );
-    await tab.click();
   }
 
   /** Click "+ Create role" on the Roles tab (must already be open). */
