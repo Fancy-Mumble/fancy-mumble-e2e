@@ -29,6 +29,31 @@ PROFILE_DIR="$CLIENT/target/release"
 want_qt6ui=1
 [[ "${1:-}" == "--no-qt6ui" ]] && want_qt6ui=0
 
+# cros-libva 0.0.12 generates its VA-API bindings from whatever libva headers
+# are installed, and its own source only compiles against < 2.23: on 2.23 the
+# VP9 encode struct grew `seg_id_block_size` / `va_reserved8` and the crate's
+# initializer no longer matches, which surfaces as an E0063 deep inside a
+# dependency and looks nothing like "your libva is too new".
+#
+# Ubuntu 26.04 ships 2.23, so pin the headers to a 2.22 deb and point the crate
+# at them. Extracted anywhere; CROS_LIBVA_H_PATH must name the directory that
+# *contains* `va/va_version.h`.
+if [[ -z "${CROS_LIBVA_H_PATH:-}" ]] && command -v pkg-config >/dev/null; then
+    libva=$(pkg-config --modversion libva 2>/dev/null || echo "")
+    # pkg-config reports the ABI (1.x) for libva 2.x, so compare the minor.
+    minor=${libva#*.}; minor=${minor%%.*}
+    if [[ -n "$libva" && "${minor:-0}" -ge 23 ]]; then
+        echo "!! libva $libva is too new for cros-libva 0.0.12 (needs < 2.23)." >&2
+        echo "   The build will fail with E0063 in cros-libva's VP9 encode buffer." >&2
+        echo "   Fix: pin 2.22 headers and re-run:" >&2
+        echo "     curl -LO https://launchpad.net/ubuntu/+archive/primary/+files/libva-dev_2.22.0-2_amd64.deb" >&2
+        echo "     dpkg-deb -x libva-dev_2.22.0-2_amd64.deb /tmp/libva-2.22" >&2
+        echo "     CROS_LIBVA_H_PATH=/tmp/libva-2.22/usr/include scripts/build-client.sh" >&2
+        echo "   (cros-libva declares no rerun-if-env-changed, so after a failed" >&2
+        echo "    build also run: cargo clean -p cros-libva)" >&2
+    fi
+fi
+
 echo "==> signal-bridge (cdylib, separate crate)"
 (cd "$CLIENT/crates/signal-bridge" && cargo build --release)
 mkdir -p "$PROFILE_DIR"
@@ -38,7 +63,10 @@ cp "$CLIENT/crates/signal-bridge/target/release/libsignal_bridge.so" "$PROFILE_D
 # it abort with a bare "Too many open files" that names no file and looks like a
 # broken toolchain. Say what it actually is, and how to fix it, before building.
 instances=$(cat /proc/sys/fs/inotify/max_user_instances 2>/dev/null || echo 0)
-inuse=$(find /proc/*/fd -lname 'anon_inode:inotify' 2>/dev/null | wc -l)
+# `|| true` because find exits non-zero on the /proc entries of other users'
+# processes, and `set -o pipefail` would otherwise make this diagnostic abort
+# the build it exists to explain.
+inuse=$(find /proc/*/fd -lname 'anon_inode:inotify' 2>/dev/null | wc -l || true)
 if [[ "$instances" != 0 && "$inuse" -ge "$instances" ]]; then
     echo "!! inotify instances exhausted ($inuse/$instances) - the Tauri CLI's watcher" >&2
     echo "   cannot start and the build will abort with \"Too many open files\"." >&2
