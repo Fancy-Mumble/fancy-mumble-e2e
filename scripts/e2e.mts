@@ -63,9 +63,16 @@ function sharedFiles(): string[] {
  */
 function runTests(files: string[], operatorApi?: string): Promise<number> {
   return new Promise((resolve) => {
+    // A ceiling per test, so one wedged test cannot hold the whole run. A
+    // tauri-driver that fails to rebind its port leaves a test waiting on a
+    // WebDriver session that never arrives, and node:test has no timeout of its
+    // own — the run then sits for hours on one file. The default clears the
+    // slowest real tests (audio resampling, voice fidelity, ~45 s) with room to
+    // spare, and E2E_TEST_TIMEOUT raises it where legitimate work runs longer.
+    const testTimeout = process.env.E2E_TEST_TIMEOUT ?? "240000";
     const proc = spawn(
       process.execPath,
-      ["--import", "tsx", "--test", "--test-concurrency=1", ...files],
+      ["--import", "tsx", "--test", "--test-concurrency=1", `--test-timeout=${testTimeout}`, ...files],
       {
         cwd: repoRoot,
         stdio: "inherit",
