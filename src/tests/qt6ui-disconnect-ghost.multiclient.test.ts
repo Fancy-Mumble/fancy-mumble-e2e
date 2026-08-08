@@ -3,6 +3,7 @@ import { TauriApp } from "../app";
 import { config } from "../config";
 import { Qt6UiClient } from "../util/qt6ui";
 import { delay } from "../util/wait";
+import { qt6uiMissing } from "../util/preconditions";
 
 /**
  * Regression: disconnecting in the minimal Qt UI must actually close the
@@ -29,7 +30,7 @@ import { delay } from "../util/wait";
  * (FANCY_QT6UI_E2E_PORT, see the crate's src/e2e.rs and src/util/qt6ui.ts) -
  * QML is invisible to WebDriver.
  */
-describe("qt6ui: disconnect leaves no ghost session on the server", () => {
+describe("qt6ui: disconnect leaves no ghost session on the server", { skip: qt6uiMissing() }, () => {
   let observer: TauriApp;
   let qt: Qt6UiClient;
   const sfx = Date.now() % 100000;

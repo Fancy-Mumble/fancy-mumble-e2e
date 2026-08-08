@@ -4,6 +4,7 @@ import { TauriApp } from "../app";
 import { config } from "../config";
 import { CheckerboardWindow } from "../util/checkerboard";
 import { delay } from "../util/wait";
+import { tkinterMissing } from "../util/preconditions";
 
 /**
  * Screen-share PERFORMANCE floor, end-to-end through the Rust capture +
@@ -38,7 +39,7 @@ const MEASURE_MS = 10_000;
 /** Full-HD board: 16x9 cells of 120 px = 1920x1080. */
 const BOARD = { cols: 16, rows: 9, cell: 120 } as const;
 
-describe("multi-client: screen sharing performance (fps + latency)", () => {
+describe("multi-client: screen sharing performance (fps + latency)", { skip: tkinterMissing() }, () => {
   let alice: TauriApp;
   let bob: TauriApp;
   let board: CheckerboardWindow;

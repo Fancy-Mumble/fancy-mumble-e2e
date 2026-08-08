@@ -4,6 +4,7 @@ import { TauriApp } from "../app";
 import { config } from "../config";
 import { setSuperUserPassword } from "../util/server";
 import { delay } from "../util/wait";
+import { bridgeMissing } from "../util/preconditions";
 
 /**
  * End-to-end Signal Protocol (signal_v1) persistent chat across multiple real
@@ -48,7 +49,7 @@ async function connectAdmin(): Promise<TauriApp> {
   return app;
 }
 
-describe("signal pchat: full E2E decryption across members", () => {
+describe("signal pchat: full E2E decryption across members", { skip: bridgeMissing() }, () => {
   let admin: TauriApp;
   let bob: TauriApp;
   let carol: TauriApp;
@@ -117,7 +118,7 @@ describe("signal pchat: full E2E decryption across members", () => {
   });
 });
 
-describe("signal pchat: forward secrecy for late joiners", () => {
+describe("signal pchat: forward secrecy for late joiners", { skip: bridgeMissing() }, () => {
   let admin: TauriApp;
   let carol: TauriApp;
   const channelName = `e2e-fs-${Date.now() % 1000000}`;
@@ -160,7 +161,7 @@ describe("signal pchat: forward secrecy for late joiners", () => {
   });
 });
 
-describe("signal pchat: bridge smoke", () => {
+describe("signal pchat: bridge smoke", { skip: bridgeMissing() }, () => {
   let admin: TauriApp;
   const channelName = `e2e-sigsmoke-${Date.now() % 1000000}`;
 

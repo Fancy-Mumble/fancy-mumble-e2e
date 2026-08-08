@@ -4,6 +4,7 @@ import { TauriApp } from "../app";
 import { config } from "../config";
 import { setSuperUserPassword } from "../util/server";
 import { delay } from "../util/wait";
+import { pluginMissing } from "../util/preconditions";
 
 /**
  * Friend chats backed by E2E persisted channels.
@@ -19,7 +20,7 @@ import { delay } from "../util/wait";
  * Requires a server image with the `mumble-friends` plugin + a client with the
  * friend-chat routing (mumble-server:dev).
  */
-describe("friend chats: E2E persisted channels for registered users", () => {
+describe("friend chats: E2E persisted channels for registered users", { skip: pluginMissing("fancy-friends") }, () => {
   let admin: TauriApp;
   let bob: TauriApp;
   const sfx = Date.now() % 100000;

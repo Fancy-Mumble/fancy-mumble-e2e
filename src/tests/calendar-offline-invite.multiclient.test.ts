@@ -3,6 +3,7 @@ import { TauriApp } from "../app";
 import { config } from "../config";
 import { setSuperUserPassword } from "../util/server";
 import { delay } from "../util/wait";
+import { pluginMissing } from "../util/preconditions";
 
 /**
  * Offline-invite catch-up for the `fancy-calendar` relay - the *real* offline
@@ -30,7 +31,7 @@ import { delay } from "../util/wait";
  * (`ReadRegister`/`Register`) and a client build whose EventDialog merges that
  * directory into the invitee candidates.
  */
-describe("calendar: invite an offline registered user", () => {
+describe("calendar: invite an offline registered user", { skip: pluginMissing("fancy-calendar") }, () => {
   let admin: TauriApp;
   let bob: TauriApp;
   const sfx = Date.now() % 100000;

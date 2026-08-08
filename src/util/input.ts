@@ -33,3 +33,27 @@ export async function setReactInputValue(
     value,
   );
 }
+
+/**
+ * Pick a <select> option through the DOM instead of clicking the <option>.
+ *
+ * The WebKitWebDriver that ships with Ubuntu 26.04 refuses to click <option>
+ * elements directly (ElementNotInteractableError), which broke every dialog
+ * with a dropdown. Setting the value with the native setter and firing
+ * `change` — the event a real selection dispatches, and the one React binds
+ * onChange to for selects — is driver-independent.
+ */
+export async function setReactSelectValue(
+  d: WebDriver,
+  el: WebElement,
+  value: string,
+): Promise<void> {
+  await d.executeScript(
+    `const el = arguments[0], value = arguments[1];
+     const setter = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, "value").set;
+     setter.call(el, value);
+     el.dispatchEvent(new Event("change", { bubbles: true }));`,
+    el,
+    value,
+  );
+}

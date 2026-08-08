@@ -2,7 +2,7 @@ import { By, until, type WebDriver } from "selenium-webdriver";
 import { byTid, TID, MEMBER_NAME_ATTR } from "../selectors";
 import { delay } from "../util/wait";
 import { xpathLiteral } from "../util/xpath";
-import { setReactInputValue } from "../util/input";
+import { setReactInputValue, setReactSelectValue } from "../util/input";
 
 /**
  * Page object for the channel sidebar (ChannelSidebar.tsx + the flat
@@ -97,7 +97,7 @@ export class SidebarPage {
 
     if (opts.pchatProtocol) {
       const select = await this.d.findElement(By.css("#ch-ed-pchat"));
-      await select.findElement(By.css(`option[value="${opts.pchatProtocol}"]`)).click();
+      await setReactSelectValue(this.d, select, opts.pchatProtocol);
     }
 
     const wantHidden = opts.hidden || (opts.invitees?.length ?? 0) > 0;
@@ -129,13 +129,13 @@ export class SidebarPage {
 
     if (opts.expiryMode) {
       const modeSel = await this.d.findElement(By.css("#ch-ed-expiry-mode"));
-      await modeSel.findElement(By.css(`option[value="${opts.expiryMode}"]`)).click();
+      await setReactSelectValue(this.d, modeSel, String(opts.expiryMode));
       // The value+unit fields only render once a mode is chosen.
       const valueInput = await this.d.wait(until.elementLocated(By.css("#ch-ed-expiry-value")), 5000);
       await valueInput.clear();
       await valueInput.sendKeys(String(opts.expirySeconds ?? 0));
       const unitSel = await this.d.findElement(By.css("#ch-ed-expiry-unit"));
-      await unitSel.findElement(By.css('option[value="1"]')).click(); // seconds
+      await setReactSelectValue(this.d, unitSel, "1"); // seconds
     }
 
     const createBtn = await this.d.wait(
@@ -319,19 +319,30 @@ export class SidebarPage {
   }
 
   /**
+   * The self row's full text, or null when there is no self row.
+   *
+   * Read with `textContent`, NOT WebDriver's `getText()`: the sidebar clips the
+   * name and channel chip at narrow widths, so `getText()` — which returns only
+   * what is *rendered* — yields just the avatar initial ("S"). Membership was
+   * then never confirmed even though the user had moved, and every caller
+   * failed with "membership not confirmed" against a client that was in the
+   * right channel.
+   */
+  private async selfRowText(): Promise<string | null> {
+    return this.d.executeScript<string | null>(
+      `const row = document.querySelector('[data-testid="' + arguments[0] + '"][data-clickable="true"]');
+       return row ? row.textContent : null;`,
+      TID.memberItem,
+    );
+  }
+
+  /**
    * Wait until the local user is a MEMBER of `name`. The sidebar self row
    * (the only member-item with data-clickable=true) carries a channel chip
    * showing the channel the user is currently in.
    */
   async waitForMembership(name: string, timeout = 12000): Promise<void> {
-    await this.d.wait(async () => {
-      const rows = await this.d.findElements(
-        By.css(`[data-testid="${TID.memberItem}"][data-clickable="true"]`),
-      );
-      if (rows.length === 0) return false;
-      const text = await rows[0].getText().catch(() => "");
-      return text.includes(name);
-    }, timeout);
+    await this.d.wait(async () => (await this.selfRowText())?.includes(name) ?? false, timeout);
   }
 
   /**
@@ -341,11 +352,8 @@ export class SidebarPage {
    */
   async waitForMembershipGone(name: string, timeout = 20000): Promise<void> {
     await this.d.wait(async () => {
-      const rows = await this.d.findElements(
-        By.css(`[data-testid="${TID.memberItem}"][data-clickable="true"]`),
-      );
-      if (rows.length === 0) return false; // self row missing -> disconnected, not "moved"
-      const text = await rows[0].getText().catch(() => "");
+      const text = await this.selfRowText();
+      if (text === null) return false; // self row missing -> disconnected, not "moved"
       return !text.includes(name);
     }, timeout);
   }

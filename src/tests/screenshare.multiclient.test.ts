@@ -3,6 +3,7 @@ import { describe, it, before, after } from "node:test";
 import { TauriApp } from "../app";
 import { config } from "../config";
 import { CheckerboardWindow } from "../util/checkerboard";
+import { tkinterMissing } from "../util/preconditions";
 
 /**
  * Screen-share fidelity across two clients, end-to-end, through the new
@@ -24,7 +25,7 @@ import { CheckerboardWindow } from "../util/checkerboard";
  * for OS window capture (headed Windows session, or Xvfb on Linux). The Tk
  * helper needs python + Tkinter (Linux: `apt-get install python3-tk`).
  */
-describe("multi-client: screen sharing (checkerboard pixel fidelity)", () => {
+describe("multi-client: screen sharing (checkerboard pixel fidelity)", { skip: tkinterMissing() }, () => {
   let alice: TauriApp;
   let bob: TauriApp;
   let aliceBoard: CheckerboardWindow;

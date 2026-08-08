@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { TauriApp } from "../app";
 import { config } from "../config";
 import { setSuperUserPassword } from "../util/server";
+import { bridgeMissing } from "../util/preconditions";
 
 /**
  * Scheduled meeting rooms (server-provisioned, end-to-end-encrypted).
@@ -27,7 +28,7 @@ import { setSuperUserPassword } from "../util/server";
  * Requires the server build that exposes the meeting-channel host bridge and a
  * client build with the calendar Join / invite-link UI.
  */
-describe("meetings: server-provisioned E2E rooms", () => {
+describe("meetings: server-provisioned E2E rooms", { skip: bridgeMissing() }, () => {
   let admin: TauriApp;
   let bob: TauriApp;
   const sfx = Date.now() % 100000;

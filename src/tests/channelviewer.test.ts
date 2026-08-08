@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { TauriApp } from "../app";
 import { config } from "../config";
 import { setSuperUserPassword } from "../util/server";
+import { channelViewerMissing } from "../util/preconditions";
 
 /**
  * Channel viewer (ZeroC Ice) reads the live server's channel tree.
@@ -113,7 +114,7 @@ async function readFirstSseSnapshot(timeoutMs = 20000): Promise<Snapshot> {
   }
 }
 
-describe("channel viewer (Ice): reads channels, filters hidden", () => {
+describe("channel viewer (Ice): reads channels, filters hidden", { skip: channelViewerMissing() }, () => {
   let admin: TauriApp;
   const sfx = Date.now() % 100000;
   const publicName = `cv-public-${sfx}`;

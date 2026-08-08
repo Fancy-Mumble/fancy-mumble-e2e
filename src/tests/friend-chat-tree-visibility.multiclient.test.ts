@@ -2,6 +2,7 @@ import { describe, it, before, after } from "node:test";
 import { TauriApp } from "../app";
 import { config } from "../config";
 import { setSuperUserPassword } from "../util/server";
+import { pluginMissing } from "../util/preconditions";
 
 /**
  * Friend-chat self-notepad must not hide you from the channel list - regression
@@ -23,7 +24,7 @@ import { setSuperUserPassword } from "../util/server";
  * Needs the `mumble-friends` plugin to provision the self channel
  * (mumble-server:dev).
  */
-describe("friend chat: opening your self-notepad keeps you in the channel list", () => {
+describe("friend chat: opening your self-notepad keeps you in the channel list", { skip: pluginMissing("fancy-friends") }, () => {
   let admin: TauriApp;
 
   before(async () => {

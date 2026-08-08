@@ -4,6 +4,7 @@ import { TauriApp } from "../app";
 import { config } from "../config";
 import { delay } from "../util/wait";
 import { CheckerboardWindow } from "../util/checkerboard";
+import { tkinterMissing } from "../util/preconditions";
 
 /**
  * Screen-share delivery health: the decoded stream must not accumulate
@@ -26,7 +27,7 @@ import { CheckerboardWindow } from "../util/checkerboard";
  * is ~instant, so this primarily guards sender-side stalls; the network-side
  * effect of IDR bursts shows in real (srflx) sessions.
  */
-describe("screen share: delivery health (freezes)", () => {
+describe("screen share: delivery health (freezes)", { skip: tkinterMissing() }, () => {
   let app: TauriApp;
   let board: CheckerboardWindow;
   const name = `e2e-Frz-${Date.now() % 1000000}`;

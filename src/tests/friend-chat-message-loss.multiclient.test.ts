@@ -2,6 +2,7 @@ import { describe, it, before, after } from "node:test";
 import { TauriApp } from "../app";
 import { config } from "../config";
 import { setSuperUserPassword } from "../util/server";
+import { pluginMissing } from "../util/preconditions";
 
 /**
  * 1:1 friend chat in the Friends list must not lose messages - regression guard.
@@ -20,7 +21,7 @@ import { setSuperUserPassword } from "../util/server";
  *
  * Requires the `mumble-friends` plugin (mumble-server:dev).
  */
-describe("friend chat (friends list) 1:1: no pchat message loss", () => {
+describe("friend chat (friends list) 1:1: no pchat message loss", { skip: pluginMissing("fancy-friends") }, () => {
   let admin: TauriApp;
   let bob: TauriApp;
   const sfx = Date.now() % 100000;

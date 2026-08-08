@@ -4,6 +4,7 @@ import { TauriApp } from "../app";
 import { config } from "../config";
 import { CheckerboardWindow } from "../util/checkerboard";
 import { delay } from "../util/wait";
+import { tkinterMissing } from "../util/preconditions";
 
 /**
  * ENTIRE-SCREEN sharing performance - the path that engages the platform
@@ -22,7 +23,7 @@ import { delay } from "../util/wait";
 const FPS_FLOOR = 30;
 const MEASURE_MS = 10_000;
 
-describe("multi-client: entire-screen sharing (GPU pipeline) fps", () => {
+describe("multi-client: entire-screen sharing (GPU pipeline) fps", { skip: tkinterMissing() }, () => {
   let alice: TauriApp;
   let bob: TauriApp;
   let board: CheckerboardWindow;

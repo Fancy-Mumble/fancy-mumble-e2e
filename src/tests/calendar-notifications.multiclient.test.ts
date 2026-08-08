@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { TauriApp } from "../app";
 import { config } from "../config";
 import { setSuperUserPassword } from "../util/server";
+import { pluginMissing } from "../util/preconditions";
 
 /**
  * Desktop-notification flows for `fancy-calendar`. Both are delivered through the
@@ -15,7 +16,7 @@ import { setSuperUserPassword } from "../util/server";
  *     participant gets a "Meeting invitation / You've been invited to ..."
  *     notification (applyCalendarInbound).
  */
-describe("calendar: meeting notifications", () => {
+describe("calendar: meeting notifications", { skip: pluginMissing("fancy-calendar") }, () => {
   let admin: TauriApp;
   let bob: TauriApp;
   const sfx = Date.now() % 100000;
