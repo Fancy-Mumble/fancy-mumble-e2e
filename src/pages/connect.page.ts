@@ -2,6 +2,7 @@ import { By, Key, until, type WebDriver, type WebElement } from "selenium-webdri
 import { byTid, TID } from "../selectors";
 import { delay } from "../util/wait";
 import { setReactInputValue } from "../util/input";
+import { config } from "../config";
 
 export interface ConnectOptions {
   /** Only honoured in the wizard's expert mode (where the port field shows). */
@@ -51,7 +52,7 @@ export class ConnectPage {
     await this.clickEnabled(TID.wizardContinue);
 
     await this.ensureUsernameInput();
-    const userInput = await this.field(TID.connectUsernameInput, 15000);
+    const userInput = await this.field(TID.connectUsernameInput, config.waitTimeout);
     await this.setValue(userInput, username);
 
     // Expert/developer mode adds a label step after username; advance until the
@@ -136,7 +137,7 @@ export class ConnectPage {
       until.elementLocated(
         By.css(`[data-testid="${TID.connectUsernameInput}"], [data-testid="${TID.quickConnect}"]`),
       ),
-      15000,
+      config.waitTimeout,
     );
     const inputs = await this.d.findElements(byTid(TID.connectUsernameInput));
     if (inputs.length > 0) return;

@@ -256,10 +256,16 @@ export class StarlingServer {
  * all-in-one actually uses and is the same on every platform.
  */
 function config(port: number, http: number, dataDir: string): string {
-  const template = readFileSync(
-    path.join(repoRoot, "vendor", "starling", "starling.example.toml"),
-    "utf8",
-  );
+  // The template must come from the same tree as the binary: a binary built
+  // from one commit refuses a template written for another (unknown or missing
+  // fields are startup errors). E2E_STARLING_BIN points at
+  // <tree>/target/<profile>/starling, so the tree root is two directories up;
+  // fall back to the vendored copy when the binary lives somewhere bare.
+  const binTreeTemplate = path.resolve(path.dirname(STARLING_BIN), "..", "..", "starling.example.toml");
+  const templatePath = existsSync(binTreeTemplate)
+    ? binTreeTemplate
+    : path.join(repoRoot, "vendor", "starling", "starling.example.toml");
+  const template = readFileSync(templatePath, "utf8");
   const auditLog = path.join(dataDir, "operator-audit.log");
   return template
     .replace(/^all_in_one = false$/m, "all_in_one = true")

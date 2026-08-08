@@ -1,6 +1,7 @@
 import { By, Key, until, type WebDriver, type WebElement } from "selenium-webdriver";
 import { byTid, TID, CALENDAR_EVENT_TITLE_ATTR } from "../selectors";
 import { xpathLiteral } from "../util/xpath";
+import { config } from "../config";
 
 /**
  * Page object for the calendar split-view (the `fancy-calendar` plugin UI):
@@ -16,7 +17,7 @@ export class CalendarPage {
    * received the `fancy-calendar` plugin-info from the server (plugin enabled +
    * client gating) - the core thing the gating test asserts.
    */
-  async headerButtonPresent(timeout = 15000): Promise<boolean> {
+  async headerButtonPresent(timeout = config.waitTimeout): Promise<boolean> {
     try {
       await this.d.wait(until.elementLocated(byTid(TID.calendarHeaderButton)), timeout);
       return true;
@@ -27,10 +28,10 @@ export class CalendarPage {
 
   /** Open the calendar split-view via the header button. */
   async open(): Promise<void> {
-    const btn = await this.d.wait(until.elementLocated(byTid(TID.calendarHeaderButton)), 15000);
+    const btn = await this.d.wait(until.elementLocated(byTid(TID.calendarHeaderButton)), config.waitTimeout);
     await this.d.wait(until.elementIsVisible(btn), 5000);
     await btn.click();
-    await this.d.wait(until.elementLocated(byTid(TID.calendarPanel)), 15000);
+    await this.d.wait(until.elementLocated(byTid(TID.calendarPanel)), config.waitTimeout);
   }
 
   /** Switch the active view (day | workweek | week | month). */

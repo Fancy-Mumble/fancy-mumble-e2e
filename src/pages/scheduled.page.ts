@@ -1,6 +1,7 @@
 import { By, until, type WebDriver } from "selenium-webdriver";
 import { byTid, TID, KEBAB_ITEM_ATTR } from "../selectors";
 import { xpathLiteral } from "../util/xpath";
+import { config } from "../config";
 
 /**
  * Page object for the scheduled-messages split view
@@ -14,7 +15,7 @@ export class ScheduledPage {
 
   /** Open the scheduled-messages split view via the chat header's kebab menu. */
   async open(): Promise<void> {
-    const kebab = await this.d.wait(until.elementLocated(byTid(TID.chatHeaderKebab)), 15000);
+    const kebab = await this.d.wait(until.elementLocated(byTid(TID.chatHeaderKebab)), config.waitTimeout);
     await kebab.click();
     const item = await this.d.wait(
       until.elementLocated(
@@ -23,7 +24,7 @@ export class ScheduledPage {
       10000,
     );
     await item.click();
-    await this.d.wait(until.elementLocated(byTid(TID.scheduledPanel)), 15000);
+    await this.d.wait(until.elementLocated(byTid(TID.scheduledPanel)), config.waitTimeout);
   }
 
   /**
@@ -87,7 +88,7 @@ export class ScheduledPage {
   }
 
   /** Wait for a pending scheduled-message row containing `text`. */
-  async waitForPendingItem(text: string, timeout = 15000): Promise<void> {
+  async waitForPendingItem(text: string, timeout = config.waitTimeout): Promise<void> {
     await this.d.wait(
       until.elementLocated(this.pendingItem(text)),
       timeout,
@@ -96,7 +97,7 @@ export class ScheduledPage {
   }
 
   /** Wait until no pending row containing `text` remains (cancelled/delivered). */
-  async waitForPendingGone(text: string, timeout = 15000): Promise<void> {
+  async waitForPendingGone(text: string, timeout = config.waitTimeout): Promise<void> {
     await this.d.wait(
       async () => (await this.d.findElements(this.pendingItem(text))).length === 0,
       timeout,

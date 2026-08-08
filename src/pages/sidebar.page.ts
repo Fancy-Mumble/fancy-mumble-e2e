@@ -3,6 +3,7 @@ import { byTid, TID, MEMBER_NAME_ATTR } from "../selectors";
 import { delay } from "../util/wait";
 import { xpathLiteral } from "../util/xpath";
 import { setReactInputValue, setReactSelectValue } from "../util/input";
+import { config } from "../config";
 
 /**
  * Page object for the channel sidebar (ChannelSidebar.tsx + the flat
@@ -73,7 +74,7 @@ export class SidebarPage {
     } = {},
   ): Promise<void> {
     await this.ensureChannelsTab();
-    const parent = await this.d.wait(until.elementLocated(this.byChannelId(parentId)), 15000);
+    const parent = await this.d.wait(until.elementLocated(this.byChannelId(parentId)), config.waitTimeout);
     await this.d.actions().contextClick(parent).perform();
     // The context menu + editor dialog animate in; located-but-not-yet-
     // interactable elements otherwise swallow the click. Wait for visibility
@@ -120,7 +121,7 @@ export class SidebarPage {
         );
         const sugg = await this.d.wait(
           until.elementLocated(suggestion),
-          15000,
+          config.waitTimeout,
           `invitee "${inviteeName}" never became a suggestion`,
         );
         await sugg.click();
@@ -159,7 +160,7 @@ export class SidebarPage {
 
   /** The server-assigned channel id for the named channel (read from its row). */
   async channelIdByName(name: string): Promise<string> {
-    const el = await this.d.wait(until.elementLocated(this.byChannelName(name)), 15000);
+    const el = await this.d.wait(until.elementLocated(this.byChannelName(name)), config.waitTimeout);
     return (await el.getAttribute("data-channel-id")) ?? "";
   }
 
@@ -209,7 +210,7 @@ export class SidebarPage {
   async joinChannel(name: string): Promise<void> {
     await this.ensureChannelsTab();
     for (let attempt = 0; attempt < 4; attempt++) {
-      const el = await this.d.wait(until.elementLocated(this.byChannelName(name)), 15000);
+      const el = await this.d.wait(until.elementLocated(this.byChannelName(name)), config.waitTimeout);
       await this.d.actions().doubleClick(el).perform();
       try {
         await this.waitForMembership(name, 4000);
@@ -232,7 +233,7 @@ export class SidebarPage {
       until.elementLocated(
         By.css(`[data-testid="${TID.memberItem}"][${MEMBER_NAME_ATTR}="${cssAttrEscape(name)}"]`),
       ),
-      15000,
+      config.waitTimeout,
     );
     await this.d.actions().contextClick(row).perform();
     await delay(400);
@@ -288,7 +289,7 @@ export class SidebarPage {
       until.elementLocated(
         By.css(`[data-testid="${TID.memberItem}"][${MEMBER_NAME_ATTR}="${cssAttrEscape(name)}"]`),
       ),
-      15000,
+      config.waitTimeout,
     );
     await this.d.actions().contextClick(row).perform();
     await delay(400);

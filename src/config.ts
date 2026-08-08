@@ -60,7 +60,7 @@ export const config = {
   qt6uiControlPort: Number(process.env.E2E_QT6UI_CONTROL_PORT ?? "4600"),
 
   /**
-   * Starling's operator API — the admin plane that replaced Ice.
+   * Starling's operator API - the admin plane that replaced Ice.
    *
    * Starling has no Ice and never will (`GAP-ANALYSIS.md` S6), so anything the
    * suite used to arrange by shelling into the murmur container is arranged
@@ -81,7 +81,7 @@ export const config = {
    *
    * Its compose stack runs the Starling the client connects to, so this is the
    * web front door of the same server `serverHost`/`serverPort` reach over the
-   * Mumble protocol — not a second one.
+   * Mumble protocol - not a second one.
    */
   userManagerUrl: process.env.E2E_USER_MANAGER_URL ?? "http://127.0.0.1:8080",
 
@@ -96,4 +96,14 @@ export const config = {
 
   /** How long to wait for the WebDriver session (app launch) before failing. */
   sessionTimeout: Number(process.env.E2E_SESSION_TIMEOUT ?? "30000"),
+
+  /**
+   * Default wait for a UI element to appear, in ms.
+   *
+   * A failing test costs roughly this much: it does not fail on an assertion,
+   * it fails by waiting out the element it will never see. 15 s is chosen for
+   * a loaded machine running three clients; drop it to ~8000 for a local
+   * iteration loop, where the feedback matters more than the headroom.
+   */
+  waitTimeout: Number(process.env.E2E_WAIT_MS ?? "15000"),
 } as const;

@@ -1,6 +1,7 @@
 import { By, until, type WebDriver } from "selenium-webdriver";
 import { byTid, TID, KEBAB_ITEM_ATTR, FORUM_TOPIC_ATTR, FORUM_THREAD_TITLE_ATTR } from "../selectors";
 import { xpathLiteral } from "../util/xpath";
+import { config } from "../config";
 
 /**
  * Page object for the per-channel forum split view (ForumsPanel.tsx): the
@@ -16,14 +17,14 @@ export class ForumPage {
 
   /** Open the forum split view via the chat header's kebab menu. */
   async open(): Promise<void> {
-    const kebab = await this.d.wait(until.elementLocated(byTid(TID.chatHeaderKebab)), 15000);
+    const kebab = await this.d.wait(until.elementLocated(byTid(TID.chatHeaderKebab)), config.waitTimeout);
     await kebab.click();
     const item = await this.d.wait(
       until.elementLocated(By.css(`[data-testid="${TID.kebabMenuItem}"][${KEBAB_ITEM_ATTR}="forums"]`)),
       10000,
     );
     await item.click();
-    await this.d.wait(until.elementLocated(byTid(TID.forumPanel)), 15000);
+    await this.d.wait(until.elementLocated(byTid(TID.forumPanel)), config.waitTimeout);
   }
 
   /** Whether the panel is currently mounted. */
@@ -35,7 +36,7 @@ export class ForumPage {
   async openTopic(topic: string): Promise<void> {
     const row = await this.d.wait(
       until.elementLocated(By.css(`[data-testid="${TID.forumTopicRow}"][${FORUM_TOPIC_ATTR}="${topic}"]`)),
-      15000,
+      config.waitTimeout,
     );
     await row.click();
     await this.d.wait(until.elementLocated(byTid(TID.forumNewThread)), 10000);
@@ -65,7 +66,7 @@ export class ForumPage {
   }
 
   /** Wait until a thread with `title` is listed in the open topic. */
-  async waitForThread(title: string, timeout = 15000): Promise<void> {
+  async waitForThread(title: string, timeout = config.waitTimeout): Promise<void> {
     await this.d.wait(
       until.elementLocated(this.threadRow(title)),
       timeout,
@@ -90,7 +91,7 @@ export class ForumPage {
    * requesting a refresh and the fetch response landing - poll, don't read
    * once.
    */
-  async waitForThreadReplyCount(title: string, count: number, timeout = 15000): Promise<void> {
+  async waitForThreadReplyCount(title: string, count: number, timeout = config.waitTimeout): Promise<void> {
     await this.d.wait(
       async () => {
         try {
@@ -106,17 +107,17 @@ export class ForumPage {
 
   /** Open a listed thread and wait for its posts to load. */
   async openThread(title: string): Promise<void> {
-    const row = await this.d.wait(until.elementLocated(this.threadRow(title)), 15000);
+    const row = await this.d.wait(until.elementLocated(this.threadRow(title)), config.waitTimeout);
     await row.click();
-    await this.d.wait(until.elementLocated(byTid(TID.forumReplyInput)), 15000);
-    await this.d.wait(until.elementLocated(byTid(TID.forumPost)), 15000);
+    await this.d.wait(until.elementLocated(byTid(TID.forumReplyInput)), config.waitTimeout);
+    await this.d.wait(until.elementLocated(byTid(TID.forumPost)), config.waitTimeout);
   }
 
   /**
    * Wait until a post whose text contains `text` is visible in the open
    * thread view (covers both live broadcasts and post-fetch renders).
    */
-  async waitForPost(text: string, timeout = 15000): Promise<void> {
+  async waitForPost(text: string, timeout = config.waitTimeout): Promise<void> {
     await this.d.wait(
       until.elementLocated(this.postContaining(text)),
       timeout,
@@ -130,7 +131,7 @@ export class ForumPage {
   }
 
   /** Wait until no post containing `text` remains rendered (post deleted). */
-  async waitForPostGone(text: string, timeout = 15000): Promise<void> {
+  async waitForPostGone(text: string, timeout = config.waitTimeout): Promise<void> {
     await this.d.wait(
       async () => (await this.d.findElements(this.postContaining(text))).length === 0,
       timeout,
@@ -155,11 +156,11 @@ export class ForumPage {
       `//*[@data-testid="${TID.forumPost}"][contains(normalize-space(string(.)), ${xpathLiteral(text)})]` +
         `//button[@data-testid="${buttonTid}"]`,
     );
-    const deadline = Date.now() + 15000;
+    const deadline = Date.now() + config.waitTimeout;
     let lastErr: unknown;
     while (Date.now() < deadline) {
       try {
-        const btn = await this.d.wait(until.elementLocated(sel), 15000);
+        const btn = await this.d.wait(until.elementLocated(sel), config.waitTimeout);
         await this.d.wait(until.elementIsVisible(btn), 5000);
         await btn.click();
         return;

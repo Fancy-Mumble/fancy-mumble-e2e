@@ -87,6 +87,26 @@ function runTests(files: string[], operatorApi?: string): Promise<number> {
   });
 }
 
+/**
+ * The commit a tree is at, plus a `+dirty` marker for uncommitted changes.
+ *
+ * A sweep is evidence about a *state*, and a state that cannot be named cannot
+ * be compared to the next one. Two sweeps that disagree are only interesting
+ * once you know whether the code differed - the 2026-08-08 session lost hours
+ * to a "regression" that was an uncommitted tree plus a missing build artifact.
+ */
+function describeTree(dir: string): string {
+  try {
+    const at = (args: string[]) =>
+      spawnSync("git", ["-C", dir, ...args], { encoding: "utf8" }).stdout.trim();
+    const head = at(["rev-parse", "--short", "HEAD"]);
+    if (!head) return "no git";
+    return at(["status", "--porcelain"]) ? `${head}+dirty` : head;
+  } catch {
+    return "no git";
+  }
+}
+
 /** What is about to be measured, so a run can be read back and believed. */
 function announce(): void {
   const starlingExe = process.platform === "win32" ? "starling.exe" : "starling";
@@ -101,6 +121,13 @@ function announce(): void {
     }
     console.log(`e2e: ${what}  ${where}  (built ${statSync(where).mtime.toISOString()})`);
   }
+  // The trees those binaries came from, and the harness driving them.
+  console.log(
+    `e2e: trees  harness ${describeTree(repoRoot)}` +
+      `  client ${describeTree(path.join(repoRoot, "vendor", "client"))}` +
+      `  starling ${describeTree(path.join(repoRoot, "vendor", "starling"))}` +
+      `  waits ${config.waitTimeout}ms`,
+  );
 }
 
 const argv = process.argv.slice(2);

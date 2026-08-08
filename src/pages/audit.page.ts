@@ -1,6 +1,7 @@
 import { execFileSync } from "node:child_process";
 import { By, until, type WebDriver } from "selenium-webdriver";
 import { byTid, TID } from "../selectors";
+import { config } from "../config";
 
 const AUDIT_CONTAINER = process.env.E2E_SERVER_CONTAINER ?? "fancy-e2e-mumble";
 
@@ -29,7 +30,7 @@ export function auditStoreCount(category?: string): number {
 export async function waitForAuditCategory(
   category: string,
   min = 1,
-  timeout = 15000,
+  timeout = config.waitTimeout,
 ): Promise<number> {
   const deadline = Date.now() + timeout;
   let count = 0;
@@ -72,7 +73,7 @@ export class AuditPage {
   async open(): Promise<void> {
     const tab = await this.d.wait(until.elementLocated(this.tabButton()), 10000);
     await tab.click();
-    await this.d.wait(until.elementLocated(byTid(TID.auditTab)), 15000);
+    await this.d.wait(until.elementLocated(byTid(TID.auditTab)), config.waitTimeout);
   }
 
   /** Type a DSL query (replacing any present text) and run it. */
@@ -86,7 +87,7 @@ export class AuditPage {
   }
 
   /** Wait until at least `min` result rows are rendered. */
-  async waitForRows(min = 1, timeout = 15000): Promise<number> {
+  async waitForRows(min = 1, timeout = config.waitTimeout): Promise<number> {
     await this.d.wait(
       async () => (await this.d.findElements(byTid(TID.auditRow))).length >= min,
       timeout,
@@ -96,7 +97,7 @@ export class AuditPage {
   }
 
   /** Wait for a result row whose text contains `text`. */
-  async waitForRowContaining(text: string, timeout = 15000): Promise<void> {
+  async waitForRowContaining(text: string, timeout = config.waitTimeout): Promise<void> {
     const { xpathLiteral } = await import("../util/xpath");
     await this.d.wait(
       until.elementLocated(
@@ -119,7 +120,7 @@ export class AuditPage {
   async openConfig(): Promise<void> {
     const btn = await this.d.wait(until.elementLocated(byTid(TID.auditConfigHalf)), 10000);
     await btn.click();
-    await this.d.wait(until.elementLocated(byTid(TID.auditChainCard)), 15000);
+    await this.d.wait(until.elementLocated(byTid(TID.auditChainCard)), config.waitTimeout);
   }
 
   /** Click "verify chain" and return the chain card's text afterwards. */

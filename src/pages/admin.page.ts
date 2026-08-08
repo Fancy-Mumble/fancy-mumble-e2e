@@ -1,5 +1,6 @@
 import { By, until, type WebDriver } from "selenium-webdriver";
 import { TID, byTid } from "../selectors";
+import { config } from "../config";
 
 /**
  * Page object for the admin panel (`/admin`), focused on the "Channels / ACL"
@@ -74,7 +75,7 @@ export class AdminPage {
    * the root ACL arrives, so the field is absent for a beat after the click -
    * reading it without waiting is a race.
    */
-  async waitForWizardReady(timeout = 15000): Promise<void> {
+  async waitForWizardReady(timeout = config.waitTimeout): Promise<void> {
     await this.d.wait(
       until.elementLocated(byTid(TID.roleNameInput)),
       timeout,
@@ -150,7 +151,7 @@ export class AdminPage {
   }
 
   /** Wait until the ACL tree contains a channel row named `name`. */
-  async waitForAclChannel(name: string, timeout = 15000) {
+  async waitForAclChannel(name: string, timeout = config.waitTimeout) {
     return this.d.wait(until.elementLocated(this.byAclChannel(name)), timeout);
   }
 
@@ -176,7 +177,7 @@ export class AdminPage {
   }
 
   /** Wait until the channel row `name` is gone from the ACL tree. */
-  async waitForAclChannelGone(name: string, timeout = 15000): Promise<void> {
+  async waitForAclChannelGone(name: string, timeout = config.waitTimeout): Promise<void> {
     await this.d.wait(
       async () => (await this.d.findElements(this.byAclChannel(name))).length === 0,
       timeout,

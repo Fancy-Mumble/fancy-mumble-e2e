@@ -3,6 +3,7 @@ import { byTid, TID } from "../selectors";
 import { xpathLiteral } from "../util/xpath";
 import { delay } from "../util/wait";
 import { needsScriptedInput, setReactInputValue } from "../util/astral";
+import { config } from "../config";
 
 /** Self-mute / self-deafen flags as reflected in the UI. */
 export interface VoiceFlags {
@@ -77,7 +78,7 @@ export class ChatPage {
 
   /** Type into the composer's textarea and click send. */
   async sendMessage(text: string): Promise<void> {
-    const wrap = await this.d.wait(until.elementLocated(byTid(TID.chatComposerInput)), 15000);
+    const wrap = await this.d.wait(until.elementLocated(byTid(TID.chatComposerInput)), config.waitTimeout);
     const editable = await wrap.findElement(By.css("textarea"));
     await editable.click();
 
@@ -100,7 +101,7 @@ export class ChatPage {
 
   /** Type without submitting; useful for exercising typing-indicator transport. */
   async typeMessage(text: string): Promise<void> {
-    const wrap = await this.d.wait(until.elementLocated(byTid(TID.chatComposerInput)), 15000);
+    const wrap = await this.d.wait(until.elementLocated(byTid(TID.chatComposerInput)), config.waitTimeout);
     const editable = await wrap.findElement(By.css("textarea"));
     await editable.click();
     await editable.sendKeys(text);
@@ -114,7 +115,7 @@ export class ChatPage {
    */
   async openDirectMessage(name: string): Promise<void> {
     await this.ensureMembersTab();
-    const row = await this.d.wait(until.elementLocated(this.memberRow(name)), 15000);
+    const row = await this.d.wait(until.elementLocated(this.memberRow(name)), config.waitTimeout);
     await row.click();
   }
 
@@ -131,7 +132,7 @@ export class ChatPage {
   }
 
   /** Wait until the chat header's E2E badge appears (the chat became E2E). */
-  async waitForE2EBadge(timeout = 15000): Promise<void> {
+  async waitForE2EBadge(timeout = config.waitTimeout): Promise<void> {
     await this.d.wait(
       until.elementLocated(byTid(TID.chatE2EBadge)),
       timeout,
@@ -151,7 +152,7 @@ export class ChatPage {
    */
   async addFriend(name: string): Promise<void> {
     await this.ensureMembersTab();
-    const row = await this.d.wait(until.elementLocated(this.memberRow(name)), 15000);
+    const row = await this.d.wait(until.elementLocated(this.memberRow(name)), config.waitTimeout);
     await this.d.wait(until.elementIsVisible(row), 5000);
     await this.d.actions().contextClick(row).perform();
     const toggle = await this.d.wait(until.elementLocated(byTid(TID.userMenuFriendToggle)), 8000);
@@ -166,7 +167,7 @@ export class ChatPage {
   }
 
   /** Wait until a rendered message is attributed to `sender`. */
-  async waitForMessageFrom(sender: string, timeout = 15000): Promise<void> {
+  async waitForMessageFrom(sender: string, timeout = config.waitTimeout): Promise<void> {
     await this.d.wait(
       until.elementLocated(this.senderRow(sender)),
       timeout,
@@ -186,8 +187,8 @@ export class ChatPage {
       10000,
     );
     await menu.click();
-    // `KebabMenu` sets `key={item.id}` — a React key, which never reaches the
-    // DOM — so `By.id("create-poll")` matched nothing and never could. The
+    // `KebabMenu` sets `key={item.id}` - a React key, which never reaches the
+    // DOM - so `By.id("create-poll")` matched nothing and never could. The
     // rendered item is a `role="menuitem"` carrying only its label, so that is
     // what identifies it.
     await this.d
@@ -209,7 +210,7 @@ export class ChatPage {
   /** Vote in the first rendered poll containing `question`. */
   async votePoll(question: string, option: string): Promise<void> {
     // `PollCard` renders each option as a <button> holding a <span> of the
-    // option text — there is no <label> and no <input>, so both halves of the
+    // option text - there is no <label> and no <input>, so both halves of the
     // old locator were wrong: the ancestor axis looked for a card containing an
     // <input>, and the option for a <label>. Anchor on the question and take
     // the nearest ancestor that actually holds the option buttons.
@@ -220,7 +221,7 @@ export class ChatPage {
             `[.//button][not(.//*[contains(normalize-space(.), ${xpathLiteral(question)})][.//button])]`,
         ),
       ),
-      15000,
+      config.waitTimeout,
     );
     const choice = await card.findElement(
       By.xpath(`.//button[contains(normalize-space(.), ${xpathLiteral(option)})]`),
@@ -234,11 +235,11 @@ export class ChatPage {
   async togglePin(messageText: string): Promise<void> {
     const wrapper = await this.d.wait(
       until.elementLocated(By.xpath(`//*[@data-msg-id][contains(normalize-space(.), ${xpathLiteral(messageText)})]`)),
-      15000,
+      config.waitTimeout,
     );
     // Hover first: the per-message action bar is revealed on hover, and the
     // context menu is the other way in. Both render a Pin button, and the
-    // action bar's copy stays in the DOM while hidden — so taking the first
+    // action bar's copy stays in the DOM while hidden - so taking the first
     // match gets an element that exists, is found, and cannot be clicked
     // (ElementNotInteractableError). `reactToMessage` already had to learn
     // this; click whichever copy is actually displayed.
@@ -284,7 +285,7 @@ export class ChatPage {
    *
    * For "delivered exactly once". Counting sender labels cannot answer that:
    * `chat-message-sender` is emitted only for the **first message of a
-   * consecutive same-sender group** — the client's own `testids.ts` says so,
+   * consecutive same-sender group** - the client's own `testids.ts` says so,
    * and `MessageItem` gates it on `isFirstInGroup`. Eight messages in a row
    * from one person therefore render one label, so a count of them is a count
    * of groups.
@@ -319,10 +320,10 @@ export class ChatPage {
   }
 
   /** Wait until some element on the page renders `text` (message delivered). */
-  async waitForText(text: string, timeout = 15000): Promise<void> {
+  async waitForText(text: string, timeout = config.waitTimeout): Promise<void> {
     // A newline in the needle can never match, whichever way the client renders
     // it. `MarkdownInput` turns "\n" into `<br>`, and XPath's `string()`
-    // contributes *nothing* for an element — so "a\nb" is in the DOM as "ab",
+    // contributes *nothing* for an element - so "a\nb" is in the DOM as "ab",
     // while the raw needle asks for "a\nb" and a whitespace-collapsed one asks
     // for "a b". Both fail on a message that arrived perfectly.
     //
@@ -345,13 +346,13 @@ export class ChatPage {
     const message = By.xpath(
       `//*[@data-msg-id][contains(normalize-space(.), ${xpathLiteral(messageText)})]`,
     );
-    await this.d.wait(until.elementLocated(message), 15000);
+    await this.d.wait(until.elementLocated(message), config.waitTimeout);
     await this.d.wait(
       until.elementLocated(
         By.xpath(`//*[@data-msg-id][contains(normalize-space(.), ${xpathLiteral(messageText)})]` +
           `//*[@aria-label=${xpathLiteral(expectedTitle)} or starts-with(@title, ${xpathLiteral(expectedTitle)})]`),
       ),
-      15000,
+      config.waitTimeout,
       `message did not reach read-receipt state ${expectedTitle}`,
     );
   }
@@ -369,7 +370,7 @@ export class ChatPage {
    * approves. Dialogs appear asynchronously as peers announce their keys, so
    * poll for the whole window and approve each as it shows. Returns the count.
    */
-  async approveKeyShares(maxWaitMs = 15000): Promise<number> {
+  async approveKeyShares(maxWaitMs = config.waitTimeout): Promise<number> {
     const shareBtn = By.xpath("//*[@role='dialog']//button[normalize-space(.)='Share Key']");
     let approved = 0;
     const deadline = Date.now() + maxWaitMs;
@@ -443,7 +444,7 @@ export class ChatPage {
       until.elementLocated(
         By.xpath(`//*[@data-msg-id][contains(normalize-space(.), ${xpathLiteral(messageText)})]`),
       ),
-      15000,
+      config.waitTimeout,
     );
     // Hovering reveals the per-message action bar and right-click opens the
     // context menu; both expose the same quick-reaction emoji buttons (and the
@@ -465,7 +466,7 @@ export class ChatPage {
   }
 
   /** Wait for a reaction pill to appear (its aria-label starts with the emoji). */
-  async waitForReaction(emoji: string, timeout = 15000): Promise<void> {
+  async waitForReaction(emoji: string, timeout = config.waitTimeout): Promise<void> {
     await this.d.wait(
       until.elementLocated(By.xpath(`//button[starts-with(@aria-label, ${xpathLiteral(emoji)})]`)),
       timeout,
@@ -570,7 +571,7 @@ export class ChatPage {
    *
    * `UserListItem` renders an `<img>` only when it has resolved a texture; with
    * none it draws a coloured initial instead (`UserListItem.tsx:365`). So the
-   * presence of the `img` *is* the assertion — and it is a stronger one than a
+   * presence of the `img` *is* the assertion - and it is a stronger one than a
    * hash on the wire, because the image only appears once the receiving client
    * has fetched the blob by hash and decoded it.
    */
@@ -594,7 +595,7 @@ export class ChatPage {
    * Whether a member currently carries the registered badge.
    *
    * The immediate counterpart to {@link waitForRegistered}: that one proves a
-   * registration *arrived*, this one proves one has *not* — which needs an
+   * registration *arrived*, this one proves one has *not* - which needs an
    * answer now rather than a wait, since waiting for an absence only ever
    * reports the timeout.
    */
@@ -621,7 +622,7 @@ export class ChatPage {
    */
   private async ensureMembersTab(): Promise<void> {
     await this.selectMembersTab();
-    await this.d.wait(until.elementLocated(byTid(TID.memberList)), 15000);
+    await this.d.wait(until.elementLocated(byTid(TID.memberList)), config.waitTimeout);
   }
 
   /** Activate the Members tab without requiring the member list to mount. */
@@ -693,12 +694,12 @@ export class ChatPage {
   /** Read a peer's voice flags as shown to this client in the Members tab. */
   async peerVoiceFlags(name: string): Promise<VoiceFlags> {
     await this.ensureMembersTab();
-    const el = await this.d.wait(until.elementLocated(this.memberRow(name)), 15000);
+    const el = await this.d.wait(until.elementLocated(this.memberRow(name)), config.waitTimeout);
     return readVoiceFlags(el);
   }
 
   /** Wait until the peer's row reflects the expected voice flags (or throw). */
-  async waitForPeerVoice(name: string, expected: VoiceFlags, timeout = 15000): Promise<void> {
+  async waitForPeerVoice(name: string, expected: VoiceFlags, timeout = config.waitTimeout): Promise<void> {
     await this.ensureMembersTab();
     const row = this.memberRow(name);
     await this.d.wait(async () => {
@@ -776,7 +777,7 @@ export class ChatPage {
     );
   }
 
-  private async clickTid(id: string, timeout = 15000): Promise<void> {
+  private async clickTid(id: string, timeout = config.waitTimeout): Promise<void> {
     const el = await this.d.wait(until.elementLocated(byTid(id)), timeout);
     await this.d.wait(until.elementIsEnabled(el), timeout);
     await el.click();

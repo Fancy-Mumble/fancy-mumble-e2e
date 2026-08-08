@@ -1,5 +1,6 @@
 import { By, until, type WebDriver } from "selenium-webdriver";
 import { TID } from "../selectors";
+import { config } from "../config";
 
 /**
  * Page object for the Friends page (`/friends`, FriendsPage.tsx). A friend's
@@ -29,7 +30,7 @@ export class FriendsPage {
    * name, so `clickFriend(ownName)` opens your private E2E self-chat.
    */
   async clickFriend(name: string): Promise<void> {
-    const row = await this.d.wait(until.elementLocated(this.byFriend(name)), 15000);
+    const row = await this.d.wait(until.elementLocated(this.byFriend(name)), config.waitTimeout);
     await row.click();
   }
 

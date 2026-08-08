@@ -1,6 +1,7 @@
 import { By, until, type WebDriver } from "selenium-webdriver";
 import { byTid, TID, STREAM_SOURCE_TITLE_ATTR, BROADCASTER_NAME_ATTR } from "../selectors";
 import { delay } from "../util/wait";
+import { config } from "../config";
 
 /** Colour class recovered from a sampled checkerboard cell. */
 export type CellClass = "green" | "purple" | "other";
@@ -49,7 +50,7 @@ export class StreamPage {
   constructor(private readonly d: WebDriver) {}
 
   /** Click the chat-header share toggle (present in both builds). */
-  private async clickToggle(timeout = 15000): Promise<void> {
+  private async clickToggle(timeout = config.waitTimeout): Promise<void> {
     const toggle = await this.d.wait(until.elementLocated(byTid(TID.screenShareToggle)), timeout);
     await this.d.wait(until.elementIsEnabled(toggle), timeout);
     await toggle.click();
@@ -220,14 +221,14 @@ export class StreamPage {
    * build - throws if the custom picker does not appear.
    */
   /** Open the source picker via the header share toggle. */
-  async openPicker(timeout = 15000): Promise<void> {
+  async openPicker(timeout = config.waitTimeout): Promise<void> {
     await this.clickToggle(timeout);
     if (!(await this.customPickerAppeared(5000))) {
       throw new Error("custom screen-share picker did not open (old build?)");
     }
   }
 
-  async openPickerDevices(timeout = 15000): Promise<string[]> {
+  async openPickerDevices(timeout = config.waitTimeout): Promise<string[]> {
     await this.openPicker(timeout);
     await this.selectTab("devices");
     // Enumeration is one `list_capture_sources` invoke; cards render as soon
@@ -262,7 +263,7 @@ export class StreamPage {
     }
     const card = await this.d.wait(
       until.elementLocated(By.css(css)),
-      15000,
+      config.waitTimeout,
       `picker never offered ${what}`,
     );
     const picked = (await card.getAttribute(STREAM_SOURCE_TITLE_ATTR)) ?? "";
@@ -472,7 +473,7 @@ export class StreamPage {
    * On the already-open picker's Devices tab, select the camera whose title
    * contains `title` and confirm the share. Resolves when the picker closes.
    */
-  async confirmDevice(title: string, timeout = 15000): Promise<void> {
+  async confirmDevice(title: string, timeout = config.waitTimeout): Promise<void> {
     const card = By.css(
       `[data-testid="${TID.screenShareSource}"][data-source-kind="device"][${STREAM_SOURCE_TITLE_ATTR}*="${cssAttrEscape(title)}"]`,
     );
