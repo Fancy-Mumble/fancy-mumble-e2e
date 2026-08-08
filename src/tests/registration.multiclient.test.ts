@@ -3,6 +3,7 @@ import { describe, it, before, after } from "node:test";
 import { TauriApp } from "../app";
 import { config } from "../config";
 import { delay } from "../util/wait";
+import { setSuperUserPassword } from "../util/server";
 
 /**
  * Registering a user, end to end, including the confirmation step.
@@ -39,6 +40,10 @@ describe("registration: register a user, confirm it, and use the account", () =>
   const carolName = `e2e-reg-carol-${sfx}`;
 
   before(async () => {
+    // Set the SuperUser password rather than assuming an earlier suite did: the
+    // shared server generates a random one at boot, so run on its own the admin
+    // login below is refused without this.
+    setSuperUserPassword("testpassword");
     admin = await TauriApp.launch({ instance: 0 });
     bob = await TauriApp.launch({ instance: 1 });
     carol = await TauriApp.launch({ instance: 2 });
