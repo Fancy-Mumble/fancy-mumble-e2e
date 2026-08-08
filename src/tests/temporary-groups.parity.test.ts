@@ -13,19 +13,19 @@ import {
 } from "../util/ice";
 
 /**
- * Temporary group membership, against **murmur** — the gold standard.
+ * Temporary group membership, against **murmur** - the gold standard.
  *
  * # What this pins down, and why it needed pinning
  *
- * A named ACL group holds *accounts*. An unregistered visitor has no account —
- * they go on the wire as account 0, which is also the SuperUser's id — so no
+ * A named ACL group holds *accounts*. An unregistered visitor has no account -
+ * they go on the wire as account 0, which is also the SuperUser's id - so no
  * amount of editing an ACL table can put a guest in a group. murmur's answer is
  * `qsTemporary`: a membership keyed on a live **session**, granted by an
  * external authority over Ice and never by anything a client sends.
  *
  * That last clause is why this file exists rather than a unit test. The feature
  * has no client-facing message at all, so the only way to establish what murmur
- * actually does — as opposed to what its source appears to say — is to drive
+ * actually does - as opposed to what its source appears to say - is to drive
  * the admin API it belongs to against a running server, and watch a real
  * connection be refused and then admitted.
  *
@@ -51,7 +51,7 @@ import {
 
 const skip = iceAvailable()
   ? false
-  : "murmur's Ice admin port is not answering on 6502 — start the fixture with " +
+  : "murmur's Ice admin port is not answering on 6502 - start the fixture with " +
     "`docker compose -f fixtures/docker-compose.e2e.yml up -d --wait` and build the Ice " +
     "client with `docker build -t fancy-e2e-ice:latest " +
     "--build-context slice=vendor/server/src/murmur fixtures/ice`";
@@ -68,7 +68,7 @@ describe("murmur: temporary group membership", { concurrency: 1, skip }, () => {
    *
    * Every one is checked against Ice before it is used. That is not paranoia:
    * the first run of this file talked to a Starling another session had left
-   * bound to `127.0.0.1:64738`, which shadows the container's published port —
+   * bound to `127.0.0.1:64738`, which shadows the container's published port -
    * and it did not look like a mistake, because a guest is refused entry to a
    * channel that does not exist just as surely as to one that is locked. One
    * assertion even passed. A parity suite whose two halves address different
@@ -151,7 +151,7 @@ describe("murmur: temporary group membership", { concurrency: 1, skip }, () => {
   it("survives an ACL rewrite that still declares the group", async () => {
     // The trap for a reimplementation. murmur stashes every group's temporary
     // members before deleting the old group objects and restores them while
-    // looping over the new ones (`Messages.cpp:2842`, `:2900`) — so an operator
+    // looping over the new ones (`Messages.cpp:2842`, `:2900`) - so an operator
     // pressing Save in the ACL editor does not silently revoke every temporary
     // membership in the channel. A whole-table replace that forgot this would
     // pass every other test in this file.
@@ -160,7 +160,7 @@ describe("murmur: temporary group membership", { concurrency: 1, skip }, () => {
     assert.equal((await alice.enter(channel)).admitted, true);
 
     // Move them out again so the next `enter` is a fresh question, then rewrite
-    // the table with the same contents — which is what Save sends.
+    // the table with the same contents - which is what Save sends.
     assert.equal((await alice.enter(0)).admitted, true, "back to the root");
     gateOnGroup();
 
@@ -189,7 +189,7 @@ describe("murmur: temporary group membership", { concurrency: 1, skip }, () => {
   it("does not pass to whoever holds that session id next", async () => {
     // Why clearing this on disconnect is a requirement and not tidiness: murmur
     // re-queues a departing session's id for reuse (`Server.cpp:1904`), so a
-    // grant outliving its holder is inherited by the next arrival — silently,
+    // grant outliving its holder is inherited by the next arrival - silently,
     // and carrying whatever the group was granted.
     //
     // The pool is `max_users * 2` and FIFO, so a specific id will not come back
@@ -202,8 +202,8 @@ describe("murmur: temporary group membership", { concurrency: 1, skip }, () => {
     const departed = alice.session;
     alice.close();
 
-    // Grant to the same id again *after* it has gone. murmur refuses it — the
-    // session is not a live user — which is itself the evidence that the id no
+    // Grant to the same id again *after* it has gone. murmur refuses it - the
+    // session is not a live user - which is itself the evidence that the id no
     // longer names anybody.
     assert.throws(
       () => addUserToGroup(channel, departed, GROUP),

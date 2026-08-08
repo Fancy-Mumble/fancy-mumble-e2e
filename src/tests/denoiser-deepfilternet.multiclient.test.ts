@@ -30,12 +30,12 @@ import { delay } from "../util/wait";
  * it reads ~1.0 for a clean tone whether that tone arrives at full scale or
  * 24 dB down. A denoiser is a change in *level*. Measured with `tone_ratio`
  * alone, "the model crushed the audio" and "the model is working" are the
- * same number — which is why the stats file now also reports `rms`.
+ * same number - which is why the stats file now also reports `rms`.
  *
  * # Why the microphone emits noise
  *
  * DeepFilterNet3 is a speech enhancer. Measured against the suite's usual
- * 440 Hz sine it applies its full configured attenuation — around 24 dB —
+ * 440 Hz sine it applies its full configured attenuation - around 24 dB -
  * because a pure tone is, correctly, not speech. So this file drives the
  * mic with `sine:48000:440+noise:0.10`: the noise is the thing the denoiser
  * is supposed to remove, and removing it is what the assertion below
@@ -69,7 +69,7 @@ function readStats(file: string): StatsDoc | null {
   }
 }
 
-/** The session sending the most packets — Alice, from Bob's viewpoint. */
+/** The session sending the most packets - Alice, from Bob's viewpoint. */
 function speaker(doc: StatsDoc | null): SessionStats | null {
   if (!doc) return null;
   let best: SessionStats | null = null;
@@ -117,7 +117,7 @@ async function setDenoiser(app: TauriApp, algorithm: string): Promise<void> {
     settings: {
       ...settings,
       // `none` means the whole stage is off, not "an algorithm that does
-      // nothing" — the UI couples the two the same way.
+      // nothing" - the UI couples the two the same way.
       noise_suppression: algorithm !== "none",
       denoiser_algorithm: algorithm,
     },
@@ -128,7 +128,7 @@ describe("DeepFilterNet noise suppression", { concurrency: 1 }, () => {
   let alice: TauriApp;
   let bob: TauriApp;
   let statsDir: string;
-  /** What Bob's decoder received — Alice's noisy microphone. */
+  /** What Bob's decoder received - Alice's noisy microphone. */
   let bobStats: string;
 
   const suffix = String(Date.now() % 1_000_000);
@@ -238,7 +238,7 @@ describe("DeepFilterNet noise suppression", { concurrency: 1 }, () => {
   // here, tempting as its symmetry is.
   //
   // The over-suppression guard is the necessary other half of the level
-  // drop above — a backend that outputs zeroes scores an infinite noise
+  // drop above - a backend that outputs zeroes scores an infinite noise
   // reduction and makes the speaker inaudible. But it cannot be asserted
   // *on this input*: the microphone is emitting a tone and hiss, and
   // DeepFilterNet deciding that none of that is speech and gating it away

@@ -13,13 +13,13 @@ const INI = process.env.E2E_SERVER_INI ?? "/config/mumble-server.ini";
  * differently, so this tries them in order:
  *
  * 1. **Starling**, over the operator API. It has no Ice and no container to
- *    shell into — its admin plane is HTTP (`GAP-ANALYSIS.md` S6), and
+ *    shell into - its admin plane is HTTP (`GAP-ANALYSIS.md` S6), and
  *    `PUT /v1/accounts/0` is how the SuperUser's password is set.
  * 2. **murmur**, by running `--set-su-pw` inside the container.
  *
  * Starling first, because it is the server being ported to; the fallback keeps
  * the murmur parity runs working unchanged. Without the first branch every test
- * that logs in as SuperUser failed in `before` against a Starling deployment —
+ * that logs in as SuperUser failed in `before` against a Starling deployment -
  * not because anything was wrong with it, but because the helper was talking to
  * a container that was not the server on the port the client dials.
  *
@@ -29,7 +29,7 @@ const INI = process.env.E2E_SERVER_INI ?? "/config/mumble-server.ini";
  * `mumble-server ... --foreground --set-su-pw <pw>`, and that combination means
  * it never takes effect (SuperUser auth then fails with "Wrong certificate or
  * password"). Running `--set-su-pw` on its own works, and the live server picks
- * the new hash up from the database on the next authentication — no restart.
+ * the new hash up from the database on the next authentication - no restart.
  */
 export function setSuperUserPassword(password: string): void {
   if (setSuperUserPasswordViaOperatorApi(password)) return;
@@ -46,7 +46,7 @@ export function setSuperUserPassword(password: string): void {
  *
  * Synchronous because its callers are, and they are `before` hooks in eleven
  * files that cannot be made async from here. `fetch` has no synchronous form,
- * so the request runs in a child Node process that this one waits for — no
+ * so the request runs in a child Node process that this one waits for - no
  * dependency, and nothing to install on a machine that already runs the suite.
  */
 function setSuperUserPasswordViaOperatorApi(password: string): boolean {

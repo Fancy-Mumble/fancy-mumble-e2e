@@ -22,7 +22,7 @@ export function hasAstralChars(text: string): boolean {
  *
  * Two reasons, and they fail differently. Astral code points are *refused* by
  * msedgedriver. A newline is worse: `sendKeys` presses Enter, the composer
- * submits, and the remainder is sent as a second message — so the test does
+ * submits, and the remainder is sent as a second message - so the test does
  * not error, it silently asserts against the wrong thing.
  */
 export function needsScriptedInput(text: string): boolean {

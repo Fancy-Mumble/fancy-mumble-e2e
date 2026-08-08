@@ -6,11 +6,11 @@
 #
 #   * A hung file blocks the run forever. `--test-timeout` bounds a **file**, not
 #     a test, so a value tight enough to catch a hang also kills legitimate long
-#     files — and when the runner gives up on one file mid-run it cancels the
+#     files - and when the runner gives up on one file mid-run it cancels the
 #     rest. One sweep lost ~92 tests to cancellations that way.
 #   * A timed-out file's `after()` never runs, so its `tauri-driver` keeps
 #     127.0.0.1:4447 and every later file dies with "tauri-driver exited early
-#     ... native WebDriver is almost certainly missing" — a misleading message
+#     ... native WebDriver is almost certainly missing" - a misleading message
 #     for a port that is simply still held.
 #
 # A process per file bounds the damage to the file that caused it, and reaping
@@ -69,7 +69,7 @@ for file in "${files[@]}"; do
 
     # awk on the last field rather than a regex anchored at column 0: the spec
     # reporter prefixes its summary with a multibyte glyph, so `^.` matches one
-    # *byte* of it and silently never fires — which then reads as "ran no test".
+    # *byte* of it and silently never fires - which then reads as "ran no test".
     pass=$(awk '/ pass [0-9]+$/ { n = $NF } END { print n + 0 }' "$log")
     fail=$(awk '/ fail [0-9]+$/ { n = $NF } END { print n + 0 }' "$log")
 

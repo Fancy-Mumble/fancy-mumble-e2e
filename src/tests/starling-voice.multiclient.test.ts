@@ -11,7 +11,7 @@ import { delay } from "../util/wait";
 /**
  * Does voice actually work on Starling?
  *
- * Every other Starling test so far has asserted on the *control* plane —
+ * Every other Starling test so far has asserted on the *control* plane -
  * handshakes, channel trees, message ordering. Those can all pass on a server
  * that carries no audio at all, which is exactly the state Starling was in
  * before the voice service existed. This test closes that gap: Alice speaks a
@@ -23,14 +23,14 @@ import { delay } from "../util/wait";
  * right bytes to the right person: a server that forwarded a frame to the wrong
  * session, mangled the Opus payload, or attributed it to the wrong speaker would
  * pass a packet-count assertion and produce silence or noise. A Goertzel ratio
- * on Bob's decoded output is end-to-end — it can only pass if the audio Alice
+ * on Bob's decoded output is end-to-end - it can only pass if the audio Alice
  * generated came out of Bob's mixer.
  *
  * # What each assertion here would catch
  *
  * | Assertion | The bug it catches |
  * |---|---|
- * | Bob hears the tone | routing, fan-out, cipher, codec — the whole path |
+ * | Bob hears the tone | routing, fan-out, cipher, codec - the whole path |
  * | Bob is told Alice spoke | the sender field being trusted instead of overwritten |
  * | Alice does not hear herself | the speaker being left in their own recipient list |
  * | A muted speaker reaches nobody | mute enforcement not reaching the packet path |
@@ -80,7 +80,7 @@ function readStats(file: string): StatsDoc | null {
   }
 }
 
-/** The session sending the most packets — Alice, from Bob's viewpoint. */
+/** The session sending the most packets - Alice, from Bob's viewpoint. */
 function speaker(doc: StatsDoc | null): SessionStats | null {
   if (!doc) return null;
   let best: SessionStats | null = null;
@@ -124,12 +124,12 @@ async function bestToneOver(file: string, ms: number): Promise<number> {
  * configuration fact on a machine with no Rust toolchain, not a defect.
  *
  * But having a binary is **not** sufficient, because the connect wizard only
- * offers a port field in expert mode — in normal mode it always dials 64738
+ * offers a port field in expert mode - in normal mode it always dials 64738
  * (`src/pages/connect.page.ts`). The instance this file starts on its own port
  * is therefore never the one the client reaches: the clients connect to
  * whatever already owns 64738, and against a murmur fixture this suite asserts
  * Starling's behaviour of a different server entirely. It then fails on
- * `encrypts with XChaCha20-Poly1305, not OCB2` — which murmur is *correct* to
+ * `encrypts with XChaCha20-Poly1305, not OCB2` - which murmur is *correct* to
  * not do.
  *
  * So it runs only when told that 64738 is Starling. Opt in with
@@ -137,11 +137,11 @@ async function bestToneOver(file: string, ms: number): Promise<number> {
  */
 const serverIsStarling = (process.env.E2E_SERVER_IMPL ?? "").toLowerCase() === "starling";
 const skip = !StarlingServer.available()
-  ? `no Starling binary at ${StarlingServer.binary} — build it with ` +
+  ? `no Starling binary at ${StarlingServer.binary} - build it with ` +
     `\`cargo build -p starling --manifest-path vendor/starling/Cargo.toml\``
   : serverIsStarling
     ? false
-    : "the server on 64738 is not Starling — set E2E_SERVER_IMPL=starling to run this file " +
+    : "the server on 64738 is not Starling - set E2E_SERVER_IMPL=starling to run this file " +
       "(the client always dials 64738, so this suite cannot reach its own instance)";
 
 describe("Starling carries voice", { concurrency: 1, skip }, () => {
@@ -149,7 +149,7 @@ describe("Starling carries voice", { concurrency: 1, skip }, () => {
   let alice: TauriApp;
   let bob: TauriApp;
   let statsDir: string;
-  /** What Bob's decoder received — Alice's voice. */
+  /** What Bob's decoder received - Alice's voice. */
   let bobStats: string;
   /** What Alice's decoder received, which is how an echo becomes visible. */
   let aliceStats: string;
@@ -209,7 +209,7 @@ describe("Starling carries voice", { concurrency: 1, skip }, () => {
 
   it("opens a voice port", () => {
     // Not decorative. Starling falls back to tunnelling audio over TCP when the
-    // UDP port will not bind, and that fallback is correct — but it would make
+    // UDP port will not bind, and that fallback is correct - but it would make
     // the rest of this file silently test a different path than intended.
     assert.ok(
       server.voicePortOpen,
@@ -231,7 +231,7 @@ describe("Starling carries voice", { concurrency: 1, skip }, () => {
     assert.ok(
       tone > TONE_PRESENT,
       `Alice's 440 Hz tone is not in Bob's decoded audio (best ratio ${tone.toFixed(3)}). ` +
-        `Packets arrived, so the frames were relayed but their contents were wrong — ` +
+        `Packets arrived, so the frames were relayed but their contents were wrong - ` +
         `a mangled payload, the wrong cipher, or the wrong codec for this client.`,
     );
   });
@@ -287,7 +287,7 @@ describe("Starling carries voice", { concurrency: 1, skip }, () => {
 
     // One tap, not `selfMute()`. The control cycles
     // `inactive -> active -> muted -> active` (`voice-state-sync` walks all
-    // four), and `selfMute()` is two taps — right from `inactive`, wrong from
+    // four), and `selfMute()` is two taps - right from `inactive`, wrong from
     // here. `before()` already tapped once to bring the pipelines up, so Alice
     // is `active`: two more taps would mute her and immediately unmute her
     // again, and this test would then assert that an unmuted speaker had gone
@@ -308,21 +308,21 @@ describe("Starling carries voice", { concurrency: 1, skip }, () => {
       after.packets,
       settled.packets,
       `Alice is muted but ${after.packets - settled.packets} of her packets still ` +
-        `reached Bob — mute is enforced in the user list but not on the packet path`,
+        `reached Bob - mute is enforced in the user list but not on the packet path`,
     );
   });
 
   it("encrypts with XChaCha20-Poly1305, not OCB2", () => {
     // The clients are Fancy 0.4.0, so Starling must key them with the modern
     // cipher. This is the assertion that would catch the two ends silently
-    // falling back to OCB2 — which they would do while still carrying audio
+    // falling back to OCB2 - which they would do while still carrying audio
     // perfectly, so every other test in this file would still pass.
     //
     // OCB2's tag is three bytes against sixteen: one accepted forgery per 2^24
     // attempts, which at 50 packets a second is about four days of trying.
     //
     // Matched without the hyphen, which is not cosmetic. The server logs the
-    // *`CipherChoice` variant* — `cipher=XChaCha20Poly1305` — and only
+    // *`CipherChoice` variant* - `cipher=XChaCha20Poly1305` - and only
     // `VoiceCipher::name()` spells it `XChaCha20-Poly1305`, which is never
     // logged. The hyphenated pattern therefore could not match a correct server,
     // and this assertion could only ever fail.

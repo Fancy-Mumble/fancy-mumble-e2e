@@ -29,8 +29,8 @@ export const FORUM_THREAD_TITLE_ATTR = "data-thread-title";
 
 // Test ids for features the checked-out client does not ship, same reasoning
 // and same source branch as the attribute keys above. Forums and scheduled
-// messages have no markup at all in the current UI — the rework left no `forum`
-// component behind, and "scheduled" now means meeting *rooms* — so these cannot
+// messages have no markup at all in the current UI - the rework left no `forum`
+// component behind, and "scheduled" now means meeting *rooms* - so these cannot
 // be re-exported from the client's registry.
 //
 // Declaring them keeps two properties that both matter. `forum.page.ts` and
@@ -76,7 +76,7 @@ const ABSENT_FROM_CLIENT = {
 /// The registry the page objects use: the client's, widened by the ids above.
 ///
 /// The client comes *second* on purpose. The moment it ships one of these, its
-/// value wins and this file stops being consulted for it — which is the only
+/// value wins and this file stops being consulted for it - which is the only
 /// direction that cannot go stale silently.
 export const TID = { ...ABSENT_FROM_CLIENT, ...CLIENT_TID };
 

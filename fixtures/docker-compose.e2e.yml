@@ -22,7 +22,7 @@
 #   --profile channelviewer  the viewer API, its UI, and the admin UI
 #
 # They were not always separate. `mumble-server` had no profile, so it was in
-# the default set and *every* invocation started it — including
+# the default set and *every* invocation started it - including
 # `--profile channelviewer`, which enables a profile *in addition to* the
 # default one rather than instead of it. Bringing up the viewer therefore
 # always dragged a Mumble server along, which fought for port 64738 with
@@ -89,14 +89,14 @@ services:
     extra_hosts:
       # So `host.docker.internal` resolves from inside this container. Docker
       # Desktop provides it automatically for *its* own default networks, but
-      # not for a user-defined compose network — which is why the Starling
+      # not for a user-defined compose network - which is why the Starling
       # default below looked right and still failed with "Network is
       # unreachable". `host-gateway` is the documented spelling and works on
       # Linux too, where the name does not otherwise exist at all.
       - "host.docker.internal:host-gateway"
     # **No `depends_on`.** The viewer is a separate concern from whichever
     # server it reads: it used to declare `mumble-server: service_healthy`,
-    # which meant `up -d channelviewer` started the murmur fixture too — and
+    # which meant `up -d channelviewer` started the murmur fixture too - and
     # that then fought a standalone Starling for port 64738 and failed the whole
     # command with "port is already allocated".
     #
@@ -150,7 +150,7 @@ services:
       # ones above.
       CHANNELVIEWER_TEST_LOGIN: "${CHANNELVIEWER_TEST_LOGIN:-}"
       # Starling's admin plane. The default points at the *host*, because a
-      # Starling started with `cargo run` is not on this compose network —
+      # Starling started with `cargo run` is not on this compose network -
       # `host.docker.internal` is how a container reaches it on Windows and
       # macOS. Override for a Starling running as a container.
       STARLING_API_URL: "${STARLING_API_URL:-http://host.docker.internal:8081}"
@@ -163,7 +163,7 @@ services:
       #
       # Direct rather than proxied on purpose. Routing admin calls through the
       # UI's nginx would make them arrive from the *nginx container*, which the
-      # test-login fence refuses — correctly, since the bypass is for the host.
+      # test-login fence refuses - correctly, since the bypass is for the host.
       # Calling 127.0.0.1 from the browser keeps the source the host itself.
       ADMIN_CORS_ORIGINS: "${ADMIN_CORS_ORIGINS:-http://127.0.0.1:5007,http://localhost:5007}"
     ports:
@@ -187,7 +187,7 @@ services:
   # profile, because the API on its own is JSON and nobody can read a channel
   # tree out of `curl`.
   #
-  # It *does* depend on the API — unlike the API's late dependency on a Mumble
+  # It *does* depend on the API - unlike the API's late dependency on a Mumble
   # server, which was removed. These two are one unit: the frontend is a static
   # bundle whose every request is proxied to `channelviewer`, so starting it
   # alone would serve a page that cannot load anything. Nothing here starts a
@@ -217,13 +217,13 @@ services:
       start_period: 5s
 
   # The admin UI (vendor/mumble-admin-frontend). Separate from the viewer above:
-  # that one is the public channel tree, this one is the operator's console —
+  # that one is the public channel tree, this one is the operator's console -
   # broadcasts, the config editor, the log viewer.
   #
   # It calls the API **from the browser**, not through this nginx, which is why
   # `SERVER_URL` is a host address rather than a compose service name. Proxying
   # would make every admin call arrive from this container, and the test-login
-  # fence refuses that — rightly, since the bypass is for the host alone.
+  # fence refuses that - rightly, since the bypass is for the host alone.
   mumble-admin-frontend:
     profiles: ["channelviewer"]
     build:
@@ -234,8 +234,8 @@ services:
         SERVER_URL: "${E2E_ADMIN_API_URL:-http://127.0.0.1:5005}"
         BASE_URL: "${E2E_ADMIN_UI_URL:-http://127.0.0.1:5007}"
         # Starling's operator API, which is what the Health page reads. A
-        # different server from `SERVER_URL` above — that one is the Mumble
-        # admin backend — so it gets its own address, and the same host default
+        # different server from `SERVER_URL` above - that one is the Mumble
+        # admin backend - so it gets its own address, and the same host default
         # as `STARLING_API_URL` on the viewer: a Starling started with
         # `cargo run` is on the host, not this network.
         #
@@ -244,7 +244,7 @@ services:
         # unreachable, which is the truth rather than a broken build.
         # A *relative* base, deliberately. The Health page's fetch runs in the
         # browser, so an absolute `host.docker.internal` names a host only a
-        # container can resolve — that produced "Failed to fetch" against a
+        # container can resolve - that produced "Failed to fetch" against a
         # name the browser could never look up. Relative keeps it same-origin,
         # nginx below proxies it to Starling, and the CORS that `operator-api`
         # does not implement is never needed.
@@ -267,7 +267,7 @@ services:
         condition: service_healthy
     ports:
       # Loopback, and the port must match BASE_URL above and the API's
-      # ADMIN_CORS_ORIGINS — three places that have to agree, because the
+      # ADMIN_CORS_ORIGINS - three places that have to agree, because the
       # browser enforces the origin and the bundle has the URL compiled in.
       - "127.0.0.1:${E2E_ADMIN_UI_PORT:-5007}:80"
     healthcheck:

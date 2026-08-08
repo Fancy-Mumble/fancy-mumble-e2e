@@ -44,7 +44,7 @@ Not a smoke test. These drive two real client windows against a real server.
 **Read the categories, not the total.** Half of the failing suites are not
 measuring the server at all.
 
-### 2.1 Missing infrastructure — not Starling (5 suites)
+### 2.1 Missing infrastructure - not Starling (5 suites)
 
 | Suite | Needs |
 |---|---|
@@ -61,18 +61,18 @@ the port.
 
 The list `FANCY-PARITY.md` §3 predicted, now measured rather than remembered:
 
-* **persistent chat delivery** — `persistent chat control messages`,
+* **persistent chat delivery** - `persistent chat control messages`,
   `persistent chat: history replay`, `friend chat 1:1: no pchat message loss`,
   `friend chats: E2E persisted channels`, `signal pchat: bridge smoke`.
   The cryptography works (§1) and the *delivery* does not: the control plane
   answers and the message does not arrive.
-* **reactions** — `reactions: cross-client`. A reaction never appears on the
+* **reactions** - `reactions: cross-client`. A reaction never appears on the
   other client.
-* **the Fancy control-plane fan-out** — `Fancy control-plane fan-out`.
-* **calendar** — four suites: notifications, offline invite, constellations,
+* **the Fancy control-plane fan-out** - `Fancy control-plane fan-out`.
+* **calendar** - four suites: notifications, offline invite, constellations,
   plugin gating. The calendar is plugin territory (`FANCY-PARITY.md` §1), which
   is the structural gap, not a defect.
-* **screen share** — four suites: delivery health, GPU pipeline fps, pixel
+* **screen share** - four suites: delivery health, GPU pipeline fps, pixel
   fidelity, performance. The SFU is wired now (`crates/sfu`), but these measure
   frames arriving, which needs the media path end to end.
 * **camera share**, **scheduled messages**, **meetings: server-provisioned E2E
@@ -80,7 +80,7 @@ The list `FANCY-PARITY.md` §3 predicted, now measured rather than remembered:
 
 ### 2.3 Fixed since the run (1 suite)
 
-* **`link preview`** — the client sent `FancyLinkPreviewRequest` as flat type
+* **`link preview`** - the client sent `FancyLinkPreviewRequest` as flat type
   132, which had no canon arm, so it took the `PluginData` relay; the service
   only ever decodes a `LinkPreviewEnvelope` under outer type 1016. The server
   fetched correctly and the request never arrived. Both ends now speak the
@@ -108,5 +108,5 @@ Two things the harness cannot do for you:
   days ago.
 
 `E2E_SERVER_IMPL=murmur` still selects the fork for a parity run. It is not the
-default, deliberately — a default that fell back to the fork would make an
+default, deliberately - a default that fell back to the fork would make an
 unported feature look ported.

@@ -1,6 +1,6 @@
 # Running the viewer, its UI, and the admin UI locally
 
-Four processes, and only three of them are in Compose. The fourth — Starling —
+Four processes, and only three of them are in Compose. The fourth - Starling -
 runs on the host, which is the thing that is easy to get wrong and the reason
 this file exists.
 
@@ -18,7 +18,7 @@ too.
 ## 1. Starling, with its admin plane on
 
 The admin UI's Health page reads Starling's operator API, which is off by
-default and has to be switched on by config — `enabled`/`listen` are not
+default and has to be switched on by config - `enabled`/`listen` are not
 environment-overridable.
 
 ```powershell
@@ -56,8 +56,8 @@ The bypass only accepts requests that came from this machine.
 
 ## 3. Open it
 
-- Viewer UI — <http://127.0.0.1:5006>
-- Admin UI — <http://127.0.0.1:5007>, Health page at `/health`
+- Viewer UI - <http://127.0.0.1:5006>
+- Admin UI - <http://127.0.0.1:5007>, Health page at `/health`
 
 ## Teardown
 
@@ -79,12 +79,12 @@ browser call fails twice over:
   blocks the cross-origin call before Starling sees it;
 - `host.docker.internal` resolves inside containers and never in a browser.
   Baking it into the bundle produced "Failed to fetch" against a server that was
-  up — the bug `src/tests/admin-health-dashboard.test.ts` now guards.
+  up - the bug `src/tests/admin-health-dashboard.test.ts` now guards.
 
 nginx also injects `Authorization: Bearer e2e-token`, because the test-login
 bypass mints no token for the page to send. That token must match
 `STARLING_ADMIN_TOKEN` from step 1. It is a fixture convenience and safe only
-because the proxy is loopback-bound — do not copy the pattern anywhere public.
+because the proxy is loopback-bound - do not copy the pattern anywhere public.
 
 The rest of the admin UI is deliberately *not* proxied: those calls go straight
 from the browser to `:5005`, because routing them through nginx would make them
@@ -96,7 +96,7 @@ arrive from the container and the test-login fence would refuse them.
 node --import tsx --test src/tests/admin-health-dashboard.test.ts
 ```
 
-Or by hand — this is the exact request the page makes:
+Or by hand - this is the exact request the page makes:
 
 ```powershell
 Invoke-WebRequest http://127.0.0.1:5007/starling/v1/health -UseBasicParsing

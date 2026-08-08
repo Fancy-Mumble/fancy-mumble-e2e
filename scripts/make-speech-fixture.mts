@@ -11,7 +11,7 @@
  * It is a **real human recording** rather than text-to-speech, for two reasons
  * that both turned out to matter:
  *
- * * Synthesised speech is unnaturally clean — absolute digital silence between
+ * * Synthesised speech is unnaturally clean - absolute digital silence between
  *   sentences, no breath, no room tone. A denoiser and a noise gate are built
  *   for the opposite of that, so judging them on TTS flatters them.
  * * A recording committed to the repository is byte-identical everywhere,
@@ -21,24 +21,24 @@
  *
  * # Provenance and licence
  *
- * The Open Speech Repository's Harvard sentences — recorded by Telchemy
+ * The Open Speech Repository's Harvard sentences - recorded by Telchemy
  * specifically for VoIP and speech-codec testing, which is exactly this use.
  * Their conditions: *"freely available for use in VoIP testing, research,
  * development... may be copied, downloaded, broadcast, modified, incorporated
  * into web sites or test equipment. We do require that you identify the source
- * of the speech materials as 'Open Speech Repository'."* — recorded in
+ * of the speech materials as 'Open Speech Repository'."* - recorded in
  * `fixtures/audio/README.md`, which is the attribution that condition asks for.
  *
  * It is **8 kHz telephone band**, which is the one thing it is not ideal for:
  * nothing above 4 kHz, so Opus's fullband path is under-exercised. In exchange
  * the virtual mic declares it at 8 kHz and the pipeline's own `StreamResampler`
- * does a 6× upsample to 48 kHz — the resampling contract gets driven hard by
+ * does a 6× upsample to 48 kHz - the resampling contract gets driven hard by
  * the same fixture. Wideband tone coverage already exists in
  * `audio.resample.test.ts`.
  *
  * # Order of preference
  *
- * 1. Whatever is already at the fixture path — including a file of your own,
+ * 1. Whatever is already at the fixture path - including a file of your own,
  *    via `E2E_SPEECH_FIXTURE`.
  * 2. Downloaded from the Open Speech Repository.
  * 3. Synthesised locally, so an offline machine is not simply stuck. Marked in
@@ -116,7 +116,7 @@ export function ensureSpeechFixture(): string {
       if (looksLikeAudio(out)) {
         console.warn(
           `speech fixture: fell back to synthesised speech (${attempt.name}). It is cleaner ` +
-            `than a real recording — no room tone, absolute silence between sentences — so a ` +
+            `than a real recording - no room tone, absolute silence between sentences - so a ` +
             `denoiser or gate result from this run is weaker evidence than usual.`,
         );
         return out;
@@ -163,7 +163,7 @@ function writeAttribution(dir: string): void {
       "testing, research, development, marketing and any other reasonable",
       "application, and may be copied, downloaded, broadcast, modified or",
       "incorporated into web sites or test equipment. The only requirement is that",
-      "the source is identified as the Open Speech Repository — which is what this",
+      "the source is identified as the Open Speech Repository - which is what this",
       "file is for.",
       "",
       "## Why this recording",
@@ -171,7 +171,7 @@ function writeAttribution(dir: string): void {
       "Harvard sentences are phonetically balanced and were recorded for exactly",
       "this purpose: measuring what a speech codec does to speech. It is 8 kHz",
       "telephone band, so the virtual mic declares `file:<path>:8000` and the",
-      "client's own resampler takes it to 48 kHz — which drives the resampling",
+      "client's own resampler takes it to 48 kHz - which drives the resampling",
       "path with the same fixture.",
       "",
       "Regenerate (or replace with your own mono WAV) with:",

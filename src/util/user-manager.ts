@@ -14,7 +14,7 @@ import { config } from "../config";
  * outcome.
  *
  * Driving the client's own settings panel to set an avatar would therefore
- * test a path nobody uses, and — more to the point — it would not exercise the
+ * test a path nobody uses, and - more to the point - it would not exercise the
  * chain that actually breaks: backend → operator API → account texture →
  * `UserState` → the other client's member list.
  *
@@ -29,7 +29,7 @@ import { config } from "../config";
  *
  * The env file needs `POSTGRES_PASSWORD`, `JWT_SECRET`, `STARLING_ADMIN_TOKEN`
  * and a `TURNSTILE_SECRET_KEY`. Use Cloudflare's always-passes test secret
- * (`1x0000000000000000000000000000000AA`) — login verifies a Turnstile token
+ * (`1x0000000000000000000000000000000AA`) - login verifies a Turnstile token
  * server-side, so a real key would need a real browser challenge.
  */
 export class UserManager {
@@ -42,7 +42,7 @@ export class UserManager {
    * Connect to a running stack, or return null if there is not one.
    *
    * Both halves are checked, because a missing mailpit fails much later and
-   * much more confusingly — at "the confirmation email never arrived", which
+   * much more confusingly - at "the confirmation email never arrived", which
    * reads like a backend bug rather than a missing container.
    */
   static async discover(): Promise<UserManager | null> {
@@ -69,7 +69,7 @@ export class UserManager {
    * The whole happy path, as a new user would walk it: sign up, click the link
    * in the confirmation email, log in, claim the Mumble account, set a picture.
    *
-   * Returned as one call because the steps are not independently interesting —
+   * Returned as one call because the steps are not independently interesting -
    * every one of them is a precondition for the next, and a test that stopped
    * halfway would be asserting against a half-made account.
    */
@@ -101,7 +101,7 @@ export class UserManager {
   /**
    * Read the confirmation link out of the inbox and follow it.
    *
-   * The email is what a real user acts on, so it is what this reads — rather
+   * The email is what a real user acts on, so it is what this reads - rather
    * than lifting the token out of the database, which would pass even if the
    * mail were never sent or carried a broken link.
    */
@@ -156,7 +156,7 @@ export class UserManager {
    *
    * The image must be a real one: the backend decodes and re-encodes it with
    * ImageSharp before pushing (Mumble caps texture size, so it may resize),
-   * and a hand-assembled PNG with a bad CRC is rejected there — after the
+   * and a hand-assembled PNG with a bad CRC is rejected there - after the
    * upload has already returned 200, since the Mumble sync is best-effort.
    */
   async setAvatar(jwt: string, file: string): Promise<void> {
@@ -213,8 +213,8 @@ export class UserManager {
   /**
    * Fail with the backend's own message rather than a bare status.
    *
-   * These calls fail for ordinary reasons — a name already taken, a password
-   * the policy rejects — and the response says which. A test that reported
+   * These calls fail for ordinary reasons - a name already taken, a password
+   * the policy rejects - and the response says which. A test that reported
    * only "400" would send the reader to the container logs for something the
    * body already said.
    */

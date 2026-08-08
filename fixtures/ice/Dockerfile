@@ -14,7 +14,7 @@ WORKDIR /ice
 
 # The server submodule's own slice, taken at build time rather than vendored
 # beside this file. A second copy is a copy that drifts, and Ice marshals
-# structs positionally with no versioning — so drift surfaces as a truncated
+# structs positionally with no versioning - so drift surfaces as a truncated
 # read of a struct rather than as a version error, which is the exact hazard
 # vendor/channelviewer/sync-slice.sh exists to warn about.
 #

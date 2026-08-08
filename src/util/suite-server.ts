@@ -9,7 +9,7 @@ import { config } from "../config";
  * The suite was written against the C++ fork in Docker: `run-local.ps1` brought
  * a container up on 64738, every test connected to it, and `util/server.ts`
  * administered it by `docker exec`. `vendor/server` is obsolete now, so the
- * default has to be Starling — and Starling is a binary, not a container, so
+ * default has to be Starling - and Starling is a binary, not a container, so
  * nothing about the old lifecycle applies.
  *
  * The lifecycle lives in `scripts/e2e.mts`, which starts one Starling before
@@ -22,7 +22,7 @@ import { config } from "../config";
  *
  * Because the client always dials 64738. The connect wizard only offers a port
  * field in expert mode, so a per-test instance on an ephemeral port is an
- * instance no driven client can reach — the suite would assert on the logs of a
+ * instance no driven client can reach - the suite would assert on the logs of a
  * server nobody had spoken to. `util/starling.ts` still spawns a private
  * instance for the two tests that read a server's own log, and those must not
  * run alongside the shared one; `scripts/e2e.mts` keeps them apart.
@@ -35,7 +35,7 @@ export type ServerImpl = "starling" | "murmur";
  * Which server the suite is running against.
  *
  * Starling is the default now. `E2E_SERVER_IMPL=murmur` is what a parity run
- * sets, and it is the only way to get the old behaviour — a default that
+ * sets, and it is the only way to get the old behaviour - a default that
  * silently fell back to the fork would make an unported feature look ported.
  */
 export function serverImpl(): ServerImpl {
@@ -97,7 +97,7 @@ export function serverReachable(): boolean {
  * The reason to skip, or false when the suite can run.
  *
  * One message, in one place, so forty files do not each invent their own way of
- * saying the server is missing — and so the message names the command that
+ * saying the server is missing - and so the message names the command that
  * fixes it rather than leaving a timeout on `chat-composer-input` as the only
  * clue, which is what the suite did before: the client sat on the connect
  * screen for 45 seconds and the failure named a CSS selector.

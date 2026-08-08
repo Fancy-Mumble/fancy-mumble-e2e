@@ -16,13 +16,13 @@ import { readWav, compare } from "../util/audio-fidelity";
  *
  * `audio.resample.test.ts` and `starling-voice.multiclient.test.ts` push a
  * 440 Hz sine through and check a Goertzel ratio at the far end. That proves
- * the transport carries audio and that odd sample rates do not desynchronise —
+ * the transport carries audio and that odd sample rates do not desynchronise -
  * both worth having, neither the same as "a person could understand this".
  *
  * A tone is the easiest signal every stage will ever see:
  *
  * * Opus chooses its mode from the content, and a steady tone steers it toward
- *   CELT — SILK's path, which real speech goes through, may never execute.
+ *   CELT - SILK's path, which real speech goes through, may never execute.
  * * A tone never stops, so discontinuous transmission and every
  *   resume-after-silence path go untested.
  * * A noise gate is judged on onsets; a constant tone has none.
@@ -35,7 +35,7 @@ import { readWav, compare } from "../util/audio-fidelity";
  * # The oracle here
  *
  * Alice speaks a real recording; Bob's *decoded* audio is dumped and compared
- * against that recording by short-term energy envelope — the rhythm of speech.
+ * against that recording by short-term energy envelope - the rhythm of speech.
  * It is robust to codec delay, jitter and phase, and destroyed by exactly the
  * faults that matter. Measured on this metric a 440 Hz tone scores ~0.01 against
  * speech, so the assertion cannot be satisfied by the old signal.
@@ -51,7 +51,7 @@ const MIN_CORRELATION = 0.55;
 
 const skip = existsSync(config.appBin)
   ? false
-  : `no client binary at ${config.appBin} — build it with \`cargo tauri build\` in vendor/client`;
+  : `no client binary at ${config.appBin} - build it with \`cargo tauri build\` in vendor/client`;
 
 describe("voice fidelity: real speech survives the round trip", { concurrency: 1, skip }, () => {
   let alice: TauriApp;
@@ -76,7 +76,7 @@ describe("voice fidelity: real speech survives the round trip", { concurrency: 1
         // Alice speaks the fixture on a loop, declared at the rate it was
         // actually recorded at. The Harvard-sentence recordings are 8 kHz
         // telephone band, so the client's own `StreamResampler` upsamples 6× to
-        // 48 kHz on the way out — the same resampler a real non-48 kHz device
+        // 48 kHz on the way out - the same resampler a real non-48 kHz device
         // goes through, driven by the same fixture.
         extraEnv: { FANCY_E2E_VIRTUAL_MIC: `file:${fixture}:${FIXTURE_RATE}` },
       }),
@@ -101,13 +101,13 @@ describe("voice fidelity: real speech survives the round trip", { concurrency: 1
     // A fresh profile connects deaf and muted on purpose
     // (`state/connection.rs:434`), so neither pipeline exists yet: Alice would
     // send nothing and Bob would decode nothing. The first tap of the mute
-    // control brings them up — Alice needs outbound, Bob inbound.
+    // control brings them up - Alice needs outbound, Bob inbound.
     await alice.chat.tapMute();
     await bob.chat.tapMute();
 
     // Both stay in the root channel, as the other voice suites do. Anyone else
     // on the fixture server would land in Bob's dump as their own file, and the
-    // assertion takes the best-correlating one — a stranger's audio scores near
+    // assertion takes the best-correlating one - a stranger's audio scores near
     // zero against Alice's fixture, so it cannot be mistaken for hers.
   });
 
@@ -115,7 +115,7 @@ describe("voice fidelity: real speech survives the round trip", { concurrency: 1
     await Promise.allSettled([alice?.close(), bob?.close()]);
     // Kept when the assertion failed. This test's whole output is a few seconds
     // of audio, and "the correlation was 0.2" is not something anyone can act
-    // on without listening to what actually arrived — deleting it turns a
+    // on without listening to what actually arrived - deleting it turns a
     // diagnosable failure into a mystery.
     if (dumpDir && passed) {
       rmSync(dumpDir, { recursive: true, force: true });
@@ -133,7 +133,7 @@ describe("voice fidelity: real speech survives the round trip", { concurrency: 1
     const dumps = readdirSync(dumpDir).filter((f) => f.endsWith(".wav"));
     assert.ok(
       dumps.length > 0,
-      `no decoded audio was dumped to ${dumpDir} — Bob received nothing, or the ` +
+      `no decoded audio was dumped to ${dumpDir} - Bob received nothing, or the ` +
         `client predates FANCY_E2E_AUDIO_DUMP_DIR`,
     );
 
@@ -146,7 +146,7 @@ describe("voice fidelity: real speech survives the round trip", { concurrency: 1
 
     // Printed on success as well as failure. The thresholds below are floors,
     // and a run that passes at 0.58 is telling a different story from one that
-    // passes at 0.85 — without the numbers, a slow drift toward the floor is
+    // passes at 0.85 - without the numbers, a slow drift toward the floor is
     // invisible until the day it crosses.
     console.log(
       `voice fidelity: correlation ${best.correlation.toFixed(3)} (floor ${MIN_CORRELATION}), ` +
@@ -168,7 +168,7 @@ describe("voice fidelity: real speech survives the round trip", { concurrency: 1
     // Deliberately not "the far end is as silent as the source". A real
     // recording has room tone at around -44 dBFS, the noise gate is supposed to
     // close over it, and the far end is consequently far more silent than the
-    // source — 38% against 3% on a healthy run. Asserting those match would be
+    // source - 38% against 3% on a healthy run. Asserting those match would be
     // asserting the gate does not work. Silence over speech is the defect;
     // silence over room tone is the feature.
     //
@@ -177,7 +177,7 @@ describe("voice fidelity: real speech survives the round trip", { concurrency: 1
     // missing speech is audible as a cut word.
     assert.ok(
       best.longestDropoutMs <= 200,
-      `${best.longestDropoutMs} ms of silence arrived while Alice was audibly speaking — ` +
+      `${best.longestDropoutMs} ms of silence arrived while Alice was audibly speaking - ` +
         `that is a dropout, not a pause. (Overall the far end is ` +
         `${(best.receivedSilenceRatio * 100).toFixed(0)}% silent against the source's ` +
         `${(best.sourceSilenceRatio * 100).toFixed(0)}%, which is the gate and is expected.)`,

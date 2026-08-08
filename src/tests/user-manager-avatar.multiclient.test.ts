@@ -13,7 +13,7 @@ const avatarPath = path.resolve("fixtures/avatar-sample.png");
  *
  * A new user registers on mumble-user-manager, clicks the link in the
  * confirmation email, claims their Mumble account and uploads a profile
- * picture — all before ever starting a Mumble client. Then they connect, and
+ * picture - all before ever starting a Mumble client. Then they connect, and
  * the picture is already there for everyone.
  *
  * # Why the avatar is set on the website and not in the client
@@ -32,7 +32,7 @@ const avatarPath = path.resolve("fixtures/avatar-sample.png");
  * | Assertion | The bug it catches |
  * |---|---|
  * | the account can log in with its web password | `mumble/create` linked a name but set no password, or set it on the wrong account |
- * | the observer sees them as registered | the account exists on the website only — Starling never got a registration |
+ * | the observer sees them as registered | the account exists on the website only - Starling never got a registration |
  * | the observer sees their picture | the texture never left the backend, or Starling drops textures set out of band |
  * | they see their own picture | the texture reaches its owner, not just observers |
  * | it survives a reconnect | the texture lives on the account and not in the session |
@@ -49,7 +49,7 @@ const backend = await UserManager.discover();
  */
 const skip = backend
   ? false
-  : `needs ${UserManager.requirement} — bring it up with ` +
+  : `needs ${UserManager.requirement} - bring it up with ` +
     "`docker compose --env-file <env> up -d --wait` in " +
     "vendor/mumble-user-manager-backend";
 
@@ -100,7 +100,7 @@ describe("user manager: sign up, confirm, set a picture, and be seen", { skip },
   });
 
   it("shows the picture that was uploaded on the website", async () => {
-    // The observer never uploaded anything and has no local copy — the image
+    // The observer never uploaded anything and has no local copy - the image
     // can only have come down the wire, fetched by the hash in `UserState`.
     await observer.chat.waitForAvatar(account.username);
   });

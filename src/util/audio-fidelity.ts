@@ -13,7 +13,7 @@ import { readFileSync } from "node:fs";
  *
  * # What is compared instead
  *
- * The **short-term energy envelope** — the shape of the loudness over time. That
+ * The **short-term energy envelope** - the shape of the loudness over time. That
  * is what carries the rhythm of speech: syllables, pauses between sentences, the
  * attack of a plosive. It survives everything in the list above and is destroyed
  * by the things that actually matter: a gate that clips onsets, a codec dropping
@@ -21,12 +21,12 @@ import { readFileSync } from "node:fs";
  * consonants.
  *
  * It is also the metric a tone cannot satisfy in any meaningful way. A sine has
- * a flat envelope, so it correlates with *any* other flat envelope — which is
+ * a flat envelope, so it correlates with *any* other flat envelope - which is
  * precisely why the existing tone-ratio suite cannot tell working speech from
  * broken speech.
  */
 
-/** Envelope frame length. 20 ms is about one phoneme — fine enough to see a
+/** Envelope frame length. 20 ms is about one phoneme - fine enough to see a
  * syllable, coarse enough to be immune to codec phase. */
 const FRAME_MS = 20;
 
@@ -145,7 +145,7 @@ export interface Fidelity {
   sourceSilenceRatio: number;
   /**
    * Longest run where the far end is silent **while the source was speaking**,
-   * in milliseconds — the one number here that is unambiguously a defect.
+   * in milliseconds - the one number here that is unambiguously a defect.
    *
    * Measured after alignment, so it is a claim about the same moment in the
    * speech rather than about two clocks. Silence during a pause does not count
@@ -155,7 +155,7 @@ export interface Fidelity {
   /** Longest run of silence in the received audio, in milliseconds. */
   longestGapMs: number;
   /**
-   * The same for the source — the number the one above has to be judged
+   * The same for the source - the number the one above has to be judged
    * against.
    *
    * Real speech contains pauses, and this fixture's are around a second. An
@@ -187,7 +187,7 @@ const SILENCE_DBFS = -50;
  * is what showed why it has to exist. Room tone in the Open Speech Repository
  * fixture sits around -44 dBFS: quieter than speech, louder than digital
  * silence. A noise gate is *supposed* to close over it, so the far end is far
- * more silent than the source — 38% against 3% on a healthy run.
+ * more silent than the source - 38% against 3% on a healthy run.
  *
  * Judging that as a fault would be testing the absence of a noise gate. What is
  * actually a fault is silence at the far end while the speaker was audibly

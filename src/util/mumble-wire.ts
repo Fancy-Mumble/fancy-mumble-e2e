@@ -8,14 +8,14 @@ import { once } from "node:events";
  *
  * Everything else here drives the real desktop client, and that is the right
  * default: it tests what a user touches. It is the wrong tool for a *server
- * parity* question. Some of what a server does has no pixels — whether a
+ * parity* question. Some of what a server does has no pixels - whether a
  * refusal arrives as `PermissionDenied` or as silence is invisible in a UI that
  * renders both as "nothing happened", and that difference is exactly what a
  * ported server gets wrong.
  *
  * So this speaks the protocol. It is deliberately tiny: enough to log in, ask
  * to move, and tell an admission from a refusal. It is not a Mumble client and
- * should not grow into one — when a test needs a client, it should use the
+ * should not grow into one - when a test needs a client, it should use the
  * client.
  *
  * # Why the protobuf is hand-rolled
@@ -23,7 +23,7 @@ import { once } from "node:events";
  * Adding a protobuf runtime and a build step to generate stubs would be a
  * dependency and a code-generation stage for six fields, all of them scalars,
  * none of which have changed since 2009. The encoder below is the wire format's
- * two cases — varint and length-delimited — and nothing else.
+ * two cases - varint and length-delimited - and nothing else.
  *
  * # TLS
  *
@@ -223,7 +223,7 @@ export class MumbleWire {
       Buffer.concat([
         uintField(1, this.session),
         uintField(5, channel),
-        // `UserState.temporary_access_tokens`, field 20 — the password typed
+        // `UserState.temporary_access_tokens`, field 20 - the password typed
         // into the "this channel is locked" dialog.
         ...(options.tokens ?? []).map((token) => stringField(20, token)),
       ]),

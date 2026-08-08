@@ -6,7 +6,7 @@ import { execFileSync } from "node:child_process";
  * # Why a container and not a library
  *
  * Ice's Python mapping is a compiled extension, and `slice2py` has to run
- * against `vendor/server/src/murmur/MumbleServer.ice` to produce stubs at all —
+ * against `vendor/server/src/murmur/MumbleServer.ice` to produce stubs at all -
  * a build step and a native dependency, on every machine that runs the suite,
  * for a handful of admin calls. The fixture is already Docker, so the client is
  * too: `fixtures/ice/` is a five-line image that installs ZeroC Ice and
@@ -15,15 +15,15 @@ import { execFileSync } from "node:child_process";
  *
  * That also keeps the slice honest. It is copied from the server submodule at
  * image-build time rather than vendored, so a change to the interface shows up
- * as a build or a marshalling failure instead of silently drifting — which is
+ * as a build or a marshalling failure instead of silently drifting - which is
  * the failure mode `vendor/channelviewer/sync-slice.sh` exists to warn about.
  *
  * # Why any of this is needed
  *
  * Some of what murmur can do has no client-facing message at all. Temporary
  * group membership is the case these tests are about: nothing a Mumble client
- * sends can create one, so the only way to establish murmur's behaviour — the
- * behaviour Starling is being measured against — is to drive the admin API the
+ * sends can create one, so the only way to establish murmur's behaviour - the
+ * behaviour Starling is being measured against - is to drive the admin API the
  * feature actually belongs to.
  */
 
@@ -78,7 +78,7 @@ function ice<T = void>(snippet: string): T | undefined {
  * A boolean as Python spells it.
  *
  * Interpolating a JavaScript one produces `true`, which Python reads as an
- * undefined name — a loud failure here, but only because these snippets are
+ * undefined name - a loud failure here, but only because these snippets are
  * short. Everything crossing this boundary goes through a converter for that
  * reason.
  */
@@ -131,7 +131,7 @@ export interface GroupDecl {
 /**
  * Replace a channel's ACL table.
  *
- * Wholesale, as the interface documents and as a client's editor does — which
+ * Wholesale, as the interface documents and as a client's editor does - which
  * is the reason one of these tests exists at all: the replacement must not take
  * temporary memberships with it.
  */
@@ -160,7 +160,7 @@ export function setAcl(
  * Add a live *session* to a group on a channel, for as long as it stays
  * connected.
  *
- * murmur's `qsTemporary`. Note what it is keyed on: a session, not an account —
+ * murmur's `qsTemporary`. Note what it is keyed on: a session, not an account -
  * which makes it the only way to put an **unregistered** user into a named
  * group, since permanent membership is recorded by account id and a guest has
  * none.
@@ -186,7 +186,7 @@ export function sessionsByName(): Record<string, number> {
  *
  * Not simply `config.serverHost`, and the reason is a trap that has already
  * cost one wrong-looking test run. The compose publishes murmur on `0.0.0.0` /
- * `::`, which Docker serves through a proxy process — but a process bound
+ * `::`, which Docker serves through a proxy process - but a process bound
  * specifically to `127.0.0.1:64738` wins that address, and a Starling left
  * running by another session is exactly such a process. A client dialling
  * loopback then talks to *that* while this file administers murmur, and the two
@@ -203,7 +203,7 @@ export function wireHost(): string {
  *
  * Returns the reason they do not, or `undefined` when they agree. Worth doing
  * explicitly rather than trusting the addresses: when they disagree, every
- * assertion in a parity suite still *runs*, and some of them still pass — a
+ * assertion in a parity suite still *runs*, and some of them still pass - a
  * guest is refused entry to a channel that does not exist just as surely as to
  * one that is locked.
  */
@@ -213,7 +213,7 @@ export function disagreesWithWire(name: string, session: number): string | undef
   return (
     `the client dialled ${wireHost()}:64738 and got session ${session} as "${name}", but murmur's ` +
     `Ice interface does not see it (it sees ${JSON.stringify(seen)}). Something other than the ` +
-    `compose fixture is answering that address — a stray server bound to 127.0.0.1 shadows the ` +
+    `compose fixture is answering that address - a stray server bound to 127.0.0.1 shadows the ` +
     `container's published port. Point E2E_MURMUR_HOST at an address that reaches the container ` +
     `(the host's LAN IP works), or stop the other listener.`
   );
