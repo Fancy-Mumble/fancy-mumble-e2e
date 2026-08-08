@@ -2,6 +2,7 @@ import { By, until, type WebDriver } from "selenium-webdriver";
 import { byTid, TID, MEMBER_NAME_ATTR } from "../selectors";
 import { delay } from "../util/wait";
 import { xpathLiteral } from "../util/xpath";
+import { setReactInputValue } from "../util/input";
 
 /**
  * Page object for the channel sidebar (ChannelSidebar.tsx + the flat
@@ -89,8 +90,10 @@ export class SidebarPage {
 
     const nameInput = await this.d.wait(until.elementLocated(By.css("#ch-ed-name")), 10000);
     await this.d.wait(until.elementIsVisible(nameInput), 5000);
-    await nameInput.clear();
-    await nameInput.sendKeys(name);
+    // Set the value through the DOM: a non-US compositor keymap types "-" as
+    // "ß", so "e2e-ch-1234" was created as "e2eßchß1234" and never matched what
+    // the test waited for. See setReactInputValue.
+    await setReactInputValue(this.d, nameInput, name);
 
     if (opts.pchatProtocol) {
       const select = await this.d.findElement(By.css("#ch-ed-pchat"));
