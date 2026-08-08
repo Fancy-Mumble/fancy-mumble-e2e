@@ -1,7 +1,7 @@
 [submodule "vendor/client"]
 	path = vendor/client
 	url = https://github.com/Fancy-Mumble/FancyMumble.git
-	branch = new-ui-implementation
+	branch = superstate
 [submodule "vendor/server"]
 	path = vendor/server
 	url = https://github.com/Fancy-Mumble/mumble-server.git
