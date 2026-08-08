@@ -1,6 +1,7 @@
 import { By, Key, until, type WebDriver, type WebElement } from "selenium-webdriver";
 import { byTid, TID } from "../selectors";
 import { delay } from "../util/wait";
+import { setReactInputValue } from "../util/input";
 
 export interface ConnectOptions {
   /** Only honoured in the wizard's expert mode (where the port field shows). */
@@ -66,31 +67,50 @@ export class ConnectPage {
    * dialog closes, which only happens when the server accepts the password.
    */
   private async submitPassword(password: string): Promise<void> {
-    // The dialog remounts after the client's "Connection to server was lost."
-    // transition, so a #pw-dialog-input handle taken just before that re-render
-    // is stale by the time clear()/sendKeys() run — the most common flake in
-    // the multi-client suites. Re-locate and retry the fill as one unit, within
-    // the same 15s, so a remount costs a retry rather than the test.
-    const deadline = Date.now() + 15000;
-    for (;;) {
+    // Two races made this the flakiest step in the multi-client suites, so the
+    // fill is verified rather than fired and forgotten:
+    //
+    // - The dialog remounts after the client's "Connection to server was lost."
+    //   transition, so a #pw-dialog-input handle taken a moment earlier is stale
+    //   by the time we type into it. Re-locate and retry on a stale handle.
+    // - The field is a controlled React input and the form's submit reads its
+    //   state, so sendKeys(password, ENTER) can submit before the last onChange
+    //   has committed — the request goes out with a partial password and the
+    //   server refuses it. Confirm the field holds the whole password before
+    //   pressing Enter, and if the dialog comes back (a refusal), type it again.
+    const deadline = Date.now() + 20000;
+    while (Date.now() < deadline) {
       try {
         const input = await this.d.wait(
           until.elementLocated(By.css("#pw-dialog-input")),
           Math.max(1, deadline - Date.now()),
         );
         await input.clear();
-        await input.sendKeys(password, Key.ENTER);
-        break;
+        await input.sendKeys(password);
+        await this.d.wait(async () => (await input.getAttribute("value")) === password, 3000);
+        await input.sendKeys(Key.ENTER);
       } catch (error) {
-        const stale = (error as { name?: string }).name === "StaleElementReferenceError";
-        if (!stale || Date.now() >= deadline) throw error;
-        await delay(200);
+        if ((error as { name?: string }).name === "StaleElementReferenceError") continue;
+        throw error;
       }
+      // The dialog closes only on acceptance; a reappearance is a refusal, so
+      // loop and retype until it sticks or the deadline passes.
+      if (await this.dialogClosed(4000)) return;
     }
-    await this.d.wait(
-      async () => (await this.d.findElements(By.css("#pw-dialog-input"))).length === 0,
-      15000,
-    );
+    throw new Error("password dialog did not close after submitting the password");
+  }
+
+  /** Whether the password dialog has gone within `timeout`. */
+  private async dialogClosed(timeout: number): Promise<boolean> {
+    try {
+      await this.d.wait(
+        async () => (await this.d.findElements(By.css("#pw-dialog-input"))).length === 0,
+        timeout,
+      );
+      return true;
+    } catch {
+      return false;
+    }
   }
 
   /** Click "Continue" until the wizard's final action buttons are shown. */
@@ -147,8 +167,10 @@ export class ConnectPage {
   }
 
   private async setValue(el: WebElement, value: string): Promise<void> {
-    await el.clear();
-    await el.sendKeys(value);
+    // Through the DOM, not keystrokes: a non-US compositor keymap types "-" as
+    // "ß", which mangles hyphenated usernames like "e2e-reg-bob-1234". See
+    // setReactInputValue.
+    await setReactInputValue(this.d, el, value);
   }
 
   private async clickEnabled(id: string, timeout = 10000): Promise<void> {
