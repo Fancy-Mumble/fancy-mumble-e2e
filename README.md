@@ -66,7 +66,17 @@ vendor/{client,server,docker}   git submodules (see table above)
 git clone --recurse-submodules git@github.com:Fancy-Mumble/fancy-mumble-e2e.git
 cd fancy-mumble-e2e
 npm install
+```
 
+> **Submodule access.** This repo is public, but several of the systems it
+> drives are not: `channelviewer`, `channelviewer-frontend`,
+> `mumble-admin-frontend`, `mumble-user-manager*` and `wren` are private, so
+> `--recurse-submodules` only resolves them for accounts with access. The client
+> and Starling are public, and the suites that need the private services gate
+> themselves on those services being reachable - so a partial checkout runs, it
+> just measures less.
+
+```bash
 # Build the client binary with embedded assets (run inside the submodule)
 ( cd vendor/client/crates/mumble-tauri/ui && npm ci && npm run build )
 ( cd vendor/client && cargo tauri build )   # or: cargo build --release --features custom-protocol
@@ -149,21 +159,38 @@ only relaxes non-functional UX; it never changes connection/protocol behaviour.
 Selectors come from the client's shared `data-testid` registry (imported in
 `src/selectors.ts`), never from translated text or hashed CSS-module classes.
 
-## Enabling CI
+## CI
 
-The headless Linux workflow is **parked at [`ci/e2e.yml`](ci/e2e.yml)** rather
-than `.github/workflows/` because the account that created this repo lacks the
-GitHub `workflow` token scope (pushing a workflow file is then rejected). To
-activate it, move it into place:
+[`.github/workflows/nightly.yml`](.github/workflows/nightly.yml) runs the sweep
+at 02:23 UTC, but only when there is something new to measure. A cheap `detect`
+job asks each watched submodule's remote for its tracked branch tip and compares
+that against the tips of the last run, recorded as `state.json` on the
+`nightly-state` branch. If nothing moved, the sweep is skipped; the pinned
+gitlinks are irrelevant to this - the nightly tests branch tips, not pins.
+
+Tips are recorded whether the sweep passed or failed, so one red night does not
+re-run the same code every night. To re-run anyway, dispatch it with `force`:
 
 ```bash
-mkdir -p .github/workflows && git mv ci/e2e.yml .github/workflows/e2e.yml
-git commit -m "ci: activate e2e workflow" && git push
+gh workflow run nightly.yml -f force=true
 ```
 
-This requires a token with `workflow` scope (`gh auth refresh -s workflow`), or
-just create the file through the GitHub web UI (Actions → new workflow) by
-pasting `ci/e2e.yml`.
+**Setup.** Four watched submodules are private, so `detect` and the checkout
+need a `SUBMODULE_TOKEN` repo secret - a classic PAT with `repo` scope, from an
+account that can read both the `Fancy-Mumble` and `SetZero` repos (a
+fine-grained PAT is single-owner and would need two). Without it, `detect` fails
+loudly rather than silently testing less:
+
+```bash
+gh secret set SUBMODULE_TOKEN
+```
+
+Set `NIGHTLY_RUNNER` as a repo variable to move the heavy job to a self-hosted
+runner; it defaults to `ubuntu-latest`.
+
+Two suites are excluded via `E2E_SKIP`: `screenshare.gpu` and
+`screenshare.performance` assert an fps floor against a live 60 Hz source, which
+a software-rendered Xvfb desktop fails on merit.
 
 ## Roadmap
 
@@ -172,7 +199,7 @@ pasting `ci/e2e.yml`.
 - [ ] **Phase 2** – publish/pin the server image; verify file-server/live-doc ini keys
 - [ ] **Phase 3 (rest)** – cert connect, channels, voice-UI state (mute/deafen, talking indicators)
 - [ ] **Phase 4** – Fancy features: pchat history, file-server upload, live-doc sync, reactions
-- [ ] **Phase 5** – activate the parked CI workflow (see above) and get it green
+- [ ] **Phase 5** – get the nightly workflow (see above) green
 
 Voice **fidelity** is intentionally out of scope (covered by the client's
 `mumble-protocol` integration + `audio_quality` tests); the suite asserts voice
