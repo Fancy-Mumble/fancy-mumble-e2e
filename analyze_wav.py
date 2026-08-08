@@ -1,8 +1,9 @@
 import struct, sys
 import numpy as np
 
-path = r"recording.wav"
-raw = open(path, "rb").read()
+if len(sys.argv) != 2:
+    sys.exit("usage: analyze_wav.py <recording.wav>")
+raw = open(sys.argv[1], "rb").read()
 
 # --- minimal RIFF/WAVE parser ---
 assert raw[:4] == b"RIFF" and raw[8:12] == b"WAVE"
