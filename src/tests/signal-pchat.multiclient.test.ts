@@ -3,8 +3,8 @@ import { describe, it, before, after } from "node:test";
 import { TauriApp } from "../app";
 import { config } from "../config";
 import { setSuperUserPassword } from "../util/server";
-import { delay } from "../util/wait";
 import { bridgeMissing } from "../util/preconditions";
+import { settleSignalKeys } from "../util/signal";
 
 /**
  * End-to-end Signal Protocol (signal_v1) persistent chat across multiple real
@@ -72,7 +72,7 @@ describe("signal pchat: full E2E decryption across members", { skip: bridgeMissi
     await carol.sidebar.waitForChannel(channelName);
     await carol.sidebar.joinChannel(channelName);
 
-    await delay(8000); // let sender-key distribution settle across all members
+    await settleSignalKeys([admin, bob, carol]);
   });
 
   after(async () => {
@@ -105,7 +105,7 @@ describe("signal pchat: full E2E decryption across members", { skip: bridgeMissi
     await bob.chat.waitLoaded();
     await bob.sidebar.waitForChannel(channelName);
     await bob.sidebar.joinChannel(channelName);
-    await delay(8000); // re-establish sender keys both ways
+    await settleSignalKeys([admin, bob]);
 
     const afterRejoin = `sig-bob-rejoin-${Date.now()}`;
     await bob.chat.sendMessage(afterRejoin);
@@ -142,7 +142,7 @@ describe("signal pchat: forward secrecy for late joiners", { skip: bridgeMissing
     carol = await connectAnon(1, `e2e-Carol-${Date.now() % 100000}`);
     await carol.sidebar.waitForChannel(channelName);
     await carol.sidebar.joinChannel(channelName);
-    await delay(6000);
+    await settleSignalKeys([admin, carol]);
 
     // signal_v1 keeps no server-side history and carol was not present for the
     // pre-join message, so it must never appear for her (forward secrecy) - the
