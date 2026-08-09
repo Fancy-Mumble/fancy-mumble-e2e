@@ -28,23 +28,23 @@ export const FORUM_TOPIC_ATTR = "data-topic";
 export const FORUM_THREAD_TITLE_ATTR = "data-thread-title";
 
 // Test ids for features the checked-out client does not ship, same reasoning
-// and same source branch as the attribute keys above. Forums and scheduled
-// messages have no markup at all in the current UI - the rework left no `forum`
-// component behind, and "scheduled" now means meeting *rooms* - so these cannot
-// be re-exported from the client's registry.
+// and same source branch as the attribute keys above. Forums has no markup at
+// all in the current UI - the rework left no `forum` component behind - so
+// these cannot be re-exported from the client's registry.
 //
-// Declaring them keeps two properties that both matter. `forum.page.ts` and
-// `scheduled.page.ts` typecheck, so the suite is not carrying 39 permanent
-// errors that hide the next real one. And the pages then look for a *named*
-// selector: before this, `TID.forumPanel` was `undefined` at runtime and every
-// forum test failed against `[data-testid="undefined"]`, which reads as a
-// harness bug rather than as an absent feature.
+// Declaring them keeps two properties that both matter. `forum.page.ts`
+// typechecks, so the suite is not carrying permanent errors that hide the
+// next real one. And the page then looks for a *named* selector: before this,
+// `TID.forumPanel` was `undefined` at runtime and every forum test failed
+// against `[data-testid="undefined"]`, which reads as a harness bug rather
+// than as an absent feature.
 //
-// Values follow the client's kebab-case convention, so when the feature does
-// land the spread below silently prefers the client's own definition.
+// Scheduled messages landed 2026-08-09 (client `testids.ts` now exports
+// `scheduledPanel` etc., plus the `chatHeaderKebab` / `kebabMenuItem` ids the
+// kebab menu shares with forums), so those ids are gone from here - the spread
+// below already prefers the client's own definition the moment it ships one,
+// which is what just happened.
 const ABSENT_FROM_CLIENT = {
-  chatHeaderKebab: "chat-header-kebab",
-  kebabMenuItem: "kebab-menu-item",
   forumBack: "forum-back",
   forumEditBodyInput: "forum-edit-body-input",
   forumEditSave: "forum-edit-save",
@@ -63,14 +63,6 @@ const ABSENT_FROM_CLIENT = {
   forumThreadSubmit: "forum-thread-submit",
   forumThreadTitleInput: "forum-thread-title-input",
   forumTopicRow: "forum-topic-row",
-  scheduledBodyInput: "scheduled-body-input",
-  scheduledError: "scheduled-error",
-  scheduledItem: "scheduled-item",
-  scheduledItemCancel: "scheduled-item-cancel",
-  scheduledPanel: "scheduled-panel",
-  scheduledRefresh: "scheduled-refresh",
-  scheduledSubmit: "scheduled-submit",
-  scheduledTimeInput: "scheduled-time-input",
 } as const;
 
 /// The registry the page objects use: the client's, widened by the ids above.

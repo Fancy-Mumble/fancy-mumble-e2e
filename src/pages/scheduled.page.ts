@@ -1,6 +1,7 @@
 import { By, until, type WebDriver } from "selenium-webdriver";
 import { byTid, TID, KEBAB_ITEM_ATTR } from "../selectors";
 import { xpathLiteral } from "../util/xpath";
+import { setReactInputValue } from "../util/astral";
 import { config } from "../config";
 
 /**
@@ -53,12 +54,16 @@ export class ScheduledPage {
     );
   }
 
-  /** Replace the composer's message body with `text`. */
+  /**
+   * Replace the composer's message body with `text`. DOM-injected
+   * (`setReactInputValue`), not `sendKeys` - the compositor keymap types "-"
+   * as "ß" focus-dependently, and every message body this suite sends
+   * contains one (see `util/astral.ts`).
+   */
   async setBody(text: string): Promise<void> {
     const input = await this.d.wait(until.elementLocated(byTid(TID.scheduledBodyInput)), 10000);
     await input.click();
-    await input.clear();
-    await input.sendKeys(text);
+    await setReactInputValue(this.d, input, text);
   }
 
   /** Click "Schedule". Does not wait for any outcome. */
