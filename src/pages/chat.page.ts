@@ -2,7 +2,7 @@ import { By, until, type WebDriver, type WebElement } from "selenium-webdriver";
 import { byTid, TID } from "../selectors";
 import { xpathLiteral } from "../util/xpath";
 import { delay } from "../util/wait";
-import { needsScriptedInput, setReactInputValue } from "../util/astral";
+import { setReactInputValue } from "../util/astral";
 import { config } from "../config";
 import { selectTab } from "../util/tabs";
 
@@ -104,17 +104,16 @@ export class ChatPage {
     const editable = await wrap.findElement(By.css("textarea"));
     await editable.click();
 
-    if (needsScriptedInput(text)) {
-      // The keyboard cannot deliver this faithfully: msedgedriver refuses
-      // astral code points outright, and a newline presses Enter, which
-      // submits and sends the remainder as a second message. Both are
-      // limitations of the harness rather than the product, and the server's
-      // handling of such payloads is exactly what this path exists to test.
-      // So set the value directly and raise the event React listens for.
-      await setReactInputValue(this.d, editable, text);
-    } else {
-      await editable.sendKeys(text);
-    }
+    // Always through the DOM, never keystrokes. sendKeys was kept here for
+    // realism, but on this rig it is keymap roulette: with the compositor's
+    // layout active, "-" types as "ß" - verified live, a sent token stored as
+    // "probeßtokenß…" - and whether it strikes depends on which window holds
+    // focus at that moment. Every suite asserts on hyphenated tokens, so the
+    // mangling reads as a delivery bug in whatever feature the suite measures;
+    // the entire "pchat messages never render" red was this. (Astral and
+    // newline text needed this path anyway: msedgedriver refuses astral code
+    // points, and a newline presses Enter mid-message.)
+    await setReactInputValue(this.d, editable, text);
 
     const send = await this.d.findElement(byTid(TID.chatSend));
     await this.d.wait(until.elementIsEnabled(send), 5000);
@@ -223,8 +222,13 @@ export class ChatPage {
       .then((el) => el.click());
     const dialog = await this.d.wait(until.elementLocated(By.css('[role="dialog"]')), 5000);
     const inputs = await dialog.findElements(By.css("input"));
-    await inputs[0].sendKeys(question);
-    for (let i = 0; i < options.length; i++) await inputs[i + 1].sendKeys(options[i]);
+    // DOM-injected like the composer: poll tests assert on hyphenated
+    // question/option tokens, and keystrokes mangle "-" under the compositor
+    // keymap (see sendMessage).
+    await setReactInputValue(this.d, inputs[0], question);
+    for (let i = 0; i < options.length; i++) {
+      await setReactInputValue(this.d, inputs[i + 1], options[i]);
+    }
     if (multiple) await dialog.findElement(By.css('input[type="checkbox"]')).click();
     await dialog.findElement(By.xpath(".//button[normalize-space(.)='Create Poll']")).click();
   }

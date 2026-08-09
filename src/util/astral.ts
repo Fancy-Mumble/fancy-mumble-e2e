@@ -39,8 +39,16 @@ export function needsScriptedInput(text: string): boolean {
  * touching React's tracker, and the subsequent `input` event then looks like a
  * real edit.
  *
- * Only for text the driver cannot type. Everything else should go through
- * `sendKeys`, which exercises the keyboard path a user actually takes.
+ * **Use this for every value a test will later assert on. Do not reach for
+ * `sendKeys`.** On this rig keystrokes go through the compositor's keymap,
+ * which types "-" as "ß" - and only when the window happens to hold focus, so
+ * it strikes intermittently. Every suite mints hyphenated names and tokens
+ * (`e2e-bob-<sfx>`), so a `sendKeys` input site fails by sending a value that
+ * matches nothing, and it reads as a bug in whatever feature the suite
+ * measures: it cost this suite the entire "pchat messages never render" red,
+ * the "invitee never became a suggestion" red, and the composer flakiness,
+ * before the pattern was found. `sendKeys` stays acceptable only where the
+ * *content* is never asserted on (e.g. typing to trigger a typing indicator).
  */
 export async function setReactInputValue(
   driver: WebDriver,

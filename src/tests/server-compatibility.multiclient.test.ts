@@ -40,9 +40,15 @@ describe("server compatibility: control-path boundaries", () => {
       bob.chat.waitLoaded(),
       carol.chat.waitLoaded(),
     ]);
+    // Alice's two waits are serial ON PURPOSE: they drive one session, and
+    // WebKitWebDriver resets the connection under concurrent commands on a
+    // single session (the registration suite reproduced it 3/3 as ECONNRESET;
+    // this suite's flake had the same shape). Cross-session stays parallel.
     await Promise.all([
-      alice.chat.waitForMember(bobName),
-      alice.chat.waitForMember(carolName),
+      (async () => {
+        await alice.chat.waitForMember(bobName);
+        await alice.chat.waitForMember(carolName);
+      })(),
       bob.chat.waitForMember(aliceName),
       carol.chat.waitForMember(aliceName),
     ]);

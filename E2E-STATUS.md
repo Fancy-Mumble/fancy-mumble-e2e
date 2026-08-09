@@ -79,12 +79,66 @@ belong on a roadmap rather than in a failure count.
 
 ## 3. Red (18 suites, 33 real failures)
 
-### 3.1 Blocked by one gap: Starling drops `pchat_protocol` (6 suites, 9 tests)
+### 3.1 The encrypted cluster: two server gaps, both now closed (6 suites, 9 tests)
+
+**Update 2026-08-09.** Both server-side gaps below are fixed and verified. The
+cluster is still red, but the remaining fault is client-side rendering, not
+delivery. Read this section as history plus one live handover.
+
+The second gap was **not** a delivery bug: the client never sent an encrypted
+message at all. Starling announced `fancy_protocol = 1` but deliberately no
+`fancy_version`, and the client keys far more off that field than the decision
+anticipated - `send_message` sets `message_id` only when `fancy_version` is
+present, and the encrypted path is keyed on that id, so it built no ciphertext
+and shipped nothing. The channel was correctly `signal_v1` at both ends, the
+Signal banner rendered, and nothing crossed it. The only trace was the plaintext
+half of the client's dual path: one `TextMessage` of `length=19`, which is
+exactly `[Encrypted message]` - the placeholder the client sends *because* it
+knows the channel is encrypted.
+
+Fixed in Starling: `fancy_announcement` (`session-lifecycle/src/handshake.rs`)
+sends a second `Version` carrying `fancy_version = 0.4.2`, but only to a peer
+that announced epoch 1, so an epoch-0 client still gets the silence that keeps
+it on `PluginDataTransmission`. Verified end to end - the server now logs
+`stored an encrypted message ... bytes=173 protocol=4` for every send, where
+before it logged no pchat frame at all. Relay to other members is proven
+separately by `an_encrypted_message_reaches_the_other_member_of_its_channel`
+(`crates/starling/src/e2e.rs`), two clients over real TCP+TLS.
+
+Two things fell out of it. The same number gates the audit tab (0.4.2), so §3.3
+may have lost a blocker; and the client picks its UDP voice cipher from it, so
+both ends now agree on XChaCha20 where Starling had already chosen it and the
+client was still on OCB2.
+
+**Resolved (later that night): the "render gap" was the harness, and the
+client was never broken.** The probe above was run and the backend bucket
+contained `probeßtokenß…` - the compositor keymap types "-" as "ß" in the
+composer, focus-dependently, so every hyphenated token was *sent mangled* and
+`waitForText` could never match. Encryption round-tripped the whole time. With
+the composer switched to DOM-injected input (see `util/astral.ts`), `bridge
+smoke` and pin/unpin are GREEN.
+
+**What is still red, and it is now the server:** the cross-client half -
+decrypt-on-the-other-member, reconnect-resume, late-joiner post-join, read
+watermark. With relay proven and "reached nobody" absent from a debug-level
+log, the remaining suspect is the SKDM leg: `PluginDataTransmission` (type 26)
+through the plugins service, which drops empty-receiver messages. Handed to
+the session that owns it.
+
+The late-joiner path needs no server work, contrary to what the suite's comments
+about murmur's `sendStoredSenderKeyDistributions` suggest: the client
+re-distributes sender keys itself whenever a remote user enters a `signal_v1`
+channel (`state/handler/user_state.rs`, `handle_remote_channel_move`).
+
+### 3.1a The original gap: Starling drops `pchat_protocol` (fixed 2026-08-09)
+
+*Kept in the past tense it was written in, because it is the first half of the
+story above and the two failures looked identical from the outside.*
 
 `signal pchat` x3, `persistent chat control messages`, `persistent chat: history
 replay`, `meetings: server-provisioned E2E rooms`.
 
-`pchat_protocol` exists **only** in Starling's `.proto` files. No Rust file
+`pchat_protocol` existed **only** in Starling's `.proto` files. No Rust file
 reads, stores or echoes it, and the `channel` table has no such column:
 
 ```
@@ -103,8 +157,10 @@ The pchat message store already exists and is wired (`pchat_message` even has a
 column and serialize it in `crates/services/metadata` the way `expiry_mode` and
 `expiry_duration_s` already are, then echo it in ChannelState.
 
-**Highest-yield fix on the board.** Nothing else in this cluster is worth
-debugging until it lands, because none of it can currently be exercised.
+**It was the highest-yield fix on the board, and it moved no counter**, which is
+the lesson worth keeping: it unblocked channel state, and the cluster then
+failed one layer deeper, on the announcement gap in §3.1. A fix that changes
+nothing on the scoreboard is not the same as a fix that changed nothing.
 
 ### 3.2 Media path (6 suites, 13 tests)
 
@@ -132,13 +188,21 @@ server work.
 gate, the query and the chain-status card. Starling has an audit service, so
 this is wiring rather than absence. Biggest single-suite win after 3.1.
 
-### 3.4 Channel lifecycle (2 suites, 6 tests)
+### 3.4 Channel lifecycle - CLOSED 2026-08-09
 
-`channels: hidden, expiring + meeting rooms` (5 of 8 tests fail; **expiry and
-sliding-expiry reaping now pass** - they went green the moment the harness bugs
-were fixed, which is the whole argument for re-measuring before debugging), and
-`admin: deleting a detached channel`. What remains is the meeting-room and
-invitee flow.
+`channels: hidden, expiring + meeting rooms` is **8/8 green**. The entire
+meeting-room and invitee flow was one harness bug: the channel editor's
+invitee picker was the last input still typed with `sendKeys`, and the
+compositor keymap turned the hyphens in `e2e-bob-<sfx>` into "ß", so the
+picker's filter could never match a registered invitee (verified live -
+the input held `e2eßpickßbobß71938`). One line, DOM-injected like every
+other input (see `util/astral.ts`), and the suite went green - which also
+end-to-end-confirms Starling's `invitee_user_ids` → private-room ACL path
+against a real client.
+
+`admin: deleting a detached channel` is gated, not red: the `__dm:` channel it
+deletes is minted through the Friends surface, which Starling does not have -
+the same class as the friend-chat gates in §2.
 
 ### 3.5 Control plane and social (3 suites, 6 tests)
 

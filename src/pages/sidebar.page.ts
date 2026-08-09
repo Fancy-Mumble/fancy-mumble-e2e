@@ -151,8 +151,12 @@ export class SidebarPage {
         5000,
       );
       for (const inviteeName of opts.invitees) {
-        await picker.clear();
-        await picker.sendKeys(inviteeName);
+        // Through the DOM, not keystrokes, like the name field above: the
+        // compositor keymap types "-" as "ß" (verified live - sendKeys left
+        // "e2eßpickßbobß71938" in this very input), so the picker's filter
+        // could never match a hyphenated invitee and the suggestion never
+        // appeared. That was the whole "invitee never became a suggestion" red.
+        await setReactInputValue(this.d, picker, inviteeName);
         const suggestion = By.xpath(
           `//*[@role='dialog']//ul//li//button[contains(normalize-space(.), ${xpathLiteral(inviteeName)})]`,
         );

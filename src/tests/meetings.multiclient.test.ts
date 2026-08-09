@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { TauriApp } from "../app";
 import { config } from "../config";
 import { setSuperUserPassword } from "../util/server";
-import { bridgeMissing } from "../util/preconditions";
+import { bridgeMissing, pluginMissing } from "../util/preconditions";
 import { stepChain } from "../util/steps";
 
 /**
@@ -29,7 +29,14 @@ import { stepChain } from "../util/steps";
  * Requires the server build that exposes the meeting-channel host bridge and a
  * client build with the calendar Join / invite-link UI.
  */
-describe("meetings: server-provisioned E2E rooms", { skip: bridgeMissing() }, () => {
+// Starling can provision the room (idempotent, invitee-gated, expiring) but
+// nothing in it calls that path yet: there is no fancy-calendar relay, no
+// start-time scheduler, no `calendar.join` handler - the same plugin-host gap
+// that gates the calendar suites. Roadmap, not a defect.
+describe(
+  "meetings: server-provisioned E2E rooms",
+  { skip: bridgeMissing() || pluginMissing("fancy-calendar") },
+  () => {
   let admin: TauriApp;
   let bob: TauriApp;
   const sfx = Date.now() % 100000;

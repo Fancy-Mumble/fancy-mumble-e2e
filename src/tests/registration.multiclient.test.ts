@@ -67,10 +67,12 @@ describe("registration: register a user, confirm it, and use the account", () =>
       carol.chat.waitLoaded(config.connectTimeout),
     ]);
 
-    await Promise.all([
-      admin.chat.waitForMember(bobName),
-      admin.chat.waitForMember(carolName),
-    ]);
+    // Serial on purpose: both waits drive the SAME admin session (tab click +
+    // element polls), and WebKitWebDriver resets the connection under
+    // concurrent commands on one session (ECONNRESET, 3/3 reproducible).
+    // Parallelism across DIFFERENT sessions is fine; within one it is not.
+    await admin.chat.waitForMember(bobName);
+    await admin.chat.waitForMember(carolName);
   });
 
   after(async () => {

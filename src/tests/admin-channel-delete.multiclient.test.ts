@@ -4,6 +4,7 @@ import { TauriApp } from "../app";
 import { config } from "../config";
 import { setSuperUserPassword, isServerRunning } from "../util/server";
 import { delay } from "../util/wait";
+import { pluginMissing } from "../util/preconditions";
 
 /**
  * Admin "Channels / ACL" tab: deleting a detached (parentless) channel.
@@ -17,7 +18,14 @@ import { delay } from "../util/wait";
  * Requires a server image with the `fancy-friends` plugin (to mint a detached
  * `__dm:` channel) + the crash fix (mumble-server:dev).
  */
-describe("admin: deleting a detached channel does not crash the server", () => {
+// The doc block above already names the dependency: the `__dm:` channel this
+// deletes is minted through the Friends surface, which Starling does not have
+// (`crates/services/social` ships no friends handling). Same class as the
+// friend-chat gates in E2E-STATUS §2.
+describe(
+  "admin: deleting a detached channel does not crash the server",
+  { skip: pluginMissing("fancy-friends") },
+  () => {
   let admin: TauriApp;
   // SuperUser is uid 0, so the self-chat channel is named `__dm:0`.
   const selfChannel = "__dm:0";
