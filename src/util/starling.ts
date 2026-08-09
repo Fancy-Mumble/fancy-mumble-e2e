@@ -94,7 +94,7 @@ export class StarlingServer {
    * actually reads one: a TOML written next to the data directory.
    *
    * All three ports move together on purpose. `listen_tcp` is the control
-   * connection, `virtual_servers[].port` is what the server reports about
+   * connection, `instances[].port` is what the server reports about
    * itself, and voice's `udp_listen` is the socket audio goes to — murmur binds
    * TCP and UDP on one number and clients assume it, so leaving voice on the
    * default would send every datagram to whatever else owns 64738.
@@ -199,7 +199,7 @@ export class StarlingServer {
   }
 
   /**
-   * Wait until the virtual server's SuperUser account exists.
+   * Wait until the server instance's SuperUser account exists.
    *
    * `--all-in-one` spawns each service as a detached task and opens the
    * gateway's TLS listener — which {@link waitUntilListening} catches — before
@@ -245,7 +245,7 @@ export class StarlingServer {
  * like that.
  *
  * Three ports move together and for different reasons. `listen_tcp` is the
- * control connection; `virtual_servers[].port` is what the server reports about
+ * control connection; `instances[].port` is what the server reports about
  * itself; and voice's `udp_listen` is where audio actually goes - murmur binds
  * TCP and UDP on one number and every Mumble client sends its datagrams to
  * whatever port it made TCP to, so a voice socket left on the default is a

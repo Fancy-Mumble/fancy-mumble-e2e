@@ -1,4 +1,4 @@
-import { mkdtempSync, mkdirSync, rmSync, existsSync } from "node:fs";
+import { mkdtempSync, mkdirSync, rmSync, existsSync, cpSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { type ChildProcess } from "node:child_process";
@@ -141,10 +141,16 @@ export class TauriApp {
   }
 
   /**
-   * Turn on the app's file logging (logs land in the REAL OS log dir,
-   * `%LOCALAPPDATA%/com.fancymumble.app/logs` - Tauri resolves known
-   * folders via the OS API, ignoring the isolated env vars). Lets tests
-   * read backend tracing (e.g. screenshare pipeline timings) post-run.
+   * Turn on the app's file logging, so tests can read backend tracing (e.g.
+   * screenshare pipeline timings) after a run.
+   *
+   * Where the file lands differs by platform, which decides whether it
+   * outlives the test: on Windows Tauri resolves `%LOCALAPPDATA%` through the
+   * OS API and ignores the isolated env vars, so the log sits outside the
+   * per-instance data dir; on Linux it honours `XDG_DATA_HOME`, so it lands
+   * *inside* it and {@link close} deletes it with everything else. Set
+   * `E2E_LOG_ARCHIVE=<dir>` to keep a copy - without it, the evidence for a
+   * red media run is gone by the time the failure is printed.
    */
   async enableFileLogging(): Promise<void> {
     const result = await this.driver.executeAsyncScript<string>(`
@@ -155,6 +161,27 @@ export class TauriApp {
     `);
     if (result !== "ok") {
       throw new Error(`enableFileLogging failed: ${result}`);
+    }
+  }
+
+  /**
+   * Copy this instance's client log out of the data dir before it is deleted,
+   * when `E2E_LOG_ARCHIVE` names a destination. Best-effort and silent: a
+   * missing log means the test never enabled file logging, which is not a
+   * failure of the test that just ran.
+   */
+  private archiveLogs(): void {
+    const dest = process.env.E2E_LOG_ARCHIVE;
+    if (!dest) return;
+    try {
+      const logs = path.join(this.dataDir, ".local", "share", "com.fancymumble.app", "logs");
+      if (!existsSync(logs)) return;
+      const into = path.join(dest, path.basename(this.dataDir));
+      mkdirSync(into, { recursive: true });
+      cpSync(logs, into, { recursive: true });
+      console.error(`[logs] archived ${logs} -> ${into}`);
+    } catch {
+      /* best effort */
     }
   }
 
@@ -400,6 +427,7 @@ export class TauriApp {
       /* session may already be gone */
     }
     killTree(this.proc.pid);
+    this.archiveLogs();
     try {
       rmSync(this.dataDir, { recursive: true, force: true });
     } catch {
