@@ -1,6 +1,18 @@
 # The suite against Starling, measured
 
-Baseline of **2026-08-08**, and the first one taken with a working instrument.
+Sweep of **2026-08-09**, after the runtime work (§4) and the keymap fix (§3.4):
+
+```
+48 suites   17 gated
+86 tests    67 pass    8 fail    6 cancelled    5 skipped    14 min 57 s
+harness df3c234+dirty  client 2dca6f5+dirty  starling 69bdaf2+dirty  waits 15000ms
+```
+
+Every remaining red has a named owner: the pchat cross-client cluster (SKDM
+relay, §3.1), the media path (§3.2), and scheduled messages (client branch,
+§3.5).
+
+Baseline of **2026-08-08**, the first one taken with a working instrument:
 
 ```
 47 suites   15 gated   14 green   18 red
