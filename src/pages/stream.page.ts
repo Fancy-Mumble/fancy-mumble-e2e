@@ -1,4 +1,4 @@
-import { By, until, type WebDriver } from "selenium-webdriver";
+import { By, Key, until, type WebDriver } from "selenium-webdriver";
 import { byTid, TID, STREAM_SOURCE_TITLE_ATTR, BROADCASTER_NAME_ATTR } from "../selectors";
 import { delay } from "../util/wait";
 import { config } from "../config";
@@ -48,6 +48,28 @@ export interface CheckerboardReadout {
  */
 export class StreamPage {
   constructor(private readonly d: WebDriver) {}
+
+  /**
+   * CSS matching the stream's media surface, whichever family renders it.
+   *
+   * The viewer has two implementations and they do not share an element. The
+   * *webview family* binds a `MediaStream` to a `<video>`
+   * (`stream-viewer-video`); the *native family* — mandatory on Linux, where
+   * WebKitGTK has no WebRTC — decodes in Rust and paints into a `<canvas>`
+   * (`stream-native-view`). A selector naming only the `<video>` waits out its
+   * full timeout on Linux against a stream that is playing perfectly, which is
+   * what "own preview never received frames" meant in every Linux sweep.
+   *
+   * The camera PiP needs no such union: both families render it under the same
+   * testid.
+   */
+  private surface(own: boolean): By {
+    const flag = own ? "true" : "false";
+    return By.css(
+      `[data-testid="${TID.streamViewerVideo}"][data-own="${flag}"],` +
+        `[data-testid="${TID.streamNativeView}"][data-own="${flag}"]`,
+    );
+  }
 
   /** Click the chat-header share toggle (present in both builds). */
   private async clickToggle(timeout = config.waitTimeout): Promise<void> {
@@ -228,6 +250,39 @@ export class StreamPage {
     }
   }
 
+  /**
+   * Dismiss the source picker if it is open, and resolve once it is gone.
+   *
+   * A test that abandons a flow mid-picker (most often `t.skip()` after
+   * enumeration found no cameras) leaves a modal mounted, and the NEXT test's
+   * click on the header toggle hits that modal's backdrop instead:
+   * `ElementClickInterceptedError`, several steps away from anything to do
+   * with what actually went wrong. Cleanup belongs in `afterEach`, next to
+   * {@link stopBroadcastIfActive}.
+   */
+  async closePickerIfOpen(): Promise<void> {
+    try {
+      const open = await this.d.findElements(byTid(TID.screenSharePicker));
+      if (open.length === 0) return;
+      // Escape is what the Modal itself listens for; the Cancel button is the
+      // fallback for a build whose modal opts out of Esc dismissal.
+      await this.d.actions().sendKeys(Key.ESCAPE).perform();
+      await delay(300);
+      if ((await this.d.findElements(byTid(TID.screenSharePicker))).length === 0) return;
+      const cancel = await this.d.findElements(
+        By.xpath("//button[normalize-space(.)='Cancel']"),
+      );
+      if (cancel.length > 0) await cancel[0]!.click();
+      await this.d.wait(
+        async () => (await this.d.findElements(byTid(TID.screenSharePicker))).length === 0,
+        5000,
+        "source picker stayed open after Escape and Cancel",
+      );
+    } catch {
+      /* best effort - this is cleanup, never the reason a test fails */
+    }
+  }
+
   async openPickerDevices(timeout = config.waitTimeout): Promise<string[]> {
     await this.openPicker(timeout);
     await this.selectTab("devices");
@@ -405,9 +460,7 @@ export class StreamPage {
 
   /** Whether the own-broadcast preview is currently mounted (broadcast live). */
   async ownPreviewPresent(): Promise<boolean> {
-    const els = await this.d.findElements(
-      By.css(`[data-testid="${TID.streamViewerVideo}"][data-own="true"]`),
-    );
+    const els = await this.d.findElements(this.surface(true));
     return els.length > 0;
   }
 
@@ -431,7 +484,7 @@ export class StreamPage {
 
   /** Best-effort full stop of any active own broadcast (afterEach cleanup). */
   async stopBroadcastIfActive(): Promise<void> {
-    const own = By.css(`[data-testid="${TID.streamViewerVideo}"][data-own="true"]`);
+    const own = this.surface(true);
     try {
       for (let i = 0; i < 3; i++) {
         const btns = await this.d.findElements(By.css('button[aria-label^="Stop sharing"]'));
@@ -512,7 +565,7 @@ export class StreamPage {
    */
   async stopBroadcast(): Promise<void> {
     const stopBtn = By.css('button[aria-label^="Stop sharing"]');
-    const own = By.css(`[data-testid="${TID.streamViewerVideo}"][data-own="true"]`);
+    const own = this.surface(true);
     for (let i = 0; i < 3; i++) {
       const btns = await this.d.findElements(stopBtn);
       if (btns.length === 0) break;
@@ -563,18 +616,12 @@ export class StreamPage {
    * the viewer actually RECEIVES, end to end through encode/SFU/decode.
    */
   async measureOwnPreviewFps(windowMs = 3000): Promise<number> {
-    const read = () =>
-      this.d.executeScript<number>(
-        `const v = document.querySelector('[data-testid="${TID.streamViewerVideo}"][data-own="true"]');
-         if (!v) return -1;
-         const q = v.getVideoPlaybackQuality && v.getVideoPlaybackQuality();
-         return q ? q.totalVideoFrames : -1;`,
-      );
-    const before = await read();
+    const before = await this.readPlaybackStats(true);
+    if (before.totalVideoFrames < 0) throw new Error("own preview vanished while measuring fps");
     await delay(windowMs);
-    const after = await read();
-    if (before < 0 || after < 0) throw new Error("own preview vanished while measuring fps");
-    return ((after - before) * 1000) / windowMs;
+    const after = await this.readPlaybackStats(true);
+    if (after.totalVideoFrames < 0) throw new Error("own preview vanished while measuring fps");
+    return ((after.totalVideoFrames - before.totalVideoFrames) * 1000) / (after.tMs - before.tMs);
   }
 
   /**
@@ -585,20 +632,25 @@ export class StreamPage {
    * not pixel change.)
    */
   async assertOwnPreviewFlowing(windowMs = 3000): Promise<void> {
-    const readTime = () =>
+    // `<video>` advances currentTime; the native family's `<canvas>` has no
+    // clock, so its painted-frame tally is the equivalent progress signal.
+    // Both answer the same question: is the pipeline still delivering?
+    const readProgress = () =>
       this.d.executeScript<number>(
-        `const v = document.querySelector('[data-testid="${TID.streamViewerVideo}"][data-own="true"]');
-         return v ? v.currentTime : -1;`,
+        `const el = document.querySelector(
+           '[data-testid="${TID.streamViewerVideo}"][data-own="true"],' +
+           '[data-testid="${TID.streamNativeView}"][data-own="true"]');
+         if (!el) return -1;
+         return el.tagName === 'VIDEO' ? el.currentTime : (el.__e2eFrames ?? 0);`,
       );
-    const before = await readTime();
+    await this.installFrameCounter();
+    const before = await readProgress();
     if (before < 0) throw new Error("own stream preview vanished");
     await delay(windowMs);
-    const after = await readTime();
+    const after = await readProgress();
     if (after < 0) throw new Error("own stream preview vanished while playing");
     if (after <= before) {
-      throw new Error(
-        `own stream preview stopped decoding (currentTime ${before} -> ${after})`,
-      );
+      throw new Error(`own stream preview stopped decoding (progress ${before} -> ${after})`);
     }
   }
 
@@ -685,7 +737,6 @@ export class StreamPage {
   ): Promise<CheckerboardReadout> {
     return this.d.executeScript<CheckerboardReadout>(
       READ_CHECKERBOARD_FN,
-      TID.streamViewerVideo,
       own ? "true" : "false",
       cols,
       rows,
@@ -720,31 +771,79 @@ export class StreamPage {
    * fps: (Δ totalVideoFrames) / (Δ tMs).
    */
   async readPlaybackStats(own: boolean): Promise<{ totalVideoFrames: number; tMs: number }> {
+    await this.installFrameCounter();
     return this.d.executeScript<{ totalVideoFrames: number; tMs: number }>(
       `
-      const video = document.querySelector(
-        '[data-testid="' + arguments[0] + '"][data-own="' + arguments[1] + '"]');
-      if (!video) return { totalVideoFrames: -1, tMs: Date.now() };
-      const q = video.getVideoPlaybackQuality ? video.getVideoPlaybackQuality() : null;
-      return {
-        totalVideoFrames: q ? q.totalVideoFrames : (video.webkitDecodedFrameCount ?? -1),
-        tMs: Date.now(),
-      };
+      const own = arguments[0];
+      const el = document.querySelector(
+        '[data-testid="${TID.streamViewerVideo}"][data-own="' + own + '"],' +
+        '[data-testid="${TID.streamNativeView}"][data-own="' + own + '"]');
+      if (!el) return { totalVideoFrames: -1, tMs: Date.now() };
+      if (el.tagName === 'VIDEO') {
+        const q = el.getVideoPlaybackQuality ? el.getVideoPlaybackQuality() : null;
+        return {
+          totalVideoFrames: q ? q.totalVideoFrames : (el.webkitDecodedFrameCount ?? -1),
+          tMs: Date.now(),
+        };
+      }
+      // Native family: the paint counter installed above (see
+      // installFrameCounter) is the canvas equivalent of totalVideoFrames.
+      return { totalVideoFrames: el.__e2eFrames ?? 0, tMs: Date.now() };
       `,
-      TID.streamViewerVideo,
       own ? "true" : "false",
     );
   }
 
+  /**
+   * Count decoded frames the native (canvas) viewer paints.
+   *
+   * A `<canvas>` exposes no `getVideoPlaybackQuality`, so the fps floors have
+   * nothing to read on Linux. Every painted frame arrives through one call —
+   * `ctx.drawImage(frame|bitmap, 0, 0)` in `nativeStreamView`'s paint path —
+   * so wrapping `drawImage` and tallying per destination canvas gives the same
+   * quantity from the outside: frames that travelled capture → encode → SFU →
+   * decode and reached the screen.
+   *
+   * Only paints INTO a stream surface count; the readback in
+   * {@link readCheckerboard} draws into a scratch canvas and must not inflate
+   * the tally. Idempotent, and safe to install after frames have started (the
+   * assertions read deltas).
+   */
+  private async installFrameCounter(): Promise<void> {
+    await this.d.executeScript(`
+      if (!window.__e2eFrameCounterInstalled) {
+        window.__e2eFrameCounterInstalled = true;
+        const proto = CanvasRenderingContext2D.prototype;
+        const orig = proto.drawImage;
+        proto.drawImage = function (...args) {
+          try {
+            const dest = this.canvas;
+            const tid = dest && dest.getAttribute && dest.getAttribute('data-testid');
+            if (tid === '${TID.streamNativeView}' || tid === '${TID.streamCameraVideo}') {
+              dest.__e2eFrames = (dest.__e2eFrames || 0) + 1;
+            }
+          } catch (e) { /* never break a paint */ }
+          return orig.apply(this, args);
+        };
+      }
+    `);
+  }
+
   private async waitVideoReady(own: "true" | "false", timeout: number): Promise<void> {
-    const sel = By.css(`[data-testid="${TID.streamViewerVideo}"][data-own="${own}"]`);
+    const sel = this.surface(own === "true");
     await this.d.wait(until.elementLocated(sel), timeout);
     await this.d.wait(async () => {
       const els = await this.d.findElements(sel);
       if (els.length === 0) return false;
-      const w = await this.d.executeScript<number>("return arguments[0].videoWidth || 0;", els[0]);
+      // `videoWidth` on a <video>, `width` on the native family's <canvas>:
+      // both are 0 until the first frame lands, which is the thing being
+      // waited for.
+      const w = await this.d.executeScript<number>(
+        "return arguments[0].videoWidth || arguments[0].width || 0;",
+        els[0],
+      );
       return w > 0;
-    }, timeout, `stream <video data-own="${own}"> never received frames`);
+    }, timeout, `stream surface data-own="${own}" never received frames`);
   }
 
   /**
@@ -762,9 +861,14 @@ export class StreamPage {
     await this.d.wait(async () => {
       const els = await this.d.findElements(sel);
       if (els.length === 0) return false;
-      const w = await this.d.executeScript<number>("return arguments[0].videoWidth || 0;", els[0]);
+      // Same testid for both families here, but a `<canvas>` PiP sizes
+      // through `width` rather than `videoWidth`.
+      const w = await this.d.executeScript<number>(
+        "return arguments[0].videoWidth || arguments[0].width || 0;",
+        els[0],
+      );
       return w > 0;
-    }, timeout, `camera PiP <video data-own="${own}"> never received frames`);
+    }, timeout, `camera PiP data-own="${own}" never received frames`);
   }
 }
 
@@ -774,23 +878,27 @@ function cssAttrEscape(value: string): string {
 
 /**
  * In-page function (stringified for executeScript): draw the chosen stream
- * video into a canvas and classify a cols x rows grid of cell centres.
+ * surface into a scratch canvas and classify a cols x rows grid of cell
+ * centres. Handles both viewer families - `drawImage` takes a `<video>` and a
+ * `<canvas>` alike, only the natural-size property differs.
  */
 const READ_CHECKERBOARD_FN = `
-  const testid = arguments[0];
-  const own = arguments[1];
-  const cols = arguments[2];
-  const rows = arguments[3];
-  const video = document.querySelector('[data-testid="' + testid + '"][data-own="' + own + '"]');
+  const own = arguments[0];
+  const cols = arguments[1];
+  const rows = arguments[2];
+  const source = document.querySelector(
+    '[data-testid="stream-viewer-video"][data-own="' + own + '"],' +
+    '[data-testid="stream-native-view"][data-own="' + own + '"]');
   const fail = (reason) => ({ ok: false, reason, phase: -1, greenCount: 0, purpleCount: 0,
     otherCount: 0, mismatches: 0, checkerboard: false, videoWidth: 0, videoHeight: 0 });
-  if (!video) return fail('no-video-element');
-  const w = video.videoWidth, h = video.videoHeight;
+  if (!source) return fail('no-video-element');
+  const w = source.tagName === 'VIDEO' ? source.videoWidth : source.width;
+  const h = source.tagName === 'VIDEO' ? source.videoHeight : source.height;
   if (!w || !h) return fail('no-frames');
   const canvas = document.createElement('canvas');
   canvas.width = w; canvas.height = h;
   const ctx = canvas.getContext('2d');
-  ctx.drawImage(video, 0, 0, w, h);
+  ctx.drawImage(source, 0, 0, w, h);
   let img;
   try { img = ctx.getImageData(0, 0, w, h); } catch (e) { return fail('tainted:' + e); }
   const data = img.data;

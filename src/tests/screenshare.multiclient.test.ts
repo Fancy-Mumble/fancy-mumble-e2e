@@ -5,6 +5,7 @@ import { config } from "../config";
 import { CheckerboardWindow } from "../util/checkerboard";
 import { tkinterMissing } from "../util/preconditions";
 import { stepChain } from "../util/steps";
+import { captureEnv } from "../util/capture-env";
 
 /**
  * Screen-share fidelity across two clients, end-to-end, through the new
@@ -52,8 +53,8 @@ describe("multi-client: screen sharing (checkerboard pixel fidelity)", { skip: t
     // picker be auto-resolved to each client's own checkerboard window; the new
     // Rust picker ignores it and is driven through the DOM instead.
     [alice, bob] = await TauriApp.launchAll(
-      { instance: 0, captureWindowTitle: aliceTitle },
-      { instance: 1, captureWindowTitle: bobTitle },
+      { instance: 0, captureWindowTitle: aliceTitle, extraEnv: captureEnv() },
+      { instance: 1, captureWindowTitle: bobTitle, extraEnv: captureEnv() },
     );
 
     await Promise.all([

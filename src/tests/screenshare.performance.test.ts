@@ -5,6 +5,7 @@ import { config } from "../config";
 import { CheckerboardWindow } from "../util/checkerboard";
 import { delay } from "../util/wait";
 import { tkinterMissing } from "../util/preconditions";
+import { captureEnv } from "../util/capture-env";
 
 /**
  * Screen-share PERFORMANCE floor, end-to-end through the Rust capture +
@@ -62,8 +63,10 @@ describe("multi-client: screen sharing performance (fps + latency)", { skip: tki
       animate: true,
     });
 
-    alice = await TauriApp.launch({ instance: 0 });
-    bob = await TauriApp.launch({ instance: 1 });
+    [alice, bob] = await TauriApp.launchAll(
+      { instance: 0, extraEnv: captureEnv() },
+      { instance: 1, extraEnv: captureEnv() },
+    );
 
     await alice.connect.connect(config.serverHost, aliceName, { port: config.serverPort });
     await bob.connect.connect(config.serverHost, bobName, { port: config.serverPort });

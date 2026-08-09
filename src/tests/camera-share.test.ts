@@ -4,6 +4,7 @@ import { TauriApp } from "../app";
 import { config } from "../config";
 import { delay } from "../util/wait";
 import { stepChain } from "../util/steps";
+import { captureEnv } from "../util/capture-env";
 
 /**
  * Virtual-camera share, end-to-end through the Rust-native picker and the
@@ -32,7 +33,7 @@ describe("camera share: virtual camera (DirectShow backend)", () => {
   const name = `e2e-Cam-${Date.now() % 1000000}`;
 
   before(async () => {
-    app = await TauriApp.launch({ instance: 0 });
+    app = await TauriApp.launch({ instance: 0, extraEnv: captureEnv() });
     await app.connect.connect(config.serverHost, name, { port: config.serverPort });
     await app.chat.waitLoaded(config.connectTimeout);
   });
@@ -44,7 +45,13 @@ describe("camera share: virtual camera (DirectShow backend)", () => {
   // Never leak a running broadcast into the next test (a failing assertion
   // before stopBroadcast() would otherwise leave the share up).
   afterEach(async () => {
-    if (app) await app.stream.stopBroadcastIfActive();
+    if (app) {
+      // A step that skips mid-picker (no cameras on this machine) would
+      // otherwise leave the modal up and the next step's toggle click would
+      // be intercepted by its backdrop.
+      await app.stream.closePickerIfOpen();
+      await app.stream.stopBroadcastIfActive();
+    }
   });
 
   // The four tests drive one broadcast's lifecycle in order: stream, add a

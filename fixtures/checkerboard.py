@@ -73,7 +73,23 @@ def build(args: argparse.Namespace) -> tk.Tk:
     # Borderless so no title-bar/chrome pixels pollute the captured frame, and
     # topmost so window capture is reliable even on a busy desktop / under a
     # bare X server (no compositor) in CI.
-    root.overrideredirect(True)
+    #
+    # HOW borderless is asked for matters on X11: `overrideredirect` bypasses
+    # the window manager, which then leaves the window out of
+    # `_NET_CLIENT_LIST_STACKING` - the property every window enumerator reads
+    # (xcap included). The board was invisible to the client's source picker
+    # for exactly that reason. A splash-type window is undecorated *and*
+    # WM-managed, so it enumerates normally. Windows/macOS keep
+    # `overrideredirect`: `-type` is X11-only there.
+    borderless_via_type = False
+    if sys.platform not in ("win32", "darwin"):
+        try:
+            root.attributes("-type", "splash")
+            borderless_via_type = True
+        except tk.TclError:
+            pass
+    if not borderless_via_type:
+        root.overrideredirect(True)
     root.attributes("-topmost", True)
 
     canvas = tk.Canvas(root, width=width, height=height, highlightthickness=0, bd=0)

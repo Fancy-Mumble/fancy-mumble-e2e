@@ -144,6 +144,42 @@ export function tkinterMissing(): Gate {
   });
 }
 
+/**
+ * ENTIRE-SCREEN capture needs a session a test can drive.
+ *
+ * Window capture and whole-screen capture fail differently on a Wayland
+ * desktop, so they gate separately:
+ *
+ *   - A **window** is capturable through XWayland: the media suites run their
+ *     clients with an X11 identity (see `util/capture-env.ts`), xcap takes its
+ *     xcb path, and `XGetImage` on another client's window returns real
+ *     pixels. Verified on this rig.
+ *   - The **root window** is not. XWayland's root is a bounding box no
+ *     compositor paints into, and `XGetImage` on it fails with `BadMatch`
+ *     (X error 8, opcode 73) - so an "entire screen" share captures nothing
+ *     no matter how the client is configured.
+ *
+ * The other path to a whole screen is the portal, and its dialog is drawn by
+ * the compositor: WebDriver cannot see it, and `PortalSession::open` waits on
+ * it unbounded. So on a Wayland session this suite cannot be measured at all,
+ * which is a fact about the desktop rather than a defect in the product.
+ */
+export function entireScreenCaptureUnavailable(): Gate {
+  return once("entire-screen", () => {
+    if (process.platform !== "linux") return false;
+    const wayland =
+      (process.env.XDG_SESSION_TYPE ?? "").toLowerCase() === "wayland" ||
+      Boolean(process.env.WAYLAND_DISPLAY);
+    return wayland
+      ? `this is a Wayland session, where an entire-screen capture is not ` +
+        `reachable from a test: XWayland's root window cannot be read ` +
+        `(XGetImage -> BadMatch), and the portal route draws a compositor ` +
+        `dialog WebDriver cannot answer. Window shares are unaffected. Run ` +
+        `this suite from an X11 session (or a nested X server) to measure it.`
+      : false;
+  });
+}
+
 // -- Local infrastructure gates ---------------------------------------
 
 /** Whether an HTTP service answers, synchronously (see `serverReachable`). */

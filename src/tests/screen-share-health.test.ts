@@ -4,7 +4,8 @@ import { TauriApp } from "../app";
 import { config } from "../config";
 import { delay } from "../util/wait";
 import { CheckerboardWindow } from "../util/checkerboard";
-import { tkinterMissing } from "../util/preconditions";
+import { tkinterMissing, entireScreenCaptureUnavailable } from "../util/preconditions";
+import { captureEnv } from "../util/capture-env";
 
 /**
  * Screen-share delivery health: the decoded stream must not accumulate
@@ -54,7 +55,7 @@ describe("screen share: delivery health (freezes)", { skip: tkinterMissing() }, 
       x: 80,
       y: 80,
     });
-    app = await TauriApp.launch({ instance: 0 });
+    app = await TauriApp.launch({ instance: 0, extraEnv: captureEnv() });
     await app.connect.connect(config.serverHost, name, { port: config.serverPort });
     await app.chat.waitLoaded(config.connectTimeout);
     // Backend tracing (send-leg + pipeline timings) for post-run analysis.
@@ -83,6 +84,11 @@ describe("screen share: delivery health (freezes)", { skip: tkinterMissing() }, 
     // self-oscillates and pollutes delivery measurements. E2E_SHARE=screen
     // opts back in for comparison runs.
     if (process.env.E2E_SHARE === "screen") {
+      // Opt-in comparison run. Say why it cannot work here rather than
+      // reporting zero frames as a delivery problem (see
+      // `entireScreenCaptureUnavailable`).
+      const gate = entireScreenCaptureUnavailable();
+      if (gate) throw new Error(`E2E_SHARE=screen cannot be measured: ${gate}`);
       await app.stream.pickSource("screens");
     } else {
       await app.stream.pickSource("windows", board.title);
