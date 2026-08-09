@@ -1,0 +1,253 @@
+<title>FancyMumble E2E — Four Agents to Green</title>
+<style>
+  :root {
+    --bg: #FAFAF8; --ink: #20241F; --muted: #6A716B; --accent: #196B4E;
+    --pass: #1B8552; --fail: #BE3D2E; --gate: #8F6E12; --info: #3A5F8A;
+    --card: #FFFFFF; --line: #E2E5E0; --code-bg: #F0F2EE;
+    --a: #3A5F8A; --b: #196B4E; --c: #8F6E12; --d: #7A4A8A;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #151816; --ink: #E4E7E3; --muted: #9AA29B; --accent: #3FAE87;
+      --pass: #3CAB70; --fail: #E17055; --gate: #CBA83F; --info: #7FA6D0;
+      --card: #1C201D; --line: #2A2F2B; --code-bg: #20241F;
+      --a: #7FA6D0; --b: #3FAE87; --c: #CBA83F; --d: #B08CC4;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #151816; --ink: #E4E7E3; --muted: #9AA29B; --accent: #3FAE87;
+    --pass: #3CAB70; --fail: #E17055; --gate: #CBA83F; --info: #7FA6D0;
+    --card: #1C201D; --line: #2A2F2B; --code-bg: #20241F;
+    --a: #7FA6D0; --b: #3FAE87; --c: #CBA83F; --d: #B08CC4;
+  }
+  * { box-sizing: border-box; }
+  body { background: var(--bg); color: var(--ink);
+    font: 15.5px/1.6 system-ui, -apple-system, "Segoe UI", sans-serif;
+    margin: 0; padding: 2.5rem 1.25rem 5rem; }
+  main { max-width: 880px; margin: 0 auto; }
+  h1 { font-size: 2rem; line-height: 1.2; margin: 0 0 .3rem; letter-spacing: -.015em; text-wrap: balance; }
+  h2 { font-size: 1.35rem; margin: 2.8rem 0 .8rem; letter-spacing: -.01em;
+       padding-top: 1.6rem; border-top: 1px solid var(--line); text-wrap: balance; }
+  h3 { font-size: 1.05rem; margin: 1.4rem 0 .4rem; }
+  p { margin: .65rem 0; max-width: 70ch; }
+  .sub { color: var(--muted); margin: 0 0 1.6rem; }
+  .eyebrow { text-transform: uppercase; letter-spacing: .08em; font-size: .72rem;
+             color: var(--accent); font-weight: 600; display: block; margin-bottom: .35rem; }
+  code, .mono { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-size: .86em; }
+  code { background: var(--code-bg); padding: .1em .35em; border-radius: 4px; }
+  pre { background: var(--code-bg); border: 1px solid var(--line); border-radius: 8px;
+        padding: .8rem 1rem; overflow-x: auto; font-size: .8rem; line-height: 1.6; margin: .6rem 0; }
+  pre code { background: none; padding: 0; }
+  table { border-collapse: collapse; width: 100%; font-size: .875rem; }
+  .tw { overflow-x: auto; margin: 1rem 0; border: 1px solid var(--line); border-radius: 8px; }
+  th { text-align: left; font-size: .72rem; text-transform: uppercase; letter-spacing: .06em;
+       color: var(--muted); font-weight: 600; padding: .55rem .75rem; border-bottom: 1px solid var(--line); }
+  td { padding: .55rem .75rem; border-bottom: 1px solid var(--line); vertical-align: top; }
+  tr:last-child td { border-bottom: none; }
+  .agent { border: 1px solid var(--line); border-left: 4px solid var(--ac, var(--accent));
+           border-radius: 10px; background: var(--card); padding: 1.1rem 1.3rem; margin: 1.2rem 0; }
+  .agent h3 { margin-top: 0; }
+  .agent .meta { font-size: .8rem; color: var(--muted); margin-bottom: .6rem; }
+  .tag { display: inline-block; font-size: .72rem; font-weight: 700; padding: .1rem .55rem;
+         border-radius: 99px; color: var(--bg); background: var(--ac, var(--accent)); margin-right: .4rem; }
+  ul { padding-left: 1.2rem; } li { margin: .35rem 0; max-width: 68ch; }
+  ol { padding-left: 1.3rem; } ol li { margin: .4rem 0; max-width: 68ch; }
+  .foot { margin-top: 3rem; padding-top: 1rem; border-top: 1px solid var(--line);
+          font-size: .8rem; color: var(--muted); }
+  .warn { border: 1px solid color-mix(in srgb, var(--gate) 45%, transparent);
+          background: color-mix(in srgb, var(--gate) 8%, transparent);
+          border-radius: 8px; padding: .7rem 1rem; font-size: .88rem; max-width: none; }
+</style>
+
+<main>
+<span class="eyebrow">FancyMumble · e2e suite · plan · 2026-08-09</span>
+<h1>Four Agents to Green</h1>
+<p class="sub">The 8 remaining reds, cut into 4 disjoint territories that can be worked in parallel — with the shared-rig protocol that makes "parallel" true on one machine.</p>
+
+<h2>The split</h2>
+<div class="tw"><table>
+  <tr><th>Group</th><th>Failing tests</th><th>Root-cause lead</th><th>Code territory</th><th>Size</th></tr>
+  <tr><td><span class="tag" style="--ac:var(--a)">A</span>Signal cross-client</td>
+    <td>3 — <code>signal-pchat</code>: decrypt-across-members, reconnect-resume, late-joiner post-join</td>
+    <td>Suspected cert-hash collision between client instances; one grep decides it</td>
+    <td>harness <code>src/app.ts</code> isolation, client <code>e2e_data_dir</code>/cert gen</td><td>S–M</td></tr>
+  <tr><td><span class="tag" style="--ac:var(--b)">B</span>Archive pchat</td>
+    <td>2 — read watermark (<code>pchat-control-plane</code>), history replay (<code>pchat</code>)</td>
+    <td><code>fancy_v1_full_archive</code> paths — no Signal crypto involved; server store/replay + client ack</td>
+    <td>starling <code>text</code>/<code>pchat</code> services, client watermark UI</td><td>M</td></tr>
+  <tr><td><span class="tag" style="--ac:var(--c)">C</span>Media path</td>
+    <td>2 headline + step-chained dependents — screenshare fidelity/health/fps ×4 suites, camera ×1</td>
+    <td>Frames don't arrive/decode through the SFU; E2E-STATUS calls it the largest effort</td>
+    <td>starling <code>crates/sfu</code>, client capture/WebRTC</td><td>L</td></tr>
+  <tr><td><span class="tag" style="--ac:var(--d)">D</span>Scheduled messages</td>
+    <td>1 + 3 cancelled — suite dies in <code>before()</code> on a missing testid</td>
+    <td>Client UI doesn't exist on the pinned commit; branch <code>wip/forums-scheduled-testids</code> has it</td>
+    <td>vendor/client branch integration + <code>src/selectors.ts</code></td><td>M</td></tr>
+</table></div>
+<p>Groups are disjoint by design: A touches identity/isolation, B touches the archive store, C touches media, D touches a client branch. No two groups share a failing suite, and the only shared files are the two trees themselves — covered by the protocol below.</p>
+
+<h2>Agent A — Signal cross-client decryption <span class="mono" style="font-size:.8rem;color:var(--muted)">3 tests</span></h2>
+<div class="agent" style="--ac:var(--a)">
+  <div class="meta">Everything server-side is already proven by wire tests (message relay, SKDM key relay, cert stamping — <code>crates/starling/src/e2e.rs</code>). The fault is in front of the server.</div>
+  <ol>
+    <li><b>Run the deciding probe first</b> (needs rig, ~10 min): a three-client run with
+      <code>E2E_STARLING_LOG=info,starling_pchat=debug</code>, then grep the server log for
+      <code>certificate=</code>. <b>Three distinct hashes</b> → isolation is fine, move to step 3.
+      <b>Fewer</b> → confirmed: instances share an identity, sender keys collide, and all three tests
+      fall out of one bug.</li>
+    <li>If shared: fix the isolation. Suspects in order: client <code>e2e_data_dir()</code> honoring
+      <code>FANCY_E2E_DATA_DIR</code> for the <em>cert store</em> specifically; harness
+      <code>ensureDefaultCert</code> racing parallel launches; cert generation being deterministic.
+      The fix is likely small; the diagnosis is the work.</li>
+    <li>If distinct: instrument the receiving client (<code>RUST_LOG=mumble_tauri=debug</code> reaches
+      the app) and check whether the pchat frame arrives and fails decrypt, or never surfaces to the
+      store. <code>state/handler/</code> and the signal bridge boundary are yours.</li>
+  </ol>
+  <p><b>Done when:</b> <code>signal-pchat.multiclient.test.ts</code> is 3/3 twice in a row under the rig lock.</p>
+</div>
+
+<h2>Agent B — Archive-mode persistent chat <span class="mono" style="font-size:.8rem;color:var(--muted)">2 tests</span></h2>
+<div class="agent" style="--ac:var(--b)">
+  <div class="meta">Both failures are in <code>fancy_v1_full_archive</code> channels — server-side archive, no client crypto — so this group does not wait on A.</div>
+  <ol>
+    <li><b>Read watermark:</b> alice sends, bob renders it, alice waits for the "Read" receipt.
+      Bob's render is now proven good (keymap fix), so the missing leg is the ack: does bob's client
+      send the watermark (client <code>state/messaging</code> read-tracking), and does Starling's
+      <code>text</code>/<code>pchat</code> service relay it back to the author? Wire-log both sides in
+      one 2-client run.</li>
+    <li><b>History replay:</b> reconnect, expect the archive to replay. Server stores fine
+      (<code>stored an encrypted message … protocol=4</code> covers the store path; archive rows
+      likewise). Check the fetch: client <code>send_fetch</code> on join → server
+      <code>pchat</code> fetch handler → <code>PchatHistory</code> events → store slice
+      (<code>persistentChat.ts</code>). One leg is silent; find which.</li>
+  </ol>
+  <p><b>Done when:</b> <code>pchat-control-plane</code> 2/2 and <code>pchat.multiclient</code> green twice in a row.</p>
+</div>
+
+<h2>Agent C — Media path <span class="mono" style="font-size:.8rem;color:var(--muted)">5 suites</span></h2>
+<div class="agent" style="--ac:var(--c)">
+  <div class="meta">The long one — schedule it knowing it outlives the other three. Step-chains mean each suite now fails once, cheaply, so iteration is fast.</div>
+  <ol>
+    <li>Start from <code>screen share: delivery health</code> — the narrowest assertion (frames arrive
+      without freezes) and the one that isolates transport from fps floors.
+      <code>enableFileLogging()</code> is already wired for backend pipeline timings.</li>
+    <li>Establish where frames die: capture (client), publish (client WebRTC → SFU), forward
+      (<code>crates/sfu</code>), or decode (viewer). One binary-search run per layer with the
+      existing tracing beats reading all four layers.</li>
+    <li>Only after delivery is green, look at the fps/latency floors — and remember the documented
+      caveat: those floors legitimately fail on software rendering; <code>E2E_SKIP</code> exists for
+      machines where that's the truth.</li>
+    <li>Camera share shares the broadcaster path; expect it to move with the screen fix, then handle
+      DirectShow-specific remainder separately.</li>
+  </ol>
+  <p><b>Done when:</b> delivery-health and checkerboard fidelity green; fps suites green or
+  E2E_SKIP-documented for this display, per the existing rule.</p>
+</div>
+
+<h2>Agent D — Scheduled messages <span class="mono" style="font-size:.8rem;color:var(--muted)">1 + 3 cancelled</span></h2>
+<div class="agent" style="--ac:var(--d)">
+  <div class="meta">Server side is done (store + timer + deliver/list/cancel landed 2026-08-09). The client UI exists only on <code>wip/forums-scheduled-testids</code>.</div>
+  <ol>
+    <li>Rebase/merge <code>wip/forums-scheduled-testids</code> onto the current client tree in
+      vendor/client. Expect friction around tonight's canon changes (<code>PollVote.channel</code>,
+      <code>Reaction.actor_cert</code>) — resolve toward current.</li>
+    <li>Rebuild the complete artifact with <code>scripts/build-client.sh</code> — never bare
+      <code>cargo tauri build</code> (the bridge <code>.so</code> and DeepFilterNet vanish otherwise,
+      and ten unrelated suites go red). UI changed → the <code>npm run build</code> →
+      <code>cargo</code> mtime chain must hold.</li>
+    <li>Move the scheduled-messages ids out of <code>ABSENT_FROM_CLIENT</code> in
+      <code>src/selectors.ts</code>, and if any new page-object input types asserted-on text:
+      <code>setReactInputValue</code>, never <code>sendKeys</code> (see <code>util/astral.ts</code>).</li>
+    <li><b>Coordinate before swapping the binary:</b> every other agent's verification runs against
+      the shared artifact — announce the rebuild on the rig channel and land it between their runs.</li>
+  </ol>
+  <p><b>Build traps, verified on this box (field reports, 2026-08-09):</b></p>
+  <ul>
+    <li>The libva-2.22 headers under /tmp were cleaned at reboot — builds fail with the known
+      <code>cros-libva</code> E0063 until re-pinned. <b>Read <code>scripts/build-client.sh</code>'s own
+      diagnostic instead of hand-rolling</b>: it includes the non-obvious part, that
+      <code>CROS_LIBVA_H_PATH</code> only takes effect after <code>cargo clean -p cros-libva</code>
+      (no <code>rerun-if-env-changed</code>).</li>
+    <li>Anything built inside <code>nix develop</code> (forced here by the broken GTK stack) needs
+      <code>patchelf --set-interpreter /lib64/ld-linux-x86-64.so.2 --set-rpath '$ORIGIN'</code>
+      afterwards. The trap is where the failure surfaces: the build <em>succeeds</em>, then the binary
+      dies on <code>libgbm.so.1</code> inside <code>.tmp/tauri-driver-*.log</code>, and the harness's
+      error text blames a missing native WebDriver — the wrong place entirely.</li>
+    <li>Iteration shortcut: <code>npm run build</code> in <code>crates/mumble-tauri/ui</code> first,
+      then <code>cargo build -p mumble-tauri --features custom-protocol</code> (debug, ~1.5 min vs
+      ~30 for release) and point <code>E2E_APP_BIN</code> at <code>target/debug/</code>. Patchelf
+      still applies. Ship-grade verification still wants the full <code>build-client.sh</code>.</li>
+    <li>Wayland session: if anything overrides <code>XDG_RUNTIME_DIR</code>, the compositor / D-Bus /
+      PipeWire sockets must stay reachable or GTK init fails — a separate failure from the patchelf one.</li>
+    <li>A killed run leaves <code>WebKitWebDriver</code> processes behind, and the NEXT run then
+      fails with <code>SessionNotCreatedError: Maximum number of active sessions</code>. Reap with
+      <code>pkill -9 -x WebKitWebDriver</code> — under the rig lock, since it reaches every agent.</li>
+    <li>Logs: <code>E2E_STARLING_LOG</code> is the server-side knob; a release-build client needs
+      <code>set_log_to_file {enabled:true}</code> right after launch
+      (<code>set_terminal_logging</code> does not work there).</li>
+    <li>With six sessions running, inotify instances exhaust (default 128) and
+      <code>cargo tauri build</code> dies with "OS file watch limit reached". Use
+      <code>E2E_BUILD_NO_CLI=1 scripts/build-client.sh</code> (plain cargo, no watcher — safe when
+      <code>ui/dist</code> is current), or the user re-persists
+      <code>fs.inotify.max_user_instances=512</code> (the earlier manual raise reverted at reboot).</li>
+  </ul>
+  <p><b>Done when:</b> <code>scheduled-messages.multiclient.test.ts</code> 3/3 against the rebuilt client, and a full sweep confirms no suite regressed from the rebuild.</p>
+</div>
+
+<h2>The shared-rig protocol</h2>
+<p>Four agents, one machine. Diagnosis and code are parallel; <em>verification is serial</em>, and pretending otherwise produces garbage for everyone.</p>
+<div class="warn"><b>One e2e run at a time, ever.</b> The shared Starling owns TCP+UDP 64738, tauri-driver owns 4445+, and every client window shares the one desktop display — two concurrent runs corrupt each other's focus, ports, and server state.</div>
+<h3>Rules</h3>
+<ul>
+  <li><b>Rig lock:</b> take it with <code>mkdir /home/sebastian/Documents/projects/fancy-mumble-e2e/.tmp/rig.lock</code>
+    (atomic; write your agent name + intent into <code>rig.lock/owner</code>), release with
+    <code>rm -rf</code> of it when your run ends. If it's held, poll — never kill the holder's
+    processes. A run costs 2–4 min per file; the full sweep 15.</li>
+  <li><b>pkill is a rig operation.</b> <code>pkill starling</code> /
+    <code>WebKitWebDriver</code> / <code>tauri-driver</code> / <code>mumble-tauri</code> reaches
+    <em>every</em> agent's processes, not yours. Take the lock before any cleanup kill, and prefer
+    killing your own recorded PIDs over pattern kills.</li>
+  <li><b>Build etiquette:</b> cargo builds of vendor/starling and vendor/client are heavy and share
+    target dirs per tree — announce release builds, and never rebuild while another agent's e2e run
+    is mid-flight (their spawn reads the binary you're replacing).</li>
+  <li><b>File territories are the table above.</b> Shared harness files
+    (<code>app.ts</code>, page objects, <code>selectors.ts</code>) belong to whoever's step names
+    them; anything else requires a heads-up message first.</li>
+  <li><b>Never leave a shared harness file in a half-finished state.</b> An uncommitted edit to
+    <code>util/starling.ts</code> renamed the generated TOML's <code>[[virtual_servers]]</code> table
+    to <code>[[instances]]</code> — a name no shipped Starling binary knows — and every agent's
+    <code>StarlingServer.start()</code> died on "unknown field" until it was reverted. A rig-wide
+    outage from one in-flight rename. If a harness change depends on a server change that has not
+    landed in the binary, keep it in your own worktree until both move together.</li>
+  <li><b>Re-measure before debugging</b> — the house rule that paid for itself three times tonight.
+    After any fix lands anywhere, re-run your file before digging deeper: your bug may already be dead.</li>
+  <li><b>The two traps that will otherwise eat a day:</b> asserted-on text must be DOM-injected
+    (<code>setReactInputValue</code> — the keymap types <code>-</code> as <code>ß</code>), and
+    WebDriver commands on one session must never run concurrently (ECONNRESET; parallelize across
+    clients, serialize within one).</li>
+  <li><b>Definition of done, per group:</b> your file(s) green twice in a row under the lock, then
+    one full sweep at the end of the day — <code>npm run e2e</code> with
+    <code>E2E_STARLING_BIN</code> pointed at the current release build — and E2E-STATUS.md updated
+    per landing, not per epoch.</li>
+</ul>
+
+<h3>Sequencing that matters</h3>
+<ol>
+  <li><b>Hour zero:</b> Agent A's cert-grep probe runs first (it needs the rig for ten minutes and
+    its answer may reshape A's whole task). B and C read code and wire-plan meanwhile; D starts the
+    branch rebase, which needs no rig.</li>
+  <li><b>D's binary swap is the one cross-group event</b> — schedule it at a natural break, then
+    every agent re-runs their file once against the new artifact before continuing.</li>
+  <li><b>C outlives the day</b> by design; A, B, D landing first shrinks the sweep and the red set
+    around it.</li>
+  <li><b>End of day: the checkpoint sweep.</b> Iteration sweeps run against dirty trees and say so
+    (the harness stamps <code>+dirty</code> in every run header) — fine for a working signal,
+    not durable: "dirty" is a different tree every hour, and a fix that only exists uncommitted
+    disappears at the next checkout. Once landings stop: owners commit their vendor-tree work,
+    rebuild client + starling from the committed state (<code>build-client.sh</code>, release
+    starling), run one full sweep, and record it in E2E-STATUS with <b>clean hashes</b> — that
+    sweep is the scoreboard; everything before it was navigation.</li>
+</ol>
+
+<p class="foot">Companion to <span class="mono">Road to Green</span> (results page) · sources: E2E-STATUS.md §3 (per-red ownership + evidence), sweep of 2026-08-09 (67/86 in 14:57) · harness commits <span class="mono">26aedd2 · df3c234 · c4ae3e6</span> on <span class="mono">wip/audit-e2e</span>.</p>
+</main>

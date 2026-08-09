@@ -130,12 +130,146 @@ composer, focus-dependently, so every hyphenated token was *sent mangled* and
 the composer switched to DOM-injected input (see `util/astral.ts`), `bridge
 smoke` and pin/unpin are GREEN.
 
-**What is still red, and it is now the server:** the cross-client half -
-decrypt-on-the-other-member, reconnect-resume, late-joiner post-join, read
-watermark. With relay proven and "reached nobody" absent from a debug-level
-log, the remaining suspect is the SKDM leg: `PluginDataTransmission` (type 26)
-through the plugins service, which drops empty-receiver messages. Handed to
-the session that owns it.
+**Update 2026-08-09, later (Agent A handoff, session ending on credits - not
+finished, do not re-derive, continue from here):**
+
+The cert-isolation hypothesis below (grep for `certificate=`) is **dead**.
+Two independent probes (one launching 3 clients concurrently exactly as the
+suite does) got 3-of-3 distinct hashes. Do not re-run that probe.
+
+Three real, verified bugs found and fixed this session, all in `vendor/client`
+(uncommitted - see file list at the end of this entry):
+
+1. **SKDM sender_hash was always empty.** `PchatSenderKeyDistribution` has no
+   canon form, so it rides Starling's opaque `PluginDataTransmission` relay,
+   which never parses it - the client's comment "server fills this on relay"
+   was never true. Every receiver filed the sender's key under no identity;
+   single-client echo passed because it needs no key exchange. **Fix:** sender
+   now self-identifies (`own_cert_hash`) in
+   `command/send_pchat_sender_key_distribution.rs` +
+   `state/pchat/signal_bridge.rs::send_signal_distribution`. Safe against
+   impersonation - a server that does parse the field overwrites it with the
+   authenticated sender, per `a_sender_key_distribution_reaches_the_member_it_names`.
+   Verified directly in a client log: `pchat msg-deliver: decrypted OK`.
+
+2. **Forward-secrecy leak, exposed (not caused) by Agent B's unrelated
+   `PchatFetchResponse` canon fix.** `signal_v1` is documented to keep no
+   server-side history, but the client requests channel history unconditionally
+   on join/key-exchange/mode-change with no protocol guard, and Starling stores
+   signal_v1 ciphertext too (for redelivery to a briefly-offline member) and
+   serves it to any fetch, joiner or not. Before B's fix the client silently
+   dropped the unparsed response, which accidentally provided the forward-secrecy
+   guarantee as a side effect of a different bug. **Fix:** guarded all four
+   fetch call sites against `PchatProtocol::SignalV1` -
+   `state/handler/server_sync.rs::fetch_channel_history`,
+   `state/handler/user_state.rs::pchat_init_task`,
+   `state/pchat/key_exchange.rs::retry_decrypt_pending_messages`,
+   `state/handler/channel_state.rs::pchat_key_gen_and_fetch`. Verified none of
+   these skip anything else load-bearing (archive-key derivation is already a
+   FancyV1FullArchive-only no-op inside `derive_and_store_archive_key`; SignalV1
+   live-message decrypt-retry runs entirely through
+   `signal_bridge.rs::retry_stashed_signal_envelopes`, independent of fetch).
+   **Server-side enforcement landed by Agent B** in `crates/services/pchat`:
+   signal_v1 rows are no longer archived or served at all (belt-and-braces -
+   a client-side skip is an agreement, not a guarantee).
+   Confirmed by test: `forward secrecy for late joiners` passed clean.
+
+3. **Found by Agent B, not verified end-to-end by me:** a Fancy sender emits
+   both dual-path halves (plaintext `TextMessage` placeholder + encrypted
+   `PchatMessage`) under the *same* `message_id`. Starling's text relay always
+   preserved that id; its pchat relay used to mint its own uuid7, so the two
+   never collided - until B's own fix made the pchat relay preserve it too.
+   `state/pchat/inbound.rs::insert_or_replace_message` was a plain first-wins
+   dedup on that id, so whichever half a receiver got first stuck, and since the
+   plaintext placeholder is smaller and sent first, a real decrypted message was
+   routinely **silently dropped**, rendering `[Encrypted message]` forever - a
+   rendering failure indistinguishable from a decrypt failure from the outside.
+   B landed the fix (asymmetric: a real message always replaces a same-id
+   placeholder, a placeholder never overwrites a real message; pin state carried
+   over) directly in that function - I read and confirmed the logic, did not
+   write it. **Still open:** no client build with this fix has been verified
+   against `signal-pchat.multiclient.test.ts` yet - my last two full runs both
+   predate it in the built artifact.
+
+Also identified, not yet fixed (nobody's fix landed as of this handoff, low
+priority - doesn't block the 3 owned tests, causes duplicate/legacy-badged
+bubbles, not silent drops): **no client code ever sets `FeaturePchatE2ee` on an
+outgoing `UserState`** (`state/types/ui.rs::has_pchat_e2ee` only ever reads it -
+grep confirms zero production setters). `text_message.rs::handle_channel_message`
+therefore treats every pchat message as coming from a "legacy" sender and always
+inserts the plaintext placeholder bubble alongside the real one. With bug 3's
+fix this stops being a silent-drop risk and becomes purely cosmetic (a redundant
+"legacy"-badged ghost bubble next to the real message).
+
+**Rig-wide outage, fixed:** mid-session, `src/util/starling.ts` briefly generated
+`[[instances]]` instead of `[[virtual_servers]]` in the Starling TOML - a
+Starling-side rename landing out of sync with the harness - which made
+`StarlingServer.start()` fail for every agent with "unknown field `instances`".
+Reverted, then re-landed correctly once the Starling side caught up; confirmed
+working as of 13:48. If this recurs, `grep -n "\[\[.*_servers\]\]\|\[\[instances\]\]"
+src/util/starling.ts` and cross-check against what the current release binary
+actually accepts.
+
+**Verification status:** NOT complete. Two full runs of
+`signal-pchat.multiclient.test.ts`:
+- Run 1 (client built ~13:12, before bug 2's fix): 1/4 pass (bridge smoke only).
+- Run 2 (client built ~13:41, after bug 2's fix, before bug 3's fix landed):
+  3/4 pass (forward secrecy, reconnect-resume, bridge smoke all green); the
+  3-way concurrent-decrypt test timed out waiting for a DOM update, not a
+  decrypt/assertion failure.
+- Run 3 (immediate re-run of just the failing test, same binary, zero code
+  changes): all three previously-green tests timed out identically - most
+  likely rig contention (several agents' builds running concurrently), but see
+  bug 3 above for a second, code-verified candidate explanation for exactly
+  this failure shape (message silently dropped, `waitForText` times out because
+  the real token is never in the DOM).
+
+**Next step for whoever picks this up:** rebuild `vendor/client` (bug 3's fix is
+already on disk, uncommitted; `CROS_LIBVA_H_PATH=/tmp/libva-2.22/usr/include
+E2E_BUILD_NO_CLI=1 scripts/build-client.sh`), then run
+`signal-pchat.multiclient.test.ts` twice clean under the rig lock (mkdir
+`.tmp/rig.lock`, write `owner`, confirmed single-writer per the coordinator's
+corrected protocol). If still red on the 3-way test specifically, check rig
+contention first (are other agents' cargo builds running?) before assuming a
+new code bug - re-measure before debugging.
+
+**Files changed, all in `vendor/client`, all uncommitted as of this handoff:**
+`crates/mumble-protocol/src/command/send_pchat_sender_key_distribution.rs`,
+`crates/mumble-tauri/src/state/pchat/signal_bridge.rs`,
+`crates/mumble-tauri/src/state/handler/server_sync.rs`,
+`crates/mumble-tauri/src/state/handler/user_state.rs`,
+`crates/mumble-tauri/src/state/pchat/key_exchange.rs`,
+`crates/mumble-tauri/src/state/handler/channel_state.rs` (mine, bugs 1-2), plus
+`crates/mumble-tauri/src/state/pchat/inbound.rs` (Agent B, bug 3) and
+`crates/services/pchat/*` in `vendor/starling` (Agent B, server-side forward-
+secrecy enforcement). None committed - do not lose this working tree.
+
+Untracked scratch probes left in `src/` (`probe-a-decide.test.ts`,
+`probe-a-verify.test.ts`, `probe-a-filelog.test.ts`, `probe-certs.test.ts`,
+`probe-skdm.test.ts`, `probe-xdecrypt.test.ts`): diagnostic only, safe to
+delete once the suite is verified green, not needed for the fix itself.
+
+---
+
+The SKDM leg was the named suspect and it has been **cleared**.
+`a_sender_key_distribution_reaches_the_member_it_names`
+(`crates/starling/src/e2e.rs`) sends a `fancy-native:121` payload through
+`PluginDataTransmission` from one real client to another over TCP+TLS: the key
+material crosses untouched, the `data_id` survives, and the server stamps the
+true sender over the forged one. The empty-receiver drop never fires, because
+the client fills that list. Every server-side leg of cross-client decryption is
+now proven by a test: the message relay, the key relay, and the certificate
+hash, which `UserState` carries for both the joiner and everyone already there.
+
+So the remaining fault is in front of the server. The cheapest next check, and
+it would explain the entire remaining red set at once: **grep the server log for
+`certificate=` during a three-client run and confirm three distinct hashes.**
+The Signal ladder is keyed on the certificate hash end to end (`peer_keys`,
+channel originators, `Message.sender_cert`), so if the per-instance
+`FANCY_E2E_DATA_DIR` isolation ever hands two instances the same certificate,
+every peer looks like one identity: sender keys collide, cross-client decrypt
+fails, and single-client tests keep passing because a local echo needs no
+ladder. That is the shape of what is left.
 
 The late-joiner path needs no server work, contrary to what the suite's comments
 about murmur's `sendStoredSenderKeyDistributions` suggest: the client
@@ -193,6 +327,49 @@ that block, and a wire probe against the release binary confirmed the flag and
 the SFU's UDP bind. The client's "no WebRTC relay configured" warning is gone;
 what remains for this cluster is measurement - display/GPU conditions, not
 server work.
+
+**And the measurement was broken in four places, none of them the SFU
+(2026-08-09).** Every media red died *before* a frame was ever asked for. The
+transport was never reached, so nothing here was evidence about `crates/sfu`:
+
+* **The desktop is Wayland, so the client could enumerate nothing.** xcap's
+  `wayland_detect()` keys off `XDG_SESSION_TYPE`/`WAYLAND_DISPLAY`; on a
+  Wayland session `Window::all()` returns empty and the picker falls back to
+  two synthetic "(system picker)" cards whose ids are advisory. A suite asking
+  for a window *by title* can never match one - "picker never offered a window
+  source titled like ...". The media suites now launch their clients with an
+  X11 identity (`util/capture-env.ts`): xcap takes its xcb path on XWayland,
+  and a dead `DBUS_SESSION_BUS_ADDRESS` makes the portal fail inside its 5 s
+  pre-dialog timeout instead of waiting forever on a compositor dialog
+  WebDriver cannot answer.
+* **The checkerboard was invisible to every enumerator anyway.** The helper
+  asked for "borderless" with `overrideredirect(True)`, which bypasses the
+  window manager - and a window the WM does not manage never enters
+  `_NET_CLIENT_LIST_STACKING`, the property xcap reads. Measured across five
+  window types (normal, override-redirect, splash, dock, utility): override is
+  the only one missing from the list. It is a splash-type window now -
+  undecorated, topmost and at the exact geometry, but *managed*.
+* **On Linux the viewer is a `<canvas>`, and every wait named `<video>`.**
+  WebKitGTK has no WebRTC, so the client decodes in Rust and paints into
+  `stream-native-view`; `stream-viewer-video` never mounts. That is precisely
+  the GPU suite's "own preview never appeared in 30 s" against a stream that
+  was arriving. `stream.page.ts` now selects either surface, sizes through
+  `videoWidth || width`, and counts decoded frames on the canvas by tallying
+  the paint path's `drawImage` calls - the stand-in for
+  `getVideoPlaybackQuality`, which a canvas does not have.
+* **The camera suite failed on a leaked modal.** With no cameras on the
+  machine, step 1 skipped *while the picker was still open*, so step 2's
+  toggle click hit the modal backdrop (`ElementClickInterceptedError`, 4 ms
+  in, nothing to do with cameras). `closePickerIfOpen()` now runs in
+  `afterEach`.
+
+**Entire-screen sharing is gated, not red.** `XGetImage` on XWayland's root
+window fails with `BadMatch` - the root is a bounding box no compositor paints
+into - so a whole-screen capture yields nothing on a Wayland session however
+the client is configured, and the portal alternative needs a human to answer
+its dialog. `entireScreenCaptureUnavailable()` skips that suite with the fix
+named (run it from an X11 session). Window shares are unaffected, which is why
+fidelity, delivery health and the performance floors stay measurable here.
 
 ### 3.3 Audit (1 suite, 8 tests)
 
@@ -255,12 +432,38 @@ person_who_sent_it` in Starling's own e2e, so what is left is between the relay
 and the pill. `E2E_STARLING_LOG="info,starling_social=debug"` now logs a reason
 for every refused reaction, which is the next thing to read.
 
-`multi-client: scheduled messages` is **not** in that set and will still be
-red: the client has no scheduled-messages UI on the pinned commit - the ids the
-page object drives are declared in `ABSENT_FROM_CLIENT` in `src/selectors.ts`,
-same as forums. Starling now stores, times and delivers them (adopted from the
-fork's `wip/forums-scheduled-e2e-fixes`), so this suite is waiting on the
-client's `wip/forums-scheduled-testids` branch, not on the server.
+**Update 2026-08-09, later the same day: `multi-client: scheduled messages`
+is green, 3/3 twice.** `wip/forums-scheduled-testids` predated the dual-UI
+restructure and the epoch-1 canon by enough that it was a port, not a merge:
+new `FancyForumPost`/`FancyScheduledMessage*` wire types (157-165) into
+`message.rs`/`transport/codec.rs`/`fancy_message_support.rs`, and - since the
+branch predates epoch 1 entirely - a canon form the branch never had, routing
+scheduled messages through the `TEXT` (1005) service so the server doesn't
+silently drop them to the `PluginData` relay. The UI landed as a proper
+`AppState` slice (`core/store/slices/scheduled.ts`, cleared on disconnect via
+`INITIAL`, same pattern as `downloads`/`presence`) rather than the branch's
+standalone zustand store, and the ids moved out of `ABSENT_FROM_CLIENT` in
+`src/selectors.ts` along with `chatHeaderKebab`/`kebabMenuItem` (the kebab
+menu itself had no `data-testid`s at all before this).
+
+**The rebuild itself found a real bug**, which is the point of rebuilding
+before declaring victory: `ScheduledMessagesPanel`'s own header button sat
+under `ResizableSplitPanel`'s shared close (×) overlay
+(`position: absolute; top/right: 8px; z-index: 25` in `PanelCloseButton.
+module.css`) and ate its click (`ElementClickInterceptedError`) - the same
+class of bug as the reactions fix two paragraphs up. Fixed with the
+`padding: 44px` right-inset convention `DownloadsPanel` already used for
+exactly this. `forums` is untouched and still gated - no UI for it landed,
+so `ABSENT_FROM_CLIENT` still carries its ids.
+
+A full sweep against the rebuilt client (85 tests, 69 pass, 2 fail, 10
+cancelled) found no regression from it: the one new-looking red
+(`channels: hidden, expiring + meeting rooms`) was a load flake, 8/8 green
+re-run standalone; the other (`persistent chat control messages`'s read
+watermark) and the cancelled screen-share cluster (`Failed to initialize GTK
+backend!` under `capture-env.ts`'s forced X11 env, reproducible standalone)
+both predate this change and sit outside the files it touched. Detail on both:
+`vendor/starling/FLEET-PLAN.md`.
 
 ### 3.6 Flaky under load - the number has a noise floor of about +/-4 tests
 
@@ -322,7 +525,8 @@ What still costs time is honest: red suites failing once per cause, and real
 product waits (scheduled delivery, expiry reaping, voice sampling windows).
 
 Build the client with `scripts/build-client.sh`, not a bare `cargo tauri build`
-- see `docs/HANDOFF-e2e-remaining.md` for what the plain build leaves out.
+- see `vendor/starling/FLEET-PLAN.md` §10 for what the plain build leaves out,
+and the libva / patchelf / inotify traps that come with it.
 
 ## 5. The rule
 
