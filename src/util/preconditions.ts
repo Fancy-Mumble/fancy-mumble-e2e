@@ -95,7 +95,7 @@ export function presenceUnsupported(): Gate {
  * Chunked with an overlap rather than read whole: the debug client binary is
  * ~800 MB and `readFileSync` on it would cost more than the suite it gates.
  */
-function binaryContains(file: string, needle: string): boolean {
+export function binaryContains(file: string, needle: string): boolean {
   const pattern = Buffer.from(needle, "latin1");
   const chunkSize = 4 * 1024 * 1024;
   const overlap = pattern.length - 1;

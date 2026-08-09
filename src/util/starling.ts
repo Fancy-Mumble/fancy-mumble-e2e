@@ -6,6 +6,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { killTree } from "./proc";
 import { delay } from "./wait";
+import { binaryContains } from "./preconditions";
 
 const thisDir = path.dirname(fileURLToPath(import.meta.url));
 /** Repo root (fancy-mumble-e2e/). `src/util/` is two levels down. */
@@ -251,6 +252,36 @@ export class StarlingServer {
  * whatever port it made TCP to, so a voice socket left on the default is a
  * server that handshakes perfectly and carries no audio.
  */
+/**
+ * The name this binary's config parser gives the table of served instances.
+ *
+ * Starling renamed `[[virtual_servers]]` to `[[instances]]` as a clean break
+ * with no back-compat alias, and its config structs are `deny_unknown_fields`,
+ * so a config written for the other vocabulary is not degraded - it is fatal at
+ * startup, with a message about an unknown key rather than about the mismatch.
+ * That cost this suite two rig outages in one day, and once landed mid-run,
+ * where it read as flakiness rather than as a config error.
+ *
+ * So the harness stops guessing and asks the binary it is about to spawn, the
+ * same way `preconditions.ts` asks the client binary whether it knows
+ * `presence_set_enabled`. The rename left no aliases behind, so the old name's
+ * presence is the discriminator; a binary too new to contain it gets the new
+ * name, and so does a missing binary (the tree is post-rename, and a start with
+ * no binary fails for its own reasons a moment later).
+ *
+ * Memoised: a per-file runner pays the scan once, not once per suite.
+ */
+let instancesTableName: string | null = null;
+function instancesTable(): string {
+  if (instancesTableName === null) {
+    instancesTableName =
+      existsSync(STARLING_BIN) && binaryContains(STARLING_BIN, "virtual_servers")
+        ? "virtual_servers"
+        : "instances";
+  }
+  return instancesTableName;
+}
+
 function config(port: number, http: number, media: number, dataDir: string): string {
   const auditLog = path.join(dataDir, "operator-audit.log").replace(/\\/g, "/");
   return `# Written by the e2e harness; overlaid on Starling's built-in defaults.
@@ -264,7 +295,7 @@ listen_tcp = "127.0.0.1:${port}"
 [services.voice]
 udp_listen = "127.0.0.1:${port}"
 
-[[virtual_servers]]
+[[${instancesTable()}]]
 id = 1
 port = ${port}
 
