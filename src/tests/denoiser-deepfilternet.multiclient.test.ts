@@ -142,21 +142,29 @@ describe("DeepFilterNet noise suppression", { concurrency: 1 }, () => {
     // Alice transmits a tone with broadband noise mixed under it. The
     // noise is the signal under test; the tone is only there so the far
     // end has something recognisable to lock onto.
-    alice = await TauriApp.launch({
-      instance: 0,
-      extraEnv: { FANCY_E2E_VIRTUAL_MIC: "sine:48000:440+noise:0.10" },
-    });
-    bob = await TauriApp.launch({
-      instance: 1,
-      extraEnv: { FANCY_E2E_AUDIO_STATS_FILE: bobStats },
-    });
+    [alice, bob] = await TauriApp.launchAll(
+      {
+        instance: 0,
+        extraEnv: { FANCY_E2E_VIRTUAL_MIC: "sine:48000:440+noise:0.10" },
+      },
+      {
+        instance: 1,
+        extraEnv: { FANCY_E2E_AUDIO_STATS_FILE: bobStats },
+      },
+    );
 
-    await alice.connect.connect(config.serverHost, aliceName);
-    await bob.connect.connect(config.serverHost, bobName);
-    await alice.chat.waitLoaded(config.connectTimeout);
-    await bob.chat.waitLoaded(config.connectTimeout);
-    await alice.chat.waitForMember(bobName);
-    await bob.chat.waitForMember(aliceName);
+    await Promise.all([
+      alice.connect.connect(config.serverHost, aliceName),
+      bob.connect.connect(config.serverHost, bobName),
+    ]);
+    await Promise.all([
+      alice.chat.waitLoaded(config.connectTimeout),
+      bob.chat.waitLoaded(config.connectTimeout),
+    ]);
+    await Promise.all([
+      alice.chat.waitForMember(bobName),
+      bob.chat.waitForMember(aliceName),
+    ]);
 
     // Fresh profiles start with voice inactive; the first tap brings the
     // pipelines up. Alice needs outbound, Bob inbound.

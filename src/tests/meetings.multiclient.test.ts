@@ -1,9 +1,10 @@
-import { describe, it, before, after } from "node:test";
+import { describe, before, after } from "node:test";
 import assert from "node:assert/strict";
 import { TauriApp } from "../app";
 import { config } from "../config";
 import { setSuperUserPassword } from "../util/server";
 import { bridgeMissing } from "../util/preconditions";
+import { stepChain } from "../util/steps";
 
 /**
  * Scheduled meeting rooms (server-provisioned, end-to-end-encrypted).
@@ -37,22 +38,25 @@ describe("meetings: server-provisioned E2E rooms", { skip: bridgeMissing() }, ()
 
   before(async () => {
     setSuperUserPassword("testpassword");
-    admin = await TauriApp.launch({ instance: 0 });
-    bob = await TauriApp.launch({ instance: 1 });
-    await admin.connect.connect(config.serverHost, "SuperUser", {
-      port: config.serverPort,
-      password: "testpassword",
-    });
-    await bob.connect.connect(config.serverHost, bobName, { port: config.serverPort });
-    await admin.chat.waitLoaded();
-    await bob.chat.waitLoaded();
+    [admin, bob] = await TauriApp.launchAll({ instance: 0 }, { instance: 1 });
+    await Promise.all([
+      admin.connect.connect(config.serverHost, "SuperUser", {
+        port: config.serverPort,
+        password: "testpassword",
+      }),
+      bob.connect.connect(config.serverHost, bobName, { port: config.serverPort }),
+    ]);
+    await Promise.all([admin.chat.waitLoaded(), bob.chat.waitLoaded()]);
   });
 
   after(async () => {
     await Promise.allSettled([admin?.close(), bob?.close()]);
   });
 
-  it("provisions a hidden E2E room on first join and keeps __meetings out of the tree", async () => {
+  // The invite link is minted for the meeting step 1 creates.
+  const step = stepChain();
+
+  step("provisions a hidden E2E room on first join and keeps __meetings out of the tree", async () => {
     // Register Bob so the relay can address the meeting to a stable user_id.
     await admin.chat.waitForMember(bobName);
     await admin.sidebar.registerUser(bobName);
@@ -99,7 +103,7 @@ describe("meetings: server-provisioned E2E rooms", { skip: bridgeMissing() }, ()
     );
   });
 
-  it("lets the organiser mint a Teams-style invite link", async () => {
+  step("lets the organiser mint a Teams-style invite link", async () => {
     await admin.calendar.open();
     await admin.calendar.openEvent(meetingTitle);
     const link = await admin.calendar.copyInviteLink();

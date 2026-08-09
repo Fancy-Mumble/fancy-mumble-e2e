@@ -57,7 +57,6 @@ describe("screen share: delivery health (freezes)", { skip: tkinterMissing() }, 
     app = await TauriApp.launch({ instance: 0 });
     await app.connect.connect(config.serverHost, name, { port: config.serverPort });
     await app.chat.waitLoaded(config.connectTimeout);
-    await app.chat.allowServerPlugins();
     // Backend tracing (send-leg + pipeline timings) for post-run analysis.
     await app.enableFileLogging();
   });

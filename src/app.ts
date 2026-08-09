@@ -249,6 +249,32 @@ export class TauriApp {
     return { connected: parsed.connected, reason: parsed.reason, rejectType: parsed.rejectType };
   }
 
+  /**
+   * Launch several clients at once and hand them back in call order.
+   *
+   * A suite that launches its clients one after another pays the whole ~16 s
+   * boot serially per client, and with two or three clients per suite that was
+   * the single largest cost of a sweep. The launches are independent by
+   * construction — distinct tauri-driver ports, distinct data dirs, and no
+   * typing (the wizard is driven through the DOM) — so they can overlap.
+   *
+   * All-or-nothing: when any launch fails, the ones that made it are closed
+   * before the error propagates, for the same reason `launch` kills its own
+   * driver on failure — an orphaned tauri-driver holds its port and fails the
+   * next suite instead of this one.
+   */
+  static async launchAll(...opts: LaunchOptions[]): Promise<TauriApp[]> {
+    const settled = await Promise.allSettled(opts.map((o) => TauriApp.launch(o)));
+    const failure = settled.find((r) => r.status === "rejected");
+    if (failure) {
+      await Promise.allSettled(
+        settled.map((r) => (r.status === "fulfilled" ? r.value.close() : undefined)),
+      );
+      throw (failure as PromiseRejectedResult).reason;
+    }
+    return settled.map((r) => (r as PromiseFulfilledResult<TauriApp>).value);
+  }
+
   static async launch(opts: LaunchOptions = {}): Promise<TauriApp> {
     const instance = opts.instance ?? 0;
     // Two ports per instance: tauri-driver listens on `port`, msedgedriver/
@@ -271,14 +297,31 @@ export class TauriApp {
       if (existsSync(`/tmp/.X11-unix/X${99 + instance}`)) env.DISPLAY = ":" + (99 + instance);
     }
 
+    // Phase timings, printed per launch: the ~16 s boot is the suite's largest
+    // fixed cost, and an optimization argument about it needs to name which
+    // phase pays (driver spawn, webview session, first app boot, the test-mode
+    // reload, cert generation, or the wizard render).
+    const t0 = Date.now();
+    const phases: string[] = [];
+    const lap = (name: string, since: number) => {
+      phases.push(`${name}=${Date.now() - since}ms`);
+      return Date.now();
+    };
     const proc = await startTauriDriver(port, nativePort, env);
+    let t = lap("driver", t0);
     try {
       const driver = await buildWebDriver(port, config.appBin);
+      t = lap("session", t);
       const app = new TauriApp(driver, proc, dataDir);
       await app.waitDomReady();
+      t = lap("boot1", t);
       await app.applyTestMode();
+      t = lap("boot2", t);
       await app.ensureDefaultCert();
+      t = lap("cert", t);
       await app.connect.waitReady(config.connectTimeout);
+      lap("wizard", t);
+      console.error(`[launch:${instance}] ${phases.join(" ")} total=${Date.now() - t0}ms`);
       return app;
     } catch (e) {
       // Don't orphan tauri-driver (and its held port) when launch fails - that

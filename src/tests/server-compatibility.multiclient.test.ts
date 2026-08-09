@@ -24,11 +24,11 @@ describe("server compatibility: control-path boundaries", () => {
   const carolName = `e2e-compat-C-${suffix}`;
 
   before(async () => {
-    [alice, bob, carol] = await Promise.all([
-      TauriApp.launch({ instance: 0 }),
-      TauriApp.launch({ instance: 1 }),
-      TauriApp.launch({ instance: 2 }),
-    ]);
+    [alice, bob, carol] = await TauriApp.launchAll(
+      { instance: 0 },
+      { instance: 1 },
+      { instance: 2 },
+    );
 
     await Promise.all([
       alice.connect.connect(config.serverHost, aliceName, { port: config.serverPort }),

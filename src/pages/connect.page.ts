@@ -17,6 +17,19 @@ export interface ConnectOptions {
   password?: string;
 }
 
+/**
+ * Serializes password-dialog typing across concurrently connecting clients.
+ *
+ * The wizard is driven through the DOM (`setReactInputValue`), so two clients
+ * can run it at the same time — which is what lets a suite's `before` hook
+ * connect its clients in parallel. The password dialog is the one step that
+ * still types real key events (`sendKeys`), and key events go to whichever
+ * window holds focus, which two clients on one display trade away from each
+ * other. One at a time through this gate; the step costs ~1 s, so the serial
+ * section is small.
+ */
+let passwordTurn: Promise<void> = Promise.resolve();
+
 /** Page object for the connect wizard (ConnectPage.tsx). */
 export class ConnectPage {
   constructor(private readonly d: WebDriver) {}
@@ -68,6 +81,15 @@ export class ConnectPage {
    * dialog closes, which only happens when the server accepts the password.
    */
   private async submitPassword(password: string): Promise<void> {
+    const turn = passwordTurn.then(() => this.typePassword(password));
+    passwordTurn = turn.then(
+      () => undefined,
+      () => undefined,
+    );
+    return turn;
+  }
+
+  private async typePassword(password: string): Promise<void> {
     // Two races made this the flakiest step in the multi-client suites, so the
     // fill is verified rather than fired and forgotten:
     //

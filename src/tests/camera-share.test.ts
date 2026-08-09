@@ -1,8 +1,9 @@
 import assert from "node:assert/strict";
-import { describe, it, before, after, afterEach } from "node:test";
+import { describe, before, after, afterEach } from "node:test";
 import { TauriApp } from "../app";
 import { config } from "../config";
 import { delay } from "../util/wait";
+import { stepChain } from "../util/steps";
 
 /**
  * Virtual-camera share, end-to-end through the Rust-native picker and the
@@ -34,9 +35,6 @@ describe("camera share: virtual camera (DirectShow backend)", () => {
     app = await TauriApp.launch({ instance: 0 });
     await app.connect.connect(config.serverHost, name, { port: config.serverPort });
     await app.chat.waitLoaded(config.connectTimeout);
-    // The dev server bundles plugins; their trust prompt is a modal that
-    // would click-intercept the share toggle.
-    await app.chat.allowServerPlugins();
   });
 
   after(async () => {
@@ -49,7 +47,11 @@ describe("camera share: virtual camera (DirectShow backend)", () => {
     if (app) await app.stream.stopBroadcastIfActive();
   });
 
-  it("every listed camera streams at real fps (even in screenshare mode) without crashing", async (t) => {
+  // The four tests drive one broadcast's lifecycle in order: stream, add a
+  // second track, extend it, stop one track - each consuming the last state.
+  const step = stepChain();
+
+  step("every listed camera streams at real fps (even in screenshare mode) without crashing", async (t) => {
     const titles = await app.stream.openPickerDevices();
     assert.ok(
       await app.stream.appAlive(),
@@ -135,7 +137,7 @@ describe("camera share: virtual camera (DirectShow backend)", () => {
     );
   });
 
-  it("screen AND camera share together (one broadcast, both tracks decode)", async (t) => {
+  step("screen AND camera share together (one broadcast, both tracks decode)", async (t) => {
     // Pick a screen and a camera in one picker session ("Share both").
     const titles = await app.stream.openPickerDevices();
     if (titles.length === 0) {
@@ -179,7 +181,7 @@ describe("camera share: virtual camera (DirectShow backend)", () => {
     assert.ok(await app.stream.appAlive(), "app crashed stopping the combined share");
   });
 
-  it("a running camera share can be EXTENDED with the screen from the viewer controls", async (t) => {
+  step("a running camera share can be EXTENDED with the screen from the viewer controls", async (t) => {
     // Start a camera-only share.
     const titles = await app.stream.openPickerDevices();
     if (titles.length === 0) {
@@ -224,7 +226,7 @@ describe("camera share: virtual camera (DirectShow backend)", () => {
     assert.ok(await app.stream.appAlive(), "app crashed stopping the extended share");
   });
 
-  it("the panel stop button ends only the screen while the camera keeps streaming", async (t) => {
+  step("the panel stop button ends only the screen while the camera keeps streaming", async (t) => {
     const titles = await app.stream.openPickerDevices();
     if (titles.length === 0) {
       t.skip("no camera devices on this machine");

@@ -16,12 +16,12 @@ describe("reactions: cross-client", () => {
   const bobName = `e2e-B-${Date.now() % 100000}`;
 
   before(async () => {
-    alice = await TauriApp.launch({ instance: 0 });
-    bob = await TauriApp.launch({ instance: 1 });
-    await alice.connect.connect(config.serverHost, aliceName, { port: config.serverPort });
-    await bob.connect.connect(config.serverHost, bobName, { port: config.serverPort });
-    await alice.chat.waitLoaded();
-    await bob.chat.waitLoaded();
+    [alice, bob] = await TauriApp.launchAll({ instance: 0 }, { instance: 1 });
+    await Promise.all([
+      alice.connect.connect(config.serverHost, aliceName, { port: config.serverPort }),
+      bob.connect.connect(config.serverHost, bobName, { port: config.serverPort }),
+    ]);
+    await Promise.all([alice.chat.waitLoaded(), bob.chat.waitLoaded()]);
   });
 
   after(async () => {

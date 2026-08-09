@@ -30,29 +30,50 @@ export class ChatPage {
    */
   async waitLoaded(timeout = 45000): Promise<void> {
     await this.d.wait(until.elementLocated(byTid(TID.chatComposerInput)), timeout);
-    await this.dismissWelcomeModal();
-    // Both connect-time modals, so both belong here. The trust prompt only
-    // appears against a server that actually ships plugins, which the published
-    // fixture image did not - so 35 of the 41 files never learned to answer it,
-    // and every one of them broke the moment the server was built from
-    // vendor/server. It renders with `closeOnEsc=false` and an overlay that
-    // swallows clicks, so the symptom is an unrelated
-    // ElementClickInterceptedError several steps later.
-    await this.allowServerPlugins();
+    // Both connect-time modals belong here: the server welcome message and the
+    // plugin trust prompt. The trust prompt renders with `closeOnEsc=false`
+    // and an overlay that swallows clicks, so an unanswered one surfaces as an
+    // unrelated ElementClickInterceptedError several steps later - which is
+    // how 35 of 41 files once broke at the same time.
+    await this.answerConnectModals();
   }
 
   /**
-   * Dismiss the server "welcome message" modal if it appears. It pops up a beat
-   * after connecting (z-index 1100) and intercepts clicks on the composer.
+   * Answer the connect-time modals - welcome message and plugin trust prompt -
+   * with one watcher over both.
+   *
+   * These used to be two serial probes with their own generous timeouts (4 s
+   * for welcome, 8 s for plugins), which priced every waitLoaded at ~12 s of
+   * pure waiting against a server that raises neither - and the shared e2e
+   * Starling configures no welcome text and ships no plugins, so that was
+   * every connect of every sweep. Both modals are driven by messages that
+   * arrive with the post-connect sync: by the time the composer has mounted
+   * they are on screen or a render-beat away, so a short watch over both
+   * selectors catches them, and each answered modal extends the watch in case
+   * dismissing one reveals the next. A modal missed anyway fails exactly as
+   * before: the next click is intercepted and its own retry names the overlay.
    */
-  private async dismissWelcomeModal(): Promise<void> {
-    const closeSel = By.xpath("//*[@role='dialog']//button[normalize-space(.)='Close']");
-    try {
-      const btn = await this.d.wait(until.elementLocated(closeSel), 4000);
-      await btn.click();
-      await this.d.wait(async () => (await this.d.findElements(closeSel)).length === 0, 4000);
-    } catch {
-      /* no welcome modal */
+  private async answerConnectModals(budgetMs = 2500): Promise<void> {
+    const buttons = [
+      By.xpath("//*[@role='dialog']//button[normalize-space(.)='Close']"),
+      By.xpath(
+        "//*[@role='dialog']//button[normalize-space(.)='Allow all for this server'" +
+          " or normalize-space(.)='Allow for this server']",
+      ),
+    ];
+    let deadline = Date.now() + budgetMs;
+    while (Date.now() < deadline) {
+      for (const sel of buttons) {
+        const [btn] = await this.d.findElements(sel);
+        if (!btn) continue;
+        try {
+          await btn.click();
+          deadline = Date.now() + 2000; // dismissing one can reveal the next
+        } catch {
+          /* mid-animation or stale - the next pass re-finds it */
+        }
+      }
+      await delay(150);
     }
   }
 
@@ -449,21 +470,32 @@ export class ChatPage {
     );
     // Hovering reveals the per-message action bar and right-click opens the
     // context menu; both expose the same quick-reaction emoji buttons (and the
-    // action bar's copy is always in the DOM but hidden). Click whichever
-    // matching emoji button is actually visible.
+    // action bar's copy is always in the DOM but hidden).
     await this.d.actions().move({ origin: wrapper }).perform();
     await this.d.actions().contextClick(wrapper).perform();
     await delay(500);
-    const candidates = await this.d.findElements(
-      By.xpath(`//button[normalize-space(.)=${xpathLiteral(emoji)}]`),
-    );
-    for (const btn of candidates) {
-      if (await btn.isDisplayed()) {
-        await btn.click();
-        return;
+
+    // The context menu's copy first, and it is not a preference: the menu
+    // renders a full-screen overlay under itself (MessageContextMenu.tsx), so
+    // the action bar's copy is visible, hit-testable, and *behind* it. Clicking
+    // that one is an ElementClickInterceptedError several frames from anything
+    // to do with reactions, which is how this read as a server failure.
+    const inMenu = `//button[normalize-space(.)=${xpathLiteral(emoji)}]` +
+      `[not(ancestor::*[@data-action-bar])]`;
+    const anywhere = `//button[normalize-space(.)=${xpathLiteral(emoji)}]`;
+    for (const xpath of [inMenu, anywhere]) {
+      for (const btn of await this.d.findElements(By.xpath(xpath))) {
+        if (!(await btn.isDisplayed())) continue;
+        try {
+          await btn.click();
+          return;
+        } catch {
+          // Intercepted or gone stale: try the next candidate rather than
+          // failing on the first one the overlay happens to cover.
+        }
       }
     }
-    throw new Error(`No visible '${emoji}' quick-reaction button after opening message actions`);
+    throw new Error(`No clickable '${emoji}' quick-reaction button after opening message actions`);
   }
 
   /** Wait for a reaction pill to appear (its aria-label starts with the emoji). */

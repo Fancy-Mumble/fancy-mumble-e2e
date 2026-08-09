@@ -38,6 +38,24 @@ export class SidebarPage {
     await selectTab(this.d, "Channels");
   }
 
+  /**
+   * The same, for the "Members" tab, before interacting with a member row.
+   *
+   * Required rather than merely tidy, and for a stronger reason than
+   * {@link ensureChannelsTab}'s: the Channels tab renders users with a
+   * different component that carries **no test ids at all**, so until the
+   * Members pane has been mounted once, `member-item` does not exist anywhere
+   * in the DOM. A caller that goes straight to locating one waits out its whole
+   * timeout on a row that was never going to appear - and every path into this
+   * file starts on the Channels tab, because {@link ensureChannelsTab} put it
+   * there. That is the entire failure of `muteUser` and `registerUser` in the
+   * audit suite: a mute that the server would have recorded correctly, never
+   * issued, reported as a missing audit entry.
+   */
+  private async ensureMembersTab(): Promise<void> {
+    await selectTab(this.d, "Members");
+  }
+
   /** Wait for a channel with the given name to appear in the sidebar. */
   async waitForChannel(name: string, timeout = 20000): Promise<void> {
     await this.d.wait(until.elementLocated(this.byChannelName(name)), timeout);
@@ -55,6 +73,45 @@ export class SidebarPage {
    *    idle window. The dialog edits value + unit, so we set the value in seconds
    *    via the "seconds" unit for deterministic short timeouts in tests.
    */
+  /**
+   * Right-click a channel row and click a context-menu item, retrying the
+   * whole gesture until it takes.
+   *
+   * The single-shot form — locate the row, contextClick, click the item — is
+   * the `createSubChannel` counterpart of the flake `selectTab` fixes for
+   * tabs: with two or three clients rendering concurrently the row detaches
+   * between locate and click (`StaleElementReferenceError`), or the menu is
+   * still animating in and swallows the click. Each attempt re-finds the row
+   * and re-opens the menu, and success is gated on the item actually being
+   * clicked rather than on any single WebDriver call returning.
+   */
+  private async channelMenuAction(channelId: number, label: string): Promise<void> {
+    await this.ensureChannelsTab();
+    const item = By.xpath(`//button[contains(normalize-space(.), ${xpathLiteral(label)})]`);
+    let lastError: unknown;
+    for (let attempt = 0; attempt < 4; attempt++) {
+      try {
+        const row = await this.d.wait(
+          until.elementLocated(this.byChannelId(channelId)),
+          config.waitTimeout,
+        );
+        await this.d.actions().contextClick(row).perform();
+        // The menu animates in; let the transition settle before locating.
+        await delay(400);
+        const menuItem = await this.d.wait(until.elementLocated(item), 4000);
+        await this.d.wait(until.elementIsVisible(menuItem), 2000);
+        await menuItem.click();
+        await delay(400);
+        return;
+      } catch (e) {
+        lastError = e; // stale row / mid-animation menu — reopen and retry
+      }
+    }
+    throw new Error(
+      `context-menu "${label}" on channel ${channelId} did not take after 4 attempts: ${lastError}`,
+    );
+  }
+
   async createSubChannel(
     parentId: number,
     name: string,
@@ -67,21 +124,7 @@ export class SidebarPage {
       invitees?: readonly string[];
     } = {},
   ): Promise<void> {
-    await this.ensureChannelsTab();
-    const parent = await this.d.wait(until.elementLocated(this.byChannelId(parentId)), config.waitTimeout);
-    await this.d.actions().contextClick(parent).perform();
-    // The context menu + editor dialog animate in; located-but-not-yet-
-    // interactable elements otherwise swallow the click. Wait for visibility
-    // and let each transition settle.
-    await delay(400);
-
-    const createItem = await this.d.wait(
-      until.elementLocated(By.xpath("//button[contains(normalize-space(.), 'Create Sub-channel')]")),
-      10000,
-    );
-    await this.d.wait(until.elementIsVisible(createItem), 5000);
-    await createItem.click();
-    await delay(400);
+    await this.channelMenuAction(parentId, "Create Sub-channel");
 
     const nameInput = await this.d.wait(until.elementLocated(By.css("#ch-ed-name")), 10000);
     await this.d.wait(until.elementIsVisible(nameInput), 5000);
@@ -223,6 +266,7 @@ export class SidebarPage {
    * English label (the suite forces English), matching {@link registerUser}.
    */
   private async userMenuAction(name: string, label: string): Promise<void> {
+    await this.ensureMembersTab();
     const row = await this.d.wait(
       until.elementLocated(
         By.css(`[data-testid="${TID.memberItem}"][${MEMBER_NAME_ATTR}="${cssAttrEscape(name)}"]`),
@@ -279,6 +323,7 @@ export class SidebarPage {
    * which is not a state any test is written to be in.
    */
   async registerUser(name: string): Promise<void> {
+    await this.ensureMembersTab();
     const row = await this.d.wait(
       until.elementLocated(
         By.css(`[data-testid="${TID.memberItem}"][${MEMBER_NAME_ATTR}="${cssAttrEscape(name)}"]`),

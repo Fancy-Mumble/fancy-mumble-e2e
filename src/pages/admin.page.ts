@@ -27,13 +27,35 @@ export class AdminPage {
     await btn.click();
   }
 
-  /** Switch to the "Channels / ACL" tab (matched by its unique label). */
+  /**
+   * Switch to the "Channels / ACL" tab, and confirm it took.
+   *
+   * Same shape as {@link openRolesTab}, for the same reason: under load a
+   * single click can be swallowed by a re-render, and the failure then lands
+   * one wait later as "channel row never appeared" — a message about the tree,
+   * for a tab that never opened. Confirmed by the pane's own content (the ACL
+   * tree always renders at least the root channel row).
+   */
   async openAclTab(): Promise<void> {
-    const tab = await this.d.wait(
-      until.elementLocated(By.xpath("//button[contains(normalize-space(.), 'Channels / ACL')]")),
-      10000,
+    const onAcl = async () =>
+      (await this.d.findElements(By.css(`[data-testid="${TID.aclChannelItem}"]`))).length > 0;
+    await this.d.wait(
+      async () => {
+        if (await onAcl()) return true;
+        const [tab] = await this.d.findElements(
+          By.xpath("//button[contains(normalize-space(.), 'Channels / ACL')]"),
+        );
+        if (!tab) return false;
+        try {
+          await tab.click();
+        } catch {
+          return false; // re-render mid-click; the next pass re-finds it
+        }
+        return onAcl();
+      },
+      config.waitTimeout,
+      "the Channels / ACL tab never showed its channel tree",
     );
-    await tab.click();
   }
 
   /**

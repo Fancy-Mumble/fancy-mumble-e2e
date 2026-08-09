@@ -58,17 +58,39 @@ describe("signal pchat: full E2E decryption across members", { skip: bridgeMissi
 
   before(async () => {
     setSuperUserPassword("testpassword");
-    // admin creates the channel and joins (earliest member).
-    admin = await connectAdmin();
+    // Launch and connect all three concurrently: the JOIN order below is the
+    // contract under test, connection order is not.
+    [admin, bob, carol] = await TauriApp.launchAll(
+      { instance: 0 },
+      { instance: 1 },
+      { instance: 2 },
+    );
+    await Promise.all([
+      (async () => {
+        await admin.connect.connect(config.serverHost, "SuperUser", {
+          port: config.serverPort,
+          password: "testpassword",
+        });
+        await admin.chat.waitLoaded();
+      })(),
+      (async () => {
+        await bob.connect.connect(config.serverHost, bobName, { port: config.serverPort });
+        await bob.chat.waitLoaded();
+      })(),
+      (async () => {
+        await carol.connect.connect(config.serverHost, `e2e-Carol-${Date.now() % 100000}`, {
+          port: config.serverPort,
+        });
+        await carol.chat.waitLoaded();
+      })(),
+    ]);
+
+    // admin creates the channel and joins (earliest member); bob joins next,
+    // then carol last. Join order must NOT matter for decryption.
     await admin.sidebar.createSubChannel(0, channelName, { pchatProtocol: "signal_v1" });
     await admin.sidebar.joinChannel(channelName);
-
-    // bob joins next, then carol last. Join order must NOT matter for decryption.
-    bob = await connectAnon(1, bobName);
     await bob.sidebar.waitForChannel(channelName);
     await bob.sidebar.joinChannel(channelName);
-
-    carol = await connectAnon(2, `e2e-Carol-${Date.now() % 100000}`);
     await carol.sidebar.waitForChannel(channelName);
     await carol.sidebar.joinChannel(channelName);
 

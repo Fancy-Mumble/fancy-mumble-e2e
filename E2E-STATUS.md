@@ -116,6 +116,16 @@ and on time. Largest single effort on the list - schedule it last of the server
 work. Note the fps floors are real assertions that a software-rendered display
 fails on merit, which is what `E2E_SKIP` exists for on a machine without a GPU.
 
+**Server side landed 2026-08-09.** Starling now advertises
+`webrtc_sfu_available` in the handshake's `ServerConfig` whenever the
+screenshare block has a literal-IP `public_url` - the same predicate
+(`ServiceConfig::media_ip`) its SFU boots on, so the advertisement and the
+media plane cannot disagree. The harness config (`util/starling.ts`) now sets
+that block, and a wire probe against the release binary confirmed the flag and
+the SFU's UDP bind. The client's "no WebRTC relay configured" warning is gone;
+what remains for this cluster is measurement - display/GPU conditions, not
+server work.
+
 ### 3.3 Audit (1 suite, 8 tests)
 
 `audit log: ingest + admin viewer` - the hash-chain store, ingest, the admin tab
@@ -134,6 +144,47 @@ invitee flow.
 
 `Fancy control-plane fan-out` (polls, typing indicators), `reactions:
 cross-client`, `multi-client: scheduled messages`.
+
+**Measured 2026-08-09 against a rebuilt client and a release Starling:
+`Fancy control-plane fan-out` is 2/2 green** (was 0/2) - typing indicators and
+the poll, vote and tally. Four faults, all in `social`, and each of them made
+the feature do nothing rather than do it wrongly:
+
+* Fan-out was a `Send` naming nobody, which reaches the whole server. It now
+  addresses the channel through the same `session-view` roster `text` uses.
+* The actor was whatever the peer wrote, and the client writes 0 because it
+  does not know its own session id at that layer. Every shipped client drops a
+  typing indicator or a poll whose actor is 0. The server stamps them now, as
+  murmur does.
+* A poll and a vote were answered with `PollState`, a tally message no client
+  decodes. The poll and the vote are relayed instead, which is what the client
+  reads and what murmur sends.
+* A reaction was relayed to everyone *except* the sender, and the client has no
+  optimistic update - so the reactor never saw their own pill.
+
+Two of those needed a field the canon did not have (`PollVote.channel`,
+`Reaction.actor_cert`); both are additive and both trees moved together. **The
+client had to be rebuilt for the vote to count**: the server can stamp a
+channel onto a vote, and until the client's `canon.rs` reads it, the client
+still drops the vote it cannot route.
+
+`reactions: cross-client` is **still red, and now fails one layer later**. Two
+faults were in front of it and both are fixed: `reactToMessage` clicked the
+action-bar copy of the emoji button, which the context menu's own overlay
+intercepts (`ElementClickInterceptedError`, several frames from anything to do
+with reactions), and the server excluded the reactor from its own relay. The
+click now lands and the pill never renders on either client. The server half is
+proven over a real TLS socket by `a_reaction_reaches_the_channel_including_the_
+person_who_sent_it` in Starling's own e2e, so what is left is between the relay
+and the pill. `E2E_STARLING_LOG="info,starling_social=debug"` now logs a reason
+for every refused reaction, which is the next thing to read.
+
+`multi-client: scheduled messages` is **not** in that set and will still be
+red: the client has no scheduled-messages UI on the pinned commit - the ids the
+page object drives are declared in `ABSENT_FROM_CLIENT` in `src/selectors.ts`,
+same as forums. Starling now stores, times and delivers them (adopted from the
+fork's `wip/forums-scheduled-e2e-fixes`), so this suite is waiting on the
+client's `wip/forums-scheduled-testids` branch, not on the server.
 
 ### 3.6 Flaky under load - the number has a noise floor of about +/-4 tests
 
@@ -160,12 +211,39 @@ state, and the pchat suites now fail one layer deeper, on message delivery.
 ## 4. How to run it
 
 ```sh
-npm run e2e                      # every shared-server file (~32 min)
+npm run e2e                      # every shared-server file (~17 min)
 npm run e2e -- --private         # the two files that bring their own server
-scripts/red-set.sh               # only the red files (~21 min)
+scripts/red-set.sh               # only the red files
 scripts/red-set.sh pchat         # one cluster
 E2E_WAIT_MS=8000 scripts/red-set.sh   # a faster local loop
 ```
+
+### Why ~17 min and not ~32 (2026-08-09)
+
+Measured A/B on one machine, same pinned binaries, three full sweeps:
+32:47 (before) → 25:47 (parallel per-suite setup) → 17:12 (all three changes).
+
+* **Suites launch and connect their clients concurrently** (`TauriApp.launchAll`
+  + `Promise.all` connects, the pattern `server-compatibility` already used).
+  Password typing is serialized behind a gate in `connect.page.ts` - it is the
+  one wizard step using real key events, which contend for focus on a shared
+  display. Worth knowing: a client launch itself costs ~1.6 s, not the ~16 s
+  older comments claim - the expensive part was everything after it.
+* **`waitLoaded` no longer burns 12 s per client probing for modals.** The
+  welcome-modal and plugin-trust probes were serial 4 s + 8 s waits that always
+  timed out against the e2e Starling (no welcome text, no plugins). One
+  combined ~2.5 s watcher answers whichever modal appears, extending its watch
+  when one does. The redundant explicit `allowServerPlugins` calls after
+  `waitLoaded` (which already probes) are gone.
+* **Step-chains** (`src/util/steps.ts`): in suites whose tests are strictly
+  sequential steps of one flow (screenshare fidelity, camera share, meetings,
+  hidden-channels' meeting-room block), a failed step makes the rest skip with
+  the failed step named, instead of each waiting out its own 15-20 s element
+  timeouts against state the flow never created. One red per cause; every
+  skip says why. Independent capabilities keep plain `it`.
+
+What still costs time is honest: red suites failing once per cause, and real
+product waits (scheduled delivery, expiry reaping, voice sampling windows).
 
 Build the client with `scripts/build-client.sh`, not a bare `cargo tauri build`
 - see `docs/HANDOFF-e2e-remaining.md` for what the plain build leaves out.

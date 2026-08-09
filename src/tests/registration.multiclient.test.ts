@@ -44,25 +44,33 @@ describe("registration: register a user, confirm it, and use the account", () =>
     // shared server generates a random one at boot, so run on its own the admin
     // login below is refused without this.
     setSuperUserPassword("testpassword");
-    admin = await TauriApp.launch({ instance: 0 });
-    bob = await TauriApp.launch({ instance: 1 });
-    carol = await TauriApp.launch({ instance: 2 });
+    [admin, bob, carol] = await TauriApp.launchAll(
+      { instance: 0 },
+      { instance: 1 },
+      { instance: 2 },
+    );
 
     // SuperUser holds `Register`; bob and carol are guests, which is what makes
     // them registerable and makes carol's attempt below a real refusal.
-    await admin.connect.connect(config.serverHost, "SuperUser", {
-      port: config.serverPort,
-      password: "testpassword",
-    });
-    await bob.connect.connect(config.serverHost, bobName, { port: config.serverPort });
-    await carol.connect.connect(config.serverHost, carolName, { port: config.serverPort });
+    await Promise.all([
+      admin.connect.connect(config.serverHost, "SuperUser", {
+        port: config.serverPort,
+        password: "testpassword",
+      }),
+      bob.connect.connect(config.serverHost, bobName, { port: config.serverPort }),
+      carol.connect.connect(config.serverHost, carolName, { port: config.serverPort }),
+    ]);
 
-    await admin.chat.waitLoaded(config.connectTimeout);
-    await bob.chat.waitLoaded(config.connectTimeout);
-    await carol.chat.waitLoaded(config.connectTimeout);
+    await Promise.all([
+      admin.chat.waitLoaded(config.connectTimeout),
+      bob.chat.waitLoaded(config.connectTimeout),
+      carol.chat.waitLoaded(config.connectTimeout),
+    ]);
 
-    await admin.chat.waitForMember(bobName);
-    await admin.chat.waitForMember(carolName);
+    await Promise.all([
+      admin.chat.waitForMember(bobName),
+      admin.chat.waitForMember(carolName),
+    ]);
   });
 
   after(async () => {

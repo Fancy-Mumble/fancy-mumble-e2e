@@ -96,24 +96,32 @@ for (const rate of RATES) {
       // Alice: virtual mic at the rate under test. Bob: virtual mic too
       // (48 kHz passthrough) so the suite never depends on real capture
       // hardware, plus the stats file for the assertions.
-      alice = await TauriApp.launch({
-        instance: 0,
-        extraEnv: { FANCY_E2E_VIRTUAL_MIC: `sine:${rate}:440` },
-      });
-      bob = await TauriApp.launch({
-        instance: 1,
-        extraEnv: {
-          FANCY_E2E_VIRTUAL_MIC: "sine:48000:300",
-          FANCY_E2E_AUDIO_STATS_FILE: statsFile,
+      [alice, bob] = await TauriApp.launchAll(
+        {
+          instance: 0,
+          extraEnv: { FANCY_E2E_VIRTUAL_MIC: `sine:${rate}:440` },
         },
-      });
+        {
+          instance: 1,
+          extraEnv: {
+            FANCY_E2E_VIRTUAL_MIC: "sine:48000:300",
+            FANCY_E2E_AUDIO_STATS_FILE: statsFile,
+          },
+        },
+      );
 
-      await alice.connect.connect(config.serverHost, aliceName, { port: config.serverPort });
-      await bob.connect.connect(config.serverHost, bobName, { port: config.serverPort });
-      await alice.chat.waitLoaded(config.connectTimeout);
-      await bob.chat.waitLoaded(config.connectTimeout);
-      await alice.chat.waitForMember(bobName);
-      await bob.chat.waitForMember(aliceName);
+      await Promise.all([
+        alice.connect.connect(config.serverHost, aliceName, { port: config.serverPort }),
+        bob.connect.connect(config.serverHost, bobName, { port: config.serverPort }),
+      ]);
+      await Promise.all([
+        alice.chat.waitLoaded(config.connectTimeout),
+        bob.chat.waitLoaded(config.connectTimeout),
+      ]);
+      await Promise.all([
+        alice.chat.waitForMember(bobName),
+        bob.chat.waitForMember(aliceName),
+      ]);
 
       // Fresh profiles start with voice INACTIVE; the first tap of the
       // mute control activates the audio pipelines (inactive -> active).

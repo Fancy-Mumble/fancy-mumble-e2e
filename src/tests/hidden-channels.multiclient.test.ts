@@ -4,6 +4,7 @@ import { TauriApp } from "../app";
 import { config } from "../config";
 import { setSuperUserPassword } from "../util/server";
 import { delay } from "../util/wait";
+import { stepChain } from "../util/steps";
 
 /**
  * Hidden + expiring channels and private meeting rooms.
@@ -41,18 +42,20 @@ describe("channels: hidden, expiring + meeting rooms", () => {
 
   before(async () => {
     setSuperUserPassword("testpassword");
-    admin = await TauriApp.launch({ instance: 0 });
-    bob = await TauriApp.launch({ instance: 1 });
-    carol = await TauriApp.launch({ instance: 2 });
-    await admin.connect.connect(config.serverHost, "SuperUser", {
-      port: config.serverPort,
-      password: "testpassword",
-    });
-    await bob.connect.connect(config.serverHost, bobName, { port: config.serverPort });
-    await carol.connect.connect(config.serverHost, carolName, { port: config.serverPort });
-    await admin.chat.waitLoaded();
-    await bob.chat.waitLoaded();
-    await carol.chat.waitLoaded();
+    [admin, bob, carol] = await TauriApp.launchAll(
+      { instance: 0 },
+      { instance: 1 },
+      { instance: 2 },
+    );
+    await Promise.all([
+      admin.connect.connect(config.serverHost, "SuperUser", {
+        port: config.serverPort,
+        password: "testpassword",
+      }),
+      bob.connect.connect(config.serverHost, bobName, { port: config.serverPort }),
+      carol.connect.connect(config.serverHost, carolName, { port: config.serverPort }),
+    ]);
+    await Promise.all([admin.chat.waitLoaded(), bob.chat.waitLoaded(), carol.chat.waitLoaded()]);
   });
 
   after(async () => {
@@ -125,7 +128,12 @@ describe("channels: hidden, expiring + meeting rooms", () => {
     await admin.sidebar.waitForMembershipGone(slidingName, 10000);
   });
 
-  it("makes a meeting room joinable to invitees (no password), hidden from others", async () => {
+  // Tests 1-3 (visibility, both expiry modes) are independent capabilities and
+  // stay plain `it`. From here on it is one flow: the meeting room created and
+  // Bob registered in this step are what every later assertion drives.
+  const step = stepChain();
+
+  step("makes a meeting room joinable to invitees (no password), hidden from others", async () => {
     // Register bob so the SeeChannel ACL can target his user_id.
     await admin.chat.waitForMember(bobName);
     await admin.sidebar.registerUser(bobName);
@@ -157,7 +165,7 @@ describe("channels: hidden, expiring + meeting rooms", () => {
     );
   });
 
-  it("reveals an invitee in a hidden room as online, but never inside a channel a non-invitee can see", async () => {
+  step("reveals an invitee in a hidden room as online, but never inside a channel a non-invitee can see", async () => {
     // Continues the previous test: bob sits inside the hidden room.
     await bob.sidebar.waitForMembership(roomName);
 
@@ -180,7 +188,7 @@ describe("channels: hidden, expiring + meeting rooms", () => {
     await admin.sidebar.waitForChannelViewMember(bobName);
   });
 
-  it("places the user back under a visible channel when they leave the hidden room", async () => {
+  step("places the user back under a visible channel when they leave the hidden room", async () => {
     // Bob leaves the hidden room by moving into a channel carol can see.
     await bob.sidebar.joinChannel(publicName);
 
@@ -190,7 +198,7 @@ describe("channels: hidden, expiring + meeting rooms", () => {
     await admin.chat.waitForMember(bobName);
   });
 
-  it("attributes a hidden-channel user's message to that user, not the Server", async () => {
+  step("attributes a hidden-channel user's message to that user, not the Server", async () => {
     // Put bob back inside the hidden room. Carol can no longer place him in a
     // channel, but he stays online in her roster (presence reveal).
     await bob.sidebar.joinChannel(roomName);
@@ -220,7 +228,7 @@ describe("channels: hidden, expiring + meeting rooms", () => {
     );
   });
 
-  it("shows a friend as online on the Friends page even while they sit in a hidden channel", async () => {
+  step("shows a friend as online on the Friends page even while they sit in a hidden channel", async () => {
     // Bring bob back into a channel carol can see so she can pick him, then add
     // him as a friend (keyed by his TLS cert hash - he was registered earlier).
     await bob.sidebar.joinChannel(publicName);

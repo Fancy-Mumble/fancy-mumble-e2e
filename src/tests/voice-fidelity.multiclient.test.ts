@@ -70,8 +70,8 @@ describe("voice fidelity: real speech survives the round trip", { concurrency: 1
     fixture = ensureSpeechFixture();
     dumpDir = mkdtempSync(path.join(os.tmpdir(), "e2e-voice-fidelity-"));
 
-    [alice, bob] = await Promise.all([
-      TauriApp.launch({
+    [alice, bob] = await TauriApp.launchAll(
+      {
         instance: 0,
         // Alice speaks the fixture on a loop, declared at the rate it was
         // actually recorded at. The Harvard-sentence recordings are 8 kHz
@@ -79,13 +79,13 @@ describe("voice fidelity: real speech survives the round trip", { concurrency: 1
         // 48 kHz on the way out - the same resampler a real non-48 kHz device
         // goes through, driven by the same fixture.
         extraEnv: { FANCY_E2E_VIRTUAL_MIC: `file:${fixture}:${FIXTURE_RATE}` },
-      }),
-      TauriApp.launch({
+      },
+      {
         instance: 1,
         // Bob says nothing and records everything he is played.
         extraEnv: { FANCY_E2E_AUDIO_DUMP_DIR: dumpDir },
-      }),
-    ]);
+      },
+    );
 
     await Promise.all([
       alice.connect.connect(config.serverHost, aliceName, { port: config.serverPort }),

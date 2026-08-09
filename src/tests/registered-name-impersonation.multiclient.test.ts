@@ -42,17 +42,17 @@ describe("security: registered-name impersonation is rejected", () => {
   before(async () => {
     // The mumble-docker entrypoint doesn't reliably apply the SU password.
     setSuperUserPassword("testpassword");
-    admin = await TauriApp.launch({ instance: 0 });
-    victim = await TauriApp.launch({ instance: 1 });
-    await admin.connect.connect(config.serverHost, "SuperUser", {
-      port: config.serverPort,
-      password: "testpassword",
-    });
-    // Victim connects WITH her default certificate, so registration binds that
-    // cert hash to a registered user id (and no password).
-    await victim.connect.connect(config.serverHost, victimName, { port: config.serverPort });
-    await admin.chat.waitLoaded();
-    await victim.chat.waitLoaded();
+    [admin, victim] = await TauriApp.launchAll({ instance: 0 }, { instance: 1 });
+    await Promise.all([
+      admin.connect.connect(config.serverHost, "SuperUser", {
+        port: config.serverPort,
+        password: "testpassword",
+      }),
+      // Victim connects WITH her default certificate, so registration binds that
+      // cert hash to a registered user id (and no password).
+      victim.connect.connect(config.serverHost, victimName, { port: config.serverPort }),
+    ]);
+    await Promise.all([admin.chat.waitLoaded(), victim.chat.waitLoaded()]);
   });
 
   after(async () => {

@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { existsSync } from "node:fs";
+import { closeSync, existsSync, openSync, readSync } from "node:fs";
 import path from "node:path";
 import { config } from "../config";
 import { isStarling } from "./suite-server";
@@ -66,6 +66,58 @@ export function bridgeMissing(): Gate {
         `bridge and every E2E assertion fails for a build reason. Build it with ` +
         `\`scripts/build-client.sh\`.`;
   });
+}
+
+/**
+ * Discord rich presence needs a client built after the feature landed.
+ *
+ * Same reasoning as the artifact gates above, and the same failure shape: a
+ * stale binary answers `presence_set_enabled` with "Command not found", which
+ * fails every case in the suite and reads exactly like a broken feature. This
+ * turns it into one skip that names the rebuild.
+ */
+export function presenceUnsupported(): Gate {
+  return once("presence", () => {
+    if (!existsSync(config.appBin)) {
+      return `the client binary is missing at ${config.appBin}. Build it with \`scripts/build-client.sh\`.`;
+    }
+    return binaryContains(config.appBin, "presence_set_enabled")
+      ? false
+      : `this client build predates Discord rich presence - it registers no ` +
+        `\`presence_set_enabled\` command, so every case here would fail for a build ` +
+        `reason rather than a product one. Rebuild with \`scripts/build-client.sh\`.`;
+  });
+}
+
+/**
+ * Whether a (large, binary) file contains an ASCII needle.
+ *
+ * Chunked with an overlap rather than read whole: the debug client binary is
+ * ~800 MB and `readFileSync` on it would cost more than the suite it gates.
+ */
+function binaryContains(file: string, needle: string): boolean {
+  const pattern = Buffer.from(needle, "latin1");
+  const chunkSize = 4 * 1024 * 1024;
+  const overlap = pattern.length - 1;
+  const buffer = Buffer.alloc(chunkSize + overlap);
+  const fd = openSync(file, "r");
+  try {
+    let carried = 0;
+    let position = 0;
+    for (;;) {
+      const read = readSync(fd, buffer, carried, chunkSize, position);
+      if (read === 0) return false;
+      position += read;
+      const end = carried + read;
+      if (buffer.subarray(0, end).includes(pattern)) return true;
+      // Carry the tail forward so a match straddling a chunk boundary is
+      // still seen on the next pass.
+      carried = Math.min(overlap, end);
+      buffer.copy(buffer, 0, end - carried, end);
+    }
+  } finally {
+    closeSync(fd);
+  }
 }
 
 /** The minimal Qt client is a workspace-excluded crate, built separately. */

@@ -19,14 +19,17 @@ describe("multi-client: voice UI state", () => {
   const bobName = `e2e-Bob-${Date.now() % 100000}`;
 
   before(async () => {
-    alice = await TauriApp.launch({ instance: 0 });
-    bob = await TauriApp.launch({ instance: 1 });
+    [alice, bob] = await TauriApp.launchAll({ instance: 0 }, { instance: 1 });
 
-    await alice.connect.connect(config.serverHost, aliceName, { port: config.serverPort });
-    await bob.connect.connect(config.serverHost, bobName, { port: config.serverPort });
+    await Promise.all([
+      alice.connect.connect(config.serverHost, aliceName, { port: config.serverPort }),
+      bob.connect.connect(config.serverHost, bobName, { port: config.serverPort }),
+    ]);
 
-    await alice.chat.waitLoaded(config.connectTimeout);
-    await bob.chat.waitLoaded(config.connectTimeout);
+    await Promise.all([
+      alice.chat.waitLoaded(config.connectTimeout),
+      bob.chat.waitLoaded(config.connectTimeout),
+    ]);
 
     // Make sure both are in the channel and can see each other before toggling.
     await bob.chat.waitForMember(aliceName);

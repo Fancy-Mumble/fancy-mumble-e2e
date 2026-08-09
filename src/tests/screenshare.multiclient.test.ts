@@ -1,9 +1,10 @@
 import assert from "node:assert/strict";
-import { describe, it, before, after } from "node:test";
+import { describe, before, after } from "node:test";
 import { TauriApp } from "../app";
 import { config } from "../config";
 import { CheckerboardWindow } from "../util/checkerboard";
 import { tkinterMissing } from "../util/preconditions";
+import { stepChain } from "../util/steps";
 
 /**
  * Screen-share fidelity across two clients, end-to-end, through the new
@@ -50,18 +51,26 @@ describe("multi-client: screen sharing (checkerboard pixel fidelity)", { skip: t
     // captureWindowTitle lets the *current* build's native getDisplayMedia
     // picker be auto-resolved to each client's own checkerboard window; the new
     // Rust picker ignores it and is driven through the DOM instead.
-    alice = await TauriApp.launch({ instance: 0, captureWindowTitle: aliceTitle });
-    bob = await TauriApp.launch({ instance: 1, captureWindowTitle: bobTitle });
+    [alice, bob] = await TauriApp.launchAll(
+      { instance: 0, captureWindowTitle: aliceTitle },
+      { instance: 1, captureWindowTitle: bobTitle },
+    );
 
-    await alice.connect.connect(config.serverHost, aliceName, { port: config.serverPort });
-    await bob.connect.connect(config.serverHost, bobName, { port: config.serverPort });
+    await Promise.all([
+      alice.connect.connect(config.serverHost, aliceName, { port: config.serverPort }),
+      bob.connect.connect(config.serverHost, bobName, { port: config.serverPort }),
+    ]);
 
-    await alice.chat.waitLoaded(config.connectTimeout);
-    await bob.chat.waitLoaded(config.connectTimeout);
+    await Promise.all([
+      alice.chat.waitLoaded(config.connectTimeout),
+      bob.chat.waitLoaded(config.connectTimeout),
+    ]);
 
     // Both in the same (root) channel and able to see each other before sharing.
-    await alice.chat.waitForMember(bobName);
-    await bob.chat.waitForMember(aliceName);
+    await Promise.all([
+      alice.chat.waitForMember(bobName),
+      bob.chat.waitForMember(aliceName),
+    ]);
   });
 
   after(async () => {
@@ -70,14 +79,18 @@ describe("multi-client: screen sharing (checkerboard pixel fidelity)", { skip: t
     await Promise.allSettled([alice?.close(), bob?.close()]);
   });
 
-  it("Alice shares her window; her own preview decodes to her checkerboard", async () => {
+  // One share flows through all three assertions: Bob can only see what step 1
+  // started, and the distinct-phases check reads both streams.
+  const step = stepChain();
+
+  step("Alice shares her window; her own preview decodes to her checkerboard", async () => {
     await alice.stream.shareWindow(aliceTitle);
     const own = await alice.stream.waitCheckerboard(true, aliceBoard.cols, aliceBoard.rows);
     assert.ok(own.checkerboard, `Alice's own preview is not a checkerboard: ${JSON.stringify(own)}`);
     assert.equal(own.phase, 0, "Alice's board must be green-first (phase 0)");
   });
 
-  it("Bob sees Alice's shared window faithfully (same board)", async () => {
+  step("Bob sees Alice's shared window faithfully (same board)", async () => {
     await bob.stream.watchByName(aliceName);
     const remote = await bob.stream.waitCheckerboard(false, aliceBoard.cols, aliceBoard.rows);
     assert.ok(remote.checkerboard, `Bob's view of Alice is not a checkerboard: ${JSON.stringify(remote)}`);
@@ -87,7 +100,7 @@ describe("multi-client: screen sharing (checkerboard pixel fidelity)", { skip: t
     assert.ok(remote.greenCount > 0 && remote.purpleCount > 0, "both colours must be present");
   });
 
-  it("each client sees its own window (distinct phases)", async () => {
+  step("each client sees its own window (distinct phases)", async () => {
     // Bob now shares his own (purple-first) board.
     await bob.stream.shareWindow(bobTitle);
     const bobOwn = await bob.stream.waitCheckerboard(true, bobBoard.cols, bobBoard.rows);

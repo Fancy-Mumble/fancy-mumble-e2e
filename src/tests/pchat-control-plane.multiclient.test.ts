@@ -12,15 +12,18 @@ describe("persistent chat control messages", () => {
 
   before(async () => {
     setSuperUserPassword("testpassword");
-    alice = await TauriApp.launch({ instance: 0 });
-    bob = await TauriApp.launch({ instance: 1 });
-    await alice.connect.connect(config.serverHost, "SuperUser", {
-      port: config.serverPort,
-      password: "testpassword",
-    });
-    await bob.connect.connect(config.serverHost, bobName, { port: config.serverPort });
-    await alice.chat.waitLoaded(config.connectTimeout);
-    await bob.chat.waitLoaded(config.connectTimeout);
+    [alice, bob] = await TauriApp.launchAll({ instance: 0 }, { instance: 1 });
+    await Promise.all([
+      alice.connect.connect(config.serverHost, "SuperUser", {
+        port: config.serverPort,
+        password: "testpassword",
+      }),
+      bob.connect.connect(config.serverHost, bobName, { port: config.serverPort }),
+    ]);
+    await Promise.all([
+      alice.chat.waitLoaded(config.connectTimeout),
+      bob.chat.waitLoaded(config.connectTimeout),
+    ]);
     await alice.sidebar.createSubChannel(0, channelName, { pchatProtocol: "fancy_v1_full_archive" });
     await alice.sidebar.waitForChannel(channelName);
     await bob.sidebar.waitForChannel(channelName);

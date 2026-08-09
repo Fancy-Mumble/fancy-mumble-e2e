@@ -20,14 +20,17 @@ describe("multi-client: presence + messaging", () => {
     // Distinct instances -> distinct tauri-driver ports + isolated app data,
     // so the two clients hold independent identities (Mumble rejects duplicate
     // names, hence the distinct usernames too).
-    alice = await TauriApp.launch({ instance: 0 });
-    bob = await TauriApp.launch({ instance: 1 });
+    [alice, bob] = await TauriApp.launchAll({ instance: 0 }, { instance: 1 });
 
-    await alice.connect.connect(config.serverHost, aliceName, { port: config.serverPort });
-    await bob.connect.connect(config.serverHost, bobName, { port: config.serverPort });
+    await Promise.all([
+      alice.connect.connect(config.serverHost, aliceName, { port: config.serverPort }),
+      bob.connect.connect(config.serverHost, bobName, { port: config.serverPort }),
+    ]);
 
-    await alice.chat.waitLoaded(config.connectTimeout);
-    await bob.chat.waitLoaded(config.connectTimeout);
+    await Promise.all([
+      alice.chat.waitLoaded(config.connectTimeout),
+      bob.chat.waitLoaded(config.connectTimeout),
+    ]);
   });
 
   after(async () => {

@@ -169,27 +169,35 @@ describe("Starling carries voice", { concurrency: 1, skip }, () => {
     // echo detectable: Bob's stats cannot show what Alice hears.
     //
     // The virtual microphone means the suite never depends on capture hardware.
-    alice = await TauriApp.launch({
-      instance: 0,
-      extraEnv: {
-        FANCY_E2E_VIRTUAL_MIC: "sine:48000:440",
-        FANCY_E2E_AUDIO_STATS_FILE: aliceStats,
+    [alice, bob] = await TauriApp.launchAll(
+      {
+        instance: 0,
+        extraEnv: {
+          FANCY_E2E_VIRTUAL_MIC: "sine:48000:440",
+          FANCY_E2E_AUDIO_STATS_FILE: aliceStats,
+        },
       },
-    });
-    bob = await TauriApp.launch({
-      instance: 1,
-      extraEnv: {
-        FANCY_E2E_VIRTUAL_MIC: "sine:48000:300",
-        FANCY_E2E_AUDIO_STATS_FILE: bobStats,
+      {
+        instance: 1,
+        extraEnv: {
+          FANCY_E2E_VIRTUAL_MIC: "sine:48000:300",
+          FANCY_E2E_AUDIO_STATS_FILE: bobStats,
+        },
       },
-    });
+    );
 
-    await alice.connect.connect(config.serverHost, aliceName, { port: server.port });
-    await bob.connect.connect(config.serverHost, bobName, { port: server.port });
-    await alice.chat.waitLoaded(config.connectTimeout);
-    await bob.chat.waitLoaded(config.connectTimeout);
-    await alice.chat.waitForMember(bobName);
-    await bob.chat.waitForMember(aliceName);
+    await Promise.all([
+      alice.connect.connect(config.serverHost, aliceName, { port: server.port }),
+      bob.connect.connect(config.serverHost, bobName, { port: server.port }),
+    ]);
+    await Promise.all([
+      alice.chat.waitLoaded(config.connectTimeout),
+      bob.chat.waitLoaded(config.connectTimeout),
+    ]);
+    await Promise.all([
+      alice.chat.waitForMember(bobName),
+      bob.chat.waitForMember(aliceName),
+    ]);
 
     // Fresh profiles start with voice inactive; the first tap of the mute
     // control brings the pipelines up. Alice needs outbound, Bob inbound.

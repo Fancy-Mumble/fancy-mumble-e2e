@@ -15,16 +15,19 @@ describe("Fancy control-plane fan-out", () => {
   const bobName = `e2e-control-b-${Date.now() % 100000}`;
 
   before(async () => {
-    alice = await TauriApp.launch({ instance: 0 });
-    bob = await TauriApp.launch({ instance: 1 });
-    await alice.connect.connect(config.serverHost, aliceName, { port: config.serverPort });
-    await bob.connect.connect(config.serverHost, bobName, { port: config.serverPort });
-    await alice.chat.waitLoaded(config.connectTimeout);
-    await bob.chat.waitLoaded(config.connectTimeout);
-    await alice.chat.allowServerPlugins();
-    await bob.chat.allowServerPlugins();
-    await alice.chat.waitForMember(bobName);
-    await bob.chat.waitForMember(aliceName);
+    [alice, bob] = await TauriApp.launchAll({ instance: 0 }, { instance: 1 });
+    await Promise.all([
+      alice.connect.connect(config.serverHost, aliceName, { port: config.serverPort }),
+      bob.connect.connect(config.serverHost, bobName, { port: config.serverPort }),
+    ]);
+    await Promise.all([
+      alice.chat.waitLoaded(config.connectTimeout),
+      bob.chat.waitLoaded(config.connectTimeout),
+    ]);
+    await Promise.all([
+      alice.chat.waitForMember(bobName),
+      bob.chat.waitForMember(aliceName),
+    ]);
   });
 
   after(async () => {

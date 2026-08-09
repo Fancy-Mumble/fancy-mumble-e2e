@@ -3,8 +3,9 @@ import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { TauriApp } from "../app";
 import { config } from "../config";
-import { waitForAuditCategory } from "../pages/audit.page";
+import { auditStoreCount, waitForAuditCategory } from "../pages/audit.page";
 import { setSuperUserPassword } from "../util/server";
+import { isStarling } from "../util/suite-server";
 
 const CONTAINER = process.env.E2E_SERVER_CONTAINER ?? "fancy-e2e-mumble";
 
@@ -13,13 +14,15 @@ const CONTAINER = process.env.E2E_SERVER_CONTAINER ?? "fancy-e2e-mumble";
  * feat/audit-log-plugin, docs/audit-log.md phases 1-3):
  *
  * - SuperUser performs an auditable action (channel create), then opens the
- *   admin "Audit log" tab (gated at server fancy >= 0.4.2 + Write on root).
+ *   admin "Audit log" tab (gated on Write on root, plus a server that can
+ *   answer: fancy >= 0.4.2 on epoch 0, or wire epoch 1, which Starling speaks
+ *   while deliberately announcing no product version at all).
  * - Viewer: the default query must return rows including the channel event.
  * - Configuration: chain-status card renders; one-click verify reports a
  *   chain status.
- * - Server-side: the mumble-audit plugin's SQLite store inside the container
- *   must have ingested the events (checked via docker exec), independent of
- *   the client query surface.
+ * - Server-side: the server's own record must have ingested the events,
+ *   independent of the client query surface - read through the operator API on
+ *   Starling, and the mumble-audit plugin's SQLite store on murmur.
  */
 describe("audit log: ingest + admin viewer", () => {
   let admin: TauriApp;
@@ -30,17 +33,18 @@ describe("audit log: ingest + admin viewer", () => {
 
   before(async () => {
     setSuperUserPassword("testpassword");
-    admin = await TauriApp.launch({ instance: 0 });
-    user = await TauriApp.launch({ instance: 1 });
-    await admin.connect.connect(config.serverHost, "SuperUser", {
-      port: config.serverPort,
-      password: "testpassword",
-    });
-    await user.connect.connect(config.serverHost, userName, { port: config.serverPort });
-    await admin.chat.waitLoaded(config.connectTimeout);
-    await user.chat.waitLoaded(config.connectTimeout);
-    await admin.chat.allowServerPlugins();
-    await user.chat.allowServerPlugins();
+    [admin, user] = await TauriApp.launchAll({ instance: 0 }, { instance: 1 });
+    await Promise.all([
+      admin.connect.connect(config.serverHost, "SuperUser", {
+        port: config.serverPort,
+        password: "testpassword",
+      }),
+      user.connect.connect(config.serverHost, userName, { port: config.serverPort }),
+    ]);
+    await Promise.all([
+      admin.chat.waitLoaded(config.connectTimeout),
+      user.chat.waitLoaded(config.connectTimeout),
+    ]);
   });
 
   after(async () => {
@@ -53,7 +57,19 @@ describe("audit log: ingest + admin viewer", () => {
     await user.sidebar.waitForChannel(channelName);
   });
 
-  it("initialises the plugin's hash-chain store (server_audit schema)", async () => {
+  it("initialises the hash-chain store (server_audit schema)", async () => {
+    // Starling migrates `server_audit` into its own database on service build,
+    // and the store's location moves with whatever data directory the run got.
+    // Reaching it through the operator API asserts the same thing the file size
+    // did - the store exists and answers - without knowing where it lives.
+    if (isStarling()) {
+      assert.doesNotThrow(
+        () => auditStoreCount(),
+        "the audit service did not answer GET /v1/log - store not migrated",
+      );
+      return;
+    }
+
     // The plugin creates its SQLite store on load; assert the file exists and
     // is non-empty (schema written). The sqlite3 CLI isn't in the image, so
     // contents are asserted from the copied file in the ingest test below.
@@ -68,25 +84,10 @@ describe("audit log: ingest + admin viewer", () => {
   });
 
   it("ingests the channel event into server_audit (hash chain rows)", async () => {
-    // Poll the store for the channel-create event. This is the phase 1-2
-    // ingest pipeline; it activates only once the host gains the
-    // on_server_event fan-out (ABI bump + murmur emitServerEvent calls) -
-    // red until that lands.
-    const tmp = `${process.env.TEMP ?? "/tmp"}/e2e-audit-${stamp}.sqlite`;
-    const deadline = Date.now() + 15000;
-    let rows = 0;
-    while (Date.now() < deadline && rows === 0) {
-      execFileSync("docker", ["cp", `${CONTAINER}:/data/audit-log.sqlite`, tmp]);
-      rows = Number(
-        execFileSync(
-          process.env.E2E_PYTHON ?? "py",
-          ["-c",
-            `import sqlite3;print(sqlite3.connect(r'${tmp}').execute("SELECT count(*) FROM server_audit").fetchone()[0])`],
-          { encoding: "utf8" },
-        ).trim(),
-      );
-      if (rows === 0) await new Promise((r) => setTimeout(r, 1500));
-    }
+    // The channel create above must have reached the record. On Starling this
+    // is `metadata` emitting through `Trail`; the entries are written by the
+    // audit service under its own chain lock, so a row here is a linked row.
+    const rows = await waitForAuditCategory("audit.channel", 1, 20000);
     assert.ok(rows > 0, "server_audit has no rows - ingest fan-out not wired");
   });
 

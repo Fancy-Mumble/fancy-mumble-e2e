@@ -105,8 +105,12 @@ export class StarlingServer {
     const output: string[] = [];
 
     const http = await freePort();
+    // UDP for screen-share media. freePort() checks TCP, which is the wrong
+    // protocol but the right entropy: the SFU logs and degrades to
+    // signalling-only if the bind loses the race, it does not fail the run.
+    const media = await freePort();
     const configFile = path.join(dataDir, "starling.toml");
-    writeFileSync(configFile, config(port, http, dataDir), "utf8");
+    writeFileSync(configFile, config(port, http, media, dataDir), "utf8");
 
     const proc = spawn(STARLING_BIN, ["--all-in-one", "--config", configFile], {
       cwd: dataDir,
@@ -247,7 +251,7 @@ export class StarlingServer {
  * whatever port it made TCP to, so a voice socket left on the default is a
  * server that handshakes perfectly and carries no audio.
  */
-function config(port: number, http: number, dataDir: string): string {
+function config(port: number, http: number, media: number, dataDir: string): string {
   const auditLog = path.join(dataDir, "operator-audit.log").replace(/\\/g, "/");
   return `# Written by the e2e harness; overlaid on Starling's built-in defaults.
 [runtime]
@@ -287,6 +291,15 @@ tokens = [{ value_env = "STARLING_ADMIN_TOKEN", scopes = ["*"] }]
 [services.operator-api.audit]
 path = "${auditLog}"
 fail_closed = true
+
+# The media relay. Without a literal-IP public_url the SFU never starts, the
+# handshake never advertises it, and every screen-share test fails at the
+# client's "no WebRTC relay configured" warning rather than at anything it
+# measures. One port for both keys: media_port is what the SFU binds,
+# public_url is what goes into SDP answers, and they are the same socket.
+[services.screenshare]
+public_url = "127.0.0.1:${media}"
+options = { media_port = "${media}" }
 `;
 }
 

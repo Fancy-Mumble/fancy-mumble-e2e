@@ -28,15 +28,15 @@ describe("root channel: occupants stay visible in the tree", () => {
 
   before(async () => {
     setSuperUserPassword("testpassword");
-    admin = await TauriApp.launch({ instance: 0 });
-    bob = await TauriApp.launch({ instance: 1 });
-    await admin.connect.connect(config.serverHost, "SuperUser", {
-      port: config.serverPort,
-      password: "testpassword",
-    });
-    await bob.connect.connect(config.serverHost, bobName, { port: config.serverPort });
-    await admin.chat.waitLoaded();
-    await bob.chat.waitLoaded();
+    [admin, bob] = await TauriApp.launchAll({ instance: 0 }, { instance: 1 });
+    await Promise.all([
+      admin.connect.connect(config.serverHost, "SuperUser", {
+        port: config.serverPort,
+        password: "testpassword",
+      }),
+      bob.connect.connect(config.serverHost, bobName, { port: config.serverPort }),
+    ]);
+    await Promise.all([admin.chat.waitLoaded(), bob.chat.waitLoaded()]);
   });
 
   after(async () => {
