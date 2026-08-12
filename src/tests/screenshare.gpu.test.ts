@@ -10,7 +10,14 @@ import { captureEnv } from "../util/capture-env";
 /**
  * ENTIRE-SCREEN sharing performance - the path that engages the platform
  * GPU pipeline (Windows: WGC -> D3D11 video processor -> hardware H.264;
- * Linux: VA-API once implemented; CPU pipeline as automatic fallback).
+ * Linux: portal/PipeWire capture into VA-API -> NVENC -> openh264, each
+ * tier falling through to the next; CPU pipeline as automatic fallback).
+ *
+ * On Linux the tier is not purely a property of the hardware. `libva` opens
+ * the FIRST /dev/dri render node, so a box with an integrated GPU alongside
+ * a discrete NVIDIA one measures the integrated card unless
+ * `FANCY_SCREENSHARE_ENCODER=nvenc` sends the ladder past VA-API. Set it
+ * when the number is supposed to describe the discrete card.
  *
  * A full-HD checkerboard animating at ~60 Hz runs on the shared screen so
  * the change-driven capture actually produces frames (an idle desktop
