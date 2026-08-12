@@ -1,3 +1,4 @@
+import { existsSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -26,9 +27,16 @@ export const config = {
   /**
    * Optional explicit native WebDriver for tauri-driver to proxy to
    * (`WebKitWebDriver` on Linux, `msedgedriver` on Windows). When unset,
-   * tauri-driver resolves one from PATH.
+   * `.tools/msedgedriver.exe` is used if `install-msedgedriver.ps1` put one
+   * there — the auto-use the README promises, which lived in `run-local.ps1`
+   * and was lost when `scripts/e2e.mts` replaced it: tauri-driver then found
+   * no driver on PATH and exited before writing a single log line. Failing
+   * that, tauri-driver resolves one from PATH.
    */
-  nativeDriver: process.env.E2E_NATIVE_DRIVER,
+  nativeDriver: process.env.E2E_NATIVE_DRIVER ??
+    (existsSync(path.join(repoRoot, ".tools", "msedgedriver.exe"))
+      ? path.join(repoRoot, ".tools", "msedgedriver.exe")
+      : undefined),
 
   /** Base port for the first tauri-driver instance; instance N uses base+N. */
   driverPort: Number(process.env.E2E_DRIVER_PORT ?? "4445"),
