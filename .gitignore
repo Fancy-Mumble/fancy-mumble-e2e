@@ -20,3 +20,5 @@ starling-data/
 # hashed files is pure noise in `git status` (and one `git add .` from being
 # committed).
 .pnpm-store/
+
+.env
