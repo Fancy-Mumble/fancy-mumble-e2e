@@ -38,6 +38,7 @@ describe("registration: register a user, confirm it, and use the account", () =>
   const sfx = Date.now() % 100000;
   const bobName = `e2e-reg-bob-${sfx}`;
   const carolName = `e2e-reg-carol-${sfx}`;
+  const room = `e2e-reg-room-${sfx}`;
 
   before(async () => {
     // Set the SuperUser password rather than assuming an earlier suite did: the
@@ -73,6 +74,31 @@ describe("registration: register a user, confirm it, and use the account", () =>
     // Parallelism across DIFFERENT sessions is fine; within one it is not.
     await admin.chat.waitForMember(bobName);
     await admin.chat.waitForMember(carolName);
+
+    // A channel of this suite's own, with everyone in it.
+    //
+    // The message assertion below needs sender and watcher in the same room,
+    // which used to be true by accident: on a *fresh* server everybody starts
+    // in root. On a shared one they do not. **Starling restores a registered
+    // user's last channel on login** - murmur does the same - and `SuperUser`
+    // is the account every admin-flavoured suite signs in as, so admin arrives
+    // in whatever room the previous suite left it in while the guests start in
+    // root. Measured directly: after `pchat`, admin lands in
+    // `e2e-pchat-62314` and bob in the root channel, and bob's message is
+    // simply not in the room admin is watching.
+    //
+    // Created rather than derived from admin's header: that element's text is
+    // the channel name concatenated with the channel description, so parsing a
+    // name back out of it is guesswork. This states the precondition instead.
+    await admin.sidebar.createSubChannel(0, room);
+    await Promise.all([
+      admin.sidebar.waitForChannel(room),
+      bob.sidebar.waitForChannel(room),
+      carol.sidebar.waitForChannel(room),
+    ]);
+    await admin.sidebar.joinChannel(room);
+    await bob.sidebar.joinChannel(room);
+    await carol.sidebar.joinChannel(room);
   });
 
   after(async () => {
@@ -112,6 +138,12 @@ describe("registration: register a user, confirm it, and use the account", () =>
     await bob.connect.waitReady(config.connectTimeout);
     await bob.connect.connect(config.serverHost, bobName, { port: config.serverPort });
     await bob.chat.waitLoaded(config.connectTimeout);
+
+    // Back into the suite's room. Bob is registered by now, so the server may
+    // well restore him here by itself - but "may well" is what the next test
+    // would be resting on, and it is the assumption this suite just spent a
+    // sweep proving unsafe.
+    await bob.sidebar.joinChannel(room);
 
     await admin.chat.waitForMember(bobName);
     await admin.chat.waitForRegistered(bobName);
