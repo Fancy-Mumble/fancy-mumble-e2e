@@ -290,6 +290,9 @@ export class AudioBot {
   /** Channels seen during the handshake and after, by lowercased name. */
   private readonly channels = new Map<string, number>();
 
+  /** Channels *this* connection created, so [`stop`] can take them away. */
+  private readonly created = new Set<number>();
+
   session = 0;
   channelId: number | null = null;
   packetsSent = 0;
@@ -475,7 +478,9 @@ export class AudioBot {
       this.say(`cannot create ${JSON.stringify(name)} (${why})`);
       return null;
     }
-    return num(made.fields, 1) ?? null;
+    const id = num(made.fields, 1) ?? null;
+    if (id !== null) this.created.add(id);
+    return id;
   }
 
   /**
@@ -602,11 +607,30 @@ export class AudioBot {
     };
   }
 
-  /** Stop sending and close the connection politely. */
+  /**
+   * Stop sending, remove any rooms this connection created, and close.
+   *
+   * **The removal is not belt-and-braces.** A temporary channel is collected
+   * when its last occupant *leaves*, so one that nobody ever entered has no
+   * such event to fire and stays on the tree for good. That is not theoretical:
+   * a fleet stopped during start-up left an empty `AFK` room behind on a live
+   * server, and only a by-hand `ChannelRemove` got rid of it. Whatever this
+   * created, it takes with it.
+   */
   async stop(): Promise<void> {
     if (this.stopping) return;
     this.stopping = true;
     this.halt();
+
+    if (this.socket?.writable && this.created.size > 0) {
+      for (const id of this.created) {
+        this.send(MSG.channelRemove, uintField(1, id));
+        // Paced like the creates: `ChannelRemove` is charged against the same
+        // control bucket, and a shed one is silently dropped.
+        await delay(CONTROL_BUCKET_MS);
+      }
+    }
+
     if (this.socket?.writable) {
       this.socket.end();
       await Promise.race([once(this.socket, "close"), delay(2000)]);
