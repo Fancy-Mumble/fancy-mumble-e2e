@@ -206,9 +206,9 @@ fix this stops being a silent-drop risk and becomes purely cosmetic (a redundant
 Starling-side rename landing out of sync with the harness - which made
 `StarlingServer.start()` fail for every agent with "unknown field `instances`".
 Reverted, then re-landed correctly once the Starling side caught up; confirmed
-working as of 13:48. If this recurs, `grep -n "\[\[.*_servers\]\]\|\[\[instances\]\]"
-src/util/starling.ts` and cross-check against what the current release binary
-actually accepts.
+working as of 13:48. **It cannot recur:** `instancesTable()` now reads the binary
+it is about to spawn and writes the table name that binary knows, so harness and
+server can no longer disagree about the vocabulary.
 
 **Verification status:** NOT complete. Two full runs of
 `signal-pchat.multiclient.test.ts`:
