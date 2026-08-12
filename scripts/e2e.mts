@@ -18,7 +18,7 @@
  */
 
 import { spawn, spawnSync } from "node:child_process";
-import { existsSync, statSync } from "node:fs";
+import { existsSync, statSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { StarlingServer } from "../src/util/starling";
@@ -175,6 +175,18 @@ try {
   // Always, including on a thrown start-up error: a server left running holds
   // 64738 and the next run fails to bind, several minutes and one confusing
   // failure away from the cause.
+  // The server's own account of the run, kept where the TAP is.
+  //
+  // It was discarded until now: a red suite left the harness's story and none
+  // of the server's, so "the message never arrived" and "the message arrived
+  // and was refused" looked identical from outside. Written always, not only
+  // on failure - a green run's log is what the next red one gets compared to.
+  try {
+    writeFileSync(path.join(repoRoot, ".tmp", "starling.log"), server.log, "utf8");
+    console.log(`e2e: server log  ${path.join(repoRoot, ".tmp", "starling.log")}`);
+  } catch {
+    /* best effort: a missing log must not fail the run that produced it */
+  }
   await server.stop();
   console.log("e2e: Starling stopped");
 }
