@@ -1,10 +1,11 @@
-import { By, until, type WebDriver, type WebElement } from "selenium-webdriver";
+import { By, error, until, type WebDriver, type WebElement } from "selenium-webdriver";
 import { byTid, TID } from "../selectors";
 import { xpathLiteral } from "../util/xpath";
 import { delay } from "../util/wait";
 import { setReactInputValue } from "../util/astral";
 import { config } from "../config";
 import { selectTab } from "../util/tabs";
+import { ensureSidebarOpen, ensureSidebarClosed, clickPossiblyHidden } from "../util/layout";
 
 /** Self-mute / self-deafen flags as reflected in the UI. */
 export interface VoiceFlags {
@@ -100,28 +101,64 @@ export class ChatPage {
 
   /** Type into the composer's textarea and click send. */
   async sendMessage(text: string): Promise<void> {
-    const wrap = await this.d.wait(until.elementLocated(byTid(TID.chatComposerInput)), config.waitTimeout);
-    const editable = await wrap.findElement(By.css("textarea"));
-    await editable.click();
+    await ensureSidebarClosed(this.d);
+    // Retried as a whole, because every reference in it can go stale together.
+    // The composer re-renders while three clients talk, and a 4 KiB message
+    // re-renders it again mid-send: the textarea located a moment ago is
+    // detached before the value reaches it, and WebDriver reports
+    // StaleElementReference from whichever step got there first. Re-locating
+    // one element would leave the others pointing at the old tree, so the
+    // whole locate-fill-send sequence is what repeats.
+    await this.withFreshComposer(async (editable) => {
+      await editable.click();
+      // Always through the DOM, never keystrokes. sendKeys was kept here for
+      // realism, but on this rig it is keymap roulette: with the compositor's
+      // layout active, "-" types as "ß" - verified live, a sent token stored as
+      // "probeßtokenß…" - and whether it strikes depends on which window holds
+      // focus at that moment. Every suite asserts on hyphenated tokens, so the
+      // mangling reads as a delivery bug in whatever feature the suite
+      // measures. (Astral and newline text needed this path anyway:
+      // msedgedriver refuses astral code points, and a newline presses Enter
+      // mid-message.)
+      await setReactInputValue(this.d, editable, text);
+      // Located fresh inside the retry, not hoisted: it belongs to the same
+      // render as the textarea above, and a re-render invalidates both.
+      const send = await this.d.findElement(byTid(TID.chatSend));
+      await this.d.wait(until.elementIsEnabled(send), 5000);
+      await send.click();
+    });
+  }
 
-    // Always through the DOM, never keystrokes. sendKeys was kept here for
-    // realism, but on this rig it is keymap roulette: with the compositor's
-    // layout active, "-" types as "ß" - verified live, a sent token stored as
-    // "probeßtokenß…" - and whether it strikes depends on which window holds
-    // focus at that moment. Every suite asserts on hyphenated tokens, so the
-    // mangling reads as a delivery bug in whatever feature the suite measures;
-    // the entire "pchat messages never render" red was this. (Astral and
-    // newline text needed this path anyway: msedgedriver refuses astral code
-    // points, and a newline presses Enter mid-message.)
-    await setReactInputValue(this.d, editable, text);
-
-    const send = await this.d.findElement(byTid(TID.chatSend));
-    await this.d.wait(until.elementIsEnabled(send), 5000);
-    await send.click();
+  /**
+   * Run `use` against a freshly located composer textarea, retrying the whole
+   * body when the element goes stale under a re-render.
+   */
+  private async withFreshComposer(
+    use: (editable: WebElement) => Promise<void>,
+    attempts = 4,
+  ): Promise<void> {
+    let last: unknown;
+    for (let attempt = 0; attempt < attempts; attempt++) {
+      try {
+        const wrap = await this.d.wait(
+          until.elementLocated(byTid(TID.chatComposerInput)),
+          config.waitTimeout,
+        );
+        const editable = await wrap.findElement(By.css("textarea"));
+        await use(editable);
+        return;
+      } catch (e) {
+        if (!(e instanceof error.StaleElementReferenceError)) throw e;
+        last = e;
+        await delay(200);
+      }
+    }
+    throw new Error(`the chat composer stayed stale across ${attempts} attempts: ${last}`);
   }
 
   /** Type without submitting; useful for exercising typing-indicator transport. */
   async typeMessage(text: string): Promise<void> {
+    await ensureSidebarClosed(this.d);
     const wrap = await this.d.wait(until.elementLocated(byTid(TID.chatComposerInput)), config.waitTimeout);
     const editable = await wrap.findElement(By.css("textarea"));
     await editable.click();
@@ -137,7 +174,9 @@ export class ChatPage {
   async openDirectMessage(name: string): Promise<void> {
     await this.ensureMembersTab();
     const row = await this.d.wait(until.elementLocated(this.memberRow(name)), config.waitTimeout);
-    await row.click();
+    // A sidebar row like any other: on a narrow window it is in the DOM and
+    // out of reach.
+    await clickPossiblyHidden(this.d, row);
   }
 
   /** Open a DM with `name` and send them `text` directly. */
@@ -203,6 +242,7 @@ export class ChatPage {
 
   /** Open the channel menu and create a poll through the shipped UI. */
   async createPoll(question: string, options: string[], multiple = false): Promise<void> {
+    await ensureSidebarClosed(this.d);
     const menu = await this.d.wait(
       until.elementLocated(By.css('button[aria-label="Channel options"]')),
       10000,
@@ -235,6 +275,7 @@ export class ChatPage {
 
   /** Vote in the first rendered poll containing `question`. */
   async votePoll(question: string, option: string): Promise<void> {
+    await ensureSidebarClosed(this.d);
     // `PollCard` renders each option as a <button> holding a <span> of the
     // option text - there is no <label> and no <input>, so both halves of the
     // old locator were wrong: the ancestor axis looked for a card containing an
@@ -364,7 +405,25 @@ export class ChatPage {
     const conditions = (lines.length > 0 ? lines : [""])
       .map((line) => `contains(normalize-space(string(.)), ${xpathLiteral(line)})`)
       .join(" and ");
-    await this.d.wait(until.elementLocated(By.xpath(`//*[${conditions}]`)), timeout);
+    const target = By.xpath(`//*[${conditions}]`);
+    // Polled rather than `until.elementLocated`, to survive a DOM that changes
+    // while it is being searched. A large message re-renders the transcript
+    // under the driver's own traversal and WebKitWebDriver aborts the *find*
+    // with "Stale element found when trying to create the node handle" - not a
+    // reference we held going stale, so no amount of re-locating on our side
+    // helps. It is transient by nature: the next pass walks the settled tree.
+    await this.d.wait(
+      async () => {
+        try {
+          return (await this.d.findElements(target)).length > 0;
+        } catch (e) {
+          if (e instanceof error.StaleElementReferenceError) return false;
+          throw e;
+        }
+      },
+      timeout,
+      `text never appeared: ${text.slice(0, 60)}`,
+    );
   }
 
   /** Wait for the read-receipt state rendered on a message bubble. */
@@ -397,19 +456,47 @@ export class ChatPage {
    * poll for the whole window and approve each as it shows. Returns the count.
    */
   async approveKeyShares(maxWaitMs = config.waitTimeout): Promise<number> {
-    const shareBtn = By.xpath("//*[@role='dialog']//button[normalize-space(.)='Share Key']");
+    // Two clicks per approval, because the client asks twice. A peer's
+    // request first surfaces as a banner in the chat view ("<peer> joined and
+    // needs the encryption key" - `buildKeyShareBanner`), whose "Share Key"
+    // opens `KeyShareWarningDialog`; the dialog's own "Share Key" is what
+    // actually shares. Both buttons carry the same caption, and only the
+    // second sits under a `role="dialog"`, so matching the dialog alone waited
+    // out the whole budget on a prompt that was on screen the entire time,
+    // one click away.
+    // The banner lives in the chat area, so an open drawer's backdrop sits on
+    // top of it: the click is intercepted, and polling never sees the prompt it
+    // is already looking straight at.
+    await ensureSidebarClosed(this.d);
+    const dialogConfirm = By.xpath("//*[@role='dialog']//button[normalize-space(.)='Share Key']");
+    const bannerOffer = By.xpath(
+      "//button[normalize-space(.)='Share Key'][not(ancestor::*[@role='dialog'])]",
+    );
     let approved = 0;
     const deadline = Date.now() + maxWaitMs;
     while (Date.now() < deadline) {
-      const btns = await this.d.findElements(shareBtn);
-      if (btns.length > 0) {
+      const [confirm] = await this.d.findElements(dialogConfirm);
+      if (confirm) {
         try {
-          await btns[0].click();
+          await confirm.click();
           approved++;
           await delay(700);
           continue;
         } catch {
           /* dialog re-rendered; re-poll */
+        }
+      }
+      const [offer] = await this.d.findElements(bannerOffer);
+      if (offer) {
+        try {
+          await offer.click();
+          await delay(400); // the dialog mounts; the next pass confirms it
+          continue;
+        } catch {
+          // Re-close and retry rather than swallowing: an intercepted banner
+          // click looks identical to "no prompt yet" from here, and that cost
+          // a whole debugging session once.
+          await ensureSidebarClosed(this.d);
         }
       }
       await delay(800);
@@ -676,14 +763,14 @@ export class ChatPage {
    * first click only activates voice; a second click mutes.
    */
   async selfMute(): Promise<void> {
-    await this.clickTid(TID.toggleMute);
+    await this.clickSidebarTid(TID.toggleMute);
     await delay(400);
-    await this.clickTid(TID.toggleMute);
+    await this.clickSidebarTid(TID.toggleMute);
   }
 
   /** Toggle the local user's self-deafen via the sidebar voice control. */
   async selfDeafen(): Promise<void> {
-    await this.clickTid(TID.toggleDeafen);
+    await this.clickSidebarTid(TID.toggleDeafen);
   }
 
   /** Wait until the named member's row shows the muted state. */
@@ -700,12 +787,12 @@ export class ChatPage {
 
   /** Single click of the mute control (cycles inactive -> active -> muted). */
   async tapMute(): Promise<void> {
-    await this.clickTid(TID.toggleMute);
+    await this.clickSidebarTid(TID.toggleMute);
   }
 
   /** Single click of the deafen control. */
   async tapDeafen(): Promise<void> {
-    await this.clickTid(TID.toggleDeafen);
+    await this.clickSidebarTid(TID.toggleDeafen);
   }
 
   /**
@@ -742,11 +829,14 @@ export class ChatPage {
 
   /** Click the sidebar Disconnect button (returns to the connect page). */
   async disconnect(): Promise<void> {
+    // Another ChannelSidebar control, so it is behind the drawer on a narrow
+    // window exactly like the voice toggles.
+    await ensureSidebarOpen(this.d);
     const btn = await this.d.wait(
       until.elementLocated(By.xpath("//button[contains(normalize-space(.), 'Disconnect')]")),
       10000,
     );
-    await btn.click();
+    await clickPossiblyHidden(this.d, btn);
   }
 
   /** Wait until the local self row reports the expected muted state. */
@@ -807,10 +897,17 @@ export class ChatPage {
     );
   }
 
-  private async clickTid(id: string, timeout = config.waitTimeout): Promise<void> {
+  /**
+   * Click a control that lives inside `ChannelSidebar` - the self voice
+   * buttons. Two things break them on a narrow window: the sidebar is a closed
+   * drawer, and the desktop voice actions are then hidden outright. See
+   * `ensureSidebarOpen` and `clickPossiblyHidden`.
+   */
+  private async clickSidebarTid(id: string, timeout = config.waitTimeout): Promise<void> {
+    await ensureSidebarOpen(this.d, timeout);
     const el = await this.d.wait(until.elementLocated(byTid(id)), timeout);
     await this.d.wait(until.elementIsEnabled(el), timeout);
-    await el.click();
+    await clickPossiblyHidden(this.d, el);
   }
 }
 

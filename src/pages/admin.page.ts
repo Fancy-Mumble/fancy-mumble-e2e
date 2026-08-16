@@ -1,6 +1,7 @@
 import { By, until, type WebDriver } from "selenium-webdriver";
 import { TID, byTid } from "../selectors";
 import { config } from "../config";
+import { ensureSidebarOpen, ensureSidebarClosed } from "../util/layout";
 
 /**
  * Page object for the admin panel (`/admin`), focused on the "Channels / ACL"
@@ -15,11 +16,16 @@ export class AdminPage {
     // The admin button lives in the channel sidebar (main chat view). If we're on
     // another page (e.g. Friends, which swaps in its own sidebar), click the
     // active server tab in the left rail to return to the server view first.
+    // The rail sits outside the sidebar, so an open drawer's backdrop takes
+    // this click; the admin button below sits inside it and needs the
+    // opposite. On a wide window both calls are no-ops.
+    await ensureSidebarClosed(this.d);
     const tabs = await this.d.findElements(By.css('[role="tab"][aria-selected="true"]'));
     if (tabs.length > 0) {
       await tabs[0].click();
       await this.d.sleep(400);
     }
+    await ensureSidebarOpen(this.d);
     const btn = await this.d.wait(
       until.elementLocated(By.css('[aria-label="Admin panel"]')),
       10000,

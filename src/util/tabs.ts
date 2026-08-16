@@ -1,5 +1,6 @@
 import { By, type WebDriver } from "selenium-webdriver";
 import { config } from "../config";
+import { ensureSidebarOpen } from "./layout";
 
 /**
  * Activate a sidebar tab and confirm it took.
@@ -27,6 +28,10 @@ export async function selectTab(
   const selector = By.xpath(`//button[@role='tab' and normalize-space(.)=${JSON.stringify(label)}]`);
   await d.wait(
     async () => {
+      // Inside the poll, not before it: on a narrow window the drawer closes
+      // again on every channel click, so a tab selected later in the same
+      // suite would find the sidebar shut. A no-op when it is already open.
+      await ensureSidebarOpen(d, timeout);
       const [tab] = await d.findElements(selector);
       if (!tab) return false;
       // Re-read through the element each pass: a re-render between the find and

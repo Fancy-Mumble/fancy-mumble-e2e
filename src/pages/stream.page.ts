@@ -1,7 +1,8 @@
-import { By, Key, until, type WebDriver } from "selenium-webdriver";
+import { By, Key, error, until, type WebDriver } from "selenium-webdriver";
 import { byTid, TID, STREAM_SOURCE_TITLE_ATTR, BROADCASTER_NAME_ATTR } from "../selectors";
 import { delay } from "../util/wait";
 import { config } from "../config";
+import { ensureSidebarClosed, clickPossiblyHidden, locateForGesture } from "../util/layout";
 
 /** Colour class recovered from a sampled checkerboard cell. */
 export type CellClass = "green" | "purple" | "other";
@@ -73,9 +74,18 @@ export class StreamPage {
 
   /** Click the chat-header share toggle (present in both builds). */
   private async clickToggle(timeout = config.waitTimeout): Promise<void> {
+    // Every picker path funnels through here, and the share toggle sits in
+    // the chat header - behind the drawer's backdrop on a narrow window.
+    await ensureSidebarClosed(this.d);
     const toggle = await this.d.wait(until.elementLocated(byTid(TID.screenShareToggle)), timeout);
     await this.d.wait(until.elementIsEnabled(toggle), timeout);
-    await toggle.click();
+    // Dismissing the drawer is not always enough on a narrow window: the header
+    // this toggle sits in is also what the stream focus view and its tile
+    // drawer overlap once a broadcast is running, which is exactly when the
+    // camera suite opens the picker a second time. Same remedy as everywhere
+    // else here, and it still rethrows on a wide window so a real overlay is
+    // not hidden.
+    await clickPossiblyHidden(this.d, toggle);
   }
 
   /** Whether the custom (new-build) source picker dialog opened. */
@@ -182,12 +192,20 @@ export class StreamPage {
     const card = By.css(
       `[data-testid="${TID.screenShareSource}"][${STREAM_SOURCE_TITLE_ATTR}*="${cssAttrEscape(title)}"]`,
     );
-    const el = await this.d.wait(
+    // Located, then scrolled into view before the click. The Window tab lists
+    // every top-level window on the desktop, and on a busy one the card this
+    // suite wants sits below the fold of the picker's own scroller: it is
+    // *located* fine (`elementLocated` does not care about geometry) but has
+    // no hit-testable box, and WebDriver refuses the click with
+    // ElementNotInteractable ~800 ms into the step - the same failure shape
+    // `locateForGesture` was written for on the channel list.
+    await this.d.wait(
       until.elementLocated(card),
       timeout,
       `screen-share picker never offered a window titled like "${title}"`,
     );
-    await el.click();
+    const el = await locateForGesture(this.d, card, timeout);
+    await clickPossiblyHidden(this.d, el);
     const confirm = await this.d.wait(until.elementLocated(byTid(TID.screenShareConfirm)), 10000);
     await this.d.wait(until.elementIsEnabled(confirm), 10000);
     await confirm.click();
@@ -244,6 +262,11 @@ export class StreamPage {
    */
   /** Open the source picker via the header share toggle. */
   async openPicker(timeout = config.waitTimeout): Promise<void> {
+    // Installed here as well as in `shareWindow`/`shareScreen`, because the
+    // camera suite reaches a broadcast through the picker alone and so had no
+    // console captured at all: every camera failure reported its symptom with
+    // none of the app's own account of what the capture pipeline did.
+    await this.captureConsole();
     await this.clickToggle(timeout);
     if (!(await this.customPickerAppeared(5000))) {
       throw new Error("custom screen-share picker did not open (old build?)");
@@ -373,18 +396,38 @@ export class StreamPage {
   }
 
   /**
-   * Per-track fps from the (open) stats panel's "Current Res" rows
-   * ("1234×567@30" -> 30). NaN entries mean the row showed no rate yet.
+   * Decoded fps from the (open) stats panel's dedicated FPS row.
+   *
+   * Read from `stream-stats-fps`, **not** parsed out of the "Current Res"
+   * row's `1234×567@30`. Those are two different numbers with two different
+   * availabilities: the resolution row prints a rate only when the painter
+   * reported frame dimensions for that track, and the native viewer family -
+   * mandatory on Linux, where WebKitGTK has no WebRTC - leaves them null, so
+   * the row renders a bare `–` and every sample parsed to NaN. The whole
+   * series read `[NaN, NaN, ...]` against a share that was demonstrably
+   * decoding real frames, which makes the diagnostic worse than absent:
+   * `screen-share-health` documents this series as the thing that localises a
+   * problem, and it was localising nothing.
+   *
+   * The dedicated row carries `deriveIntervalStats`'s `fps`, which falls back
+   * to the `framesDecoded` delta over the interval when the reported rate is
+   * missing - available on both viewer families.
+   *
+   * One entry, not one per track: this row is the aggregate. NaN still means
+   * the panel genuinely has no rate yet.
    */
   async readStatsFps(): Promise<number[]> {
-    const rows = await this.d.findElements(byTid(TID.streamStatsResolution));
-    const out: number[] = [];
-    for (const row of rows) {
-      const text = (await row.getText()) ?? "";
-      const m = /@(\d+(?:\.\d+)?)/.exec(text);
-      out.push(m ? Number(m[1]) : Number.NaN);
-    }
-    return out;
+    // `textContent` for the same reason `readStatsFreezes` uses it: `getText()`
+    // returns only rendered text, and these rows scroll.
+    const texts = await this.d.executeScript<string[]>(
+      `return Array.from(
+         document.querySelectorAll('[data-testid="stream-stats-fps"]'),
+       ).map((n) => n.textContent || "");`,
+    );
+    return texts.map((text) => {
+      const m = /(\d+(?:\.\d+)?)\s*fps/.exec(text);
+      return m ? Number(m[1]) : Number.NaN;
+    });
   }
 
   /**
@@ -410,12 +453,19 @@ export class StreamPage {
    * panel must already be open (see {@link statsResolutionCount}).
    */
   async readStatsFreezes(): Promise<Array<[number, number]>> {
-    const rows = await this.d.findElements(
-      By.css(`[data-testid="stream-stats-freezes"]`),
+    // `textContent`, not `getText()`. WebDriver's getText returns only what is
+    // *rendered*, and this row sits well down a scrolling panel - below the
+    // resolution row that `statsResolutionCount` finds perfectly - so it comes
+    // back empty whenever the panel has not been scrolled to it. The rows then
+    // parse to nothing and the caller reports "stats panel shows no freeze
+    // row", which reads as a missing feature rather than an unscrolled div.
+    const texts = await this.d.executeScript<string[]>(
+      `return Array.from(
+         document.querySelectorAll('[data-testid="stream-stats-freezes"]'),
+       ).map((n) => n.textContent || "");`,
     );
     const out: Array<[number, number]> = [];
-    for (const row of rows) {
-      const text = (await row.getText()) ?? "";
+    for (const text of texts) {
       const m = /(\d+)\s*\((\d+(?:\.\d+)?)/.exec(text);
       if (m) out.push([Number(m[1]), Number(m[2])]);
     }
@@ -650,7 +700,16 @@ export class StreamPage {
     const after = await readProgress();
     if (after < 0) throw new Error("own stream preview vanished while playing");
     if (after <= before) {
-      throw new Error(`own stream preview stopped decoding (progress ${before} -> ${after})`);
+      // A bare progress counter says the pipeline stalled and nothing about
+      // where. The app logs the capture -> encode -> send stages to its
+      // console, so replay them here exactly as `shareWindow` does for a
+      // preview that never starts: without this, "0 -> 0" is the entire
+      // evidence for a stall that could be capture, encode, or paint.
+      const logs = await this.readCapturedConsole();
+      const detail = logs.length > 0 ? `\n--- webview console ---\n${logs.join("\n")}` : "";
+      throw new Error(
+        `own stream preview stopped decoding (progress ${before} -> ${after})${detail}`,
+      );
     }
   }
 
@@ -668,6 +727,52 @@ export class StreamPage {
   }
 
   /**
+   * Click `el`, reporting a lost race rather than throwing one.
+   *
+   * Two different obstructions reach here, and they need different answers:
+   *
+   *   - **Persistent**, from the narrow layout putting something over the
+   *     target. {@link clickPossiblyHidden} owns that one and dispatches the
+   *     click directly; it rethrows on a wide window, deliberately, so a real
+   *     overlay bug is not papered over.
+   *   - **Transient**, because the "is sharing" banner slides in and
+   *     {@link watchByName} polls for it: the find succeeds the moment it
+   *     mounts, while it is still animating, so the click lands on whatever the
+   *     transform still has over it. `StaleElementReferenceError` is the same
+   *     race seen through a re-render between the find and the click.
+   *
+   * The transient pair is the caller's loop condition, not a failure - it
+   * already waits for the banner to exist, and this makes it wait for the
+   * banner to be *usable*.
+   */
+  private async clicked(el: import("selenium-webdriver").WebElement): Promise<boolean> {
+    try {
+      await clickPossiblyHidden(this.d, el);
+      return true;
+    } catch (e) {
+      if (
+        e instanceof error.ElementClickInterceptedError ||
+        e instanceof error.StaleElementReferenceError
+      ) {
+        return false;
+      }
+      throw e;
+    }
+  }
+
+  /** Viewport width and narrow-layout state, for a failure that explains itself. */
+  private async layoutNote(): Promise<string> {
+    try {
+      return await this.d.executeScript<string>(
+        `return window.innerWidth + "px, narrow=" +
+           window.matchMedia("(max-width: 768px)").matches;`,
+      );
+    } catch {
+      return "unavailable";
+    }
+  }
+
+  /**
    * Start watching `name`'s broadcast, whichever affordance the UI offers:
    *
    *   - Idle viewer: the "<name> is sharing" banner's Watch button.
@@ -676,6 +781,12 @@ export class StreamPage {
    *     bottom drawer - opened via its toggle when collapsed).
    */
   async watchByName(name: string, timeout = 30000): Promise<void> {
+    // The banner and the watch tiles all live in the main area, which an open
+    // drawer covers with a full-page backdrop - the same reason `clickToggle`
+    // does this before reaching for the share toggle. Without it every click
+    // below lands on the backdrop and WebDriver reports ElementClickIntercepted
+    // for as long as the drawer stays open, which is forever.
+    await ensureSidebarClosed(this.d);
     const banner = By.css(
       `[data-testid="${TID.broadcastBanner}"][${BROADCASTER_NAME_ATTR}="${cssAttrEscape(name)}"]`,
     );
@@ -683,35 +794,60 @@ export class StreamPage {
       `[data-testid="${TID.streamWatchTile}"][${BROADCASTER_NAME_ATTR}="${cssAttrEscape(name)}"]`,
     );
     const deadline = Date.now() + timeout;
+    // Which of the two ways this can run out of time actually happened. "No
+    // banner appeared" and "the banner appeared and would not take the click"
+    // are different faults with different causes, and reporting the first for
+    // the second sends the reader looking for a share that did start.
+    let refused = 0;
+    // Checked at the top, not the bottom: a `continue` from any of the retry
+    // paths below skips a bottom-of-loop deadline entirely, which turns a
+    // persistent refusal into a hang until the test framework's own timeout -
+    // four minutes of nothing rather than a named failure at `timeout`.
     for (;;) {
+      if (Date.now() > deadline) {
+        throw new Error(
+          refused > 0
+            ? `"${name}" is sharing and the Watch control refused ${refused} ` +
+              `click(s): something is over it (ElementClickIntercepted), so the ` +
+              `banner is present but unusable. Viewport ${await this.layoutNote()} ` +
+              `- a wide window here means a real overlay, not the drawer, and ` +
+              `\`clickPossiblyHidden\` will have rethrown rather than hide it`
+            : `no "is sharing" banner or watch tile for "${name}" appeared`,
+        );
+      }
       const rows = await this.d.findElements(banner);
       if (rows.length > 0) {
         const watch = await rows[0].findElement(byTid(TID.broadcastWatch));
-        await watch.click();
-        break;
+        if (await this.clicked(watch)) break;
+        refused += 1;
+        // Paced like the poll below: `continue` skips that one, and a retry
+        // with no pause spins a core against the webview for the whole timeout.
+        await delay(300);
+        continue;
       }
 
       const tiles = await this.d.findElements(tile);
       if (tiles.length > 0) {
         if (await tiles[0].isDisplayed()) {
-          await tiles[0].click();
-          break;
+          if (await this.clicked(tiles[0])) break;
+          refused += 1;
+          await delay(300);
+          continue;
         }
         // Tile exists but is hidden -> it lives in the collapsed drawer.
         const toggles = await this.d.findElements(byTid(TID.streamDrawerToggle));
-        if (toggles.length > 0) {
-          await toggles[0].click();
+        if (toggles.length > 0 && (await this.clicked(toggles[0]))) {
           const reopened = await this.d.findElements(tile);
-          if (reopened.length > 0 && (await reopened[0].isDisplayed())) {
-            await reopened[0].click();
+          if (
+            reopened.length > 0 &&
+            (await reopened[0].isDisplayed()) &&
+            (await this.clicked(reopened[0]))
+          ) {
             break;
           }
         }
       }
 
-      if (Date.now() > deadline) {
-        throw new Error(`no "is sharing" banner or watch tile for "${name}" appeared`);
-      }
       await delay(300);
     }
     await this.captureConsole();
@@ -857,7 +993,19 @@ export class StreamPage {
     const sel = By.css(
       `[data-testid="${TID.streamCameraVideo}"][data-own="${own ? "true" : "false"}"]`,
     );
-    await this.d.wait(until.elementLocated(sel), timeout);
+    try {
+      await this.d.wait(until.elementLocated(sel), timeout);
+    } catch (e) {
+      // The PiP mounts only once BOTH tracks have delivered a first frame
+      // (`hasMedia && hasCameraMedia`), so "never located" alone cannot say
+      // which track died. The webview console can: the viewer logs a
+      // heartbeat (`[stream-view] session=.. rx=.. painted=..`) and every
+      // decode error, so replay it, as the other media waits already do.
+      const logs = await this.readCapturedConsole();
+      const err = e as Error;
+      err.message += `\n--- webview console ---\n${logs.join("\n")}`;
+      throw err;
+    }
     await this.d.wait(async () => {
       const els = await this.d.findElements(sel);
       if (els.length === 0) return false;

@@ -1,10 +1,17 @@
-import { By, until, type WebDriver } from "selenium-webdriver";
+import { By, until, type WebDriver, type WebElement } from "selenium-webdriver";
 import { byTid, TID, MEMBER_NAME_ATTR } from "../selectors";
 import { delay } from "../util/wait";
 import { xpathLiteral } from "../util/xpath";
 import { setReactInputValue, setReactSelectValue } from "../util/input";
 import { config } from "../config";
 import { selectTab } from "../util/tabs";
+import {
+  ensureSidebarOpen,
+  clickPossiblyHidden,
+  locateForGesture,
+  doubleClickPossiblyHidden,
+  contextClickPossiblyHidden,
+} from "../util/layout";
 
 /**
  * Page object for the channel sidebar (ChannelSidebar.tsx + the flat
@@ -91,16 +98,43 @@ export class SidebarPage {
     let lastError: unknown;
     for (let attempt = 0; attempt < 4; attempt++) {
       try {
-        const row = await this.d.wait(
-          until.elementLocated(this.byChannelId(channelId)),
-          config.waitTimeout,
-        );
-        await this.d.actions().contextClick(row).perform();
+        // Same reason as joinChannel: a previous attempt may have left the
+        // narrow-window drawer shut, which the Actions API reports as an
+        // out-of-bounds target rather than as a closed sidebar.
+        await ensureSidebarOpen(this.d);
+        const row = await locateForGesture(this.d, this.byChannelId(channelId));
+        await contextClickPossiblyHidden(this.d, row);
         // The menu animates in; let the transition settle before locating.
         await delay(400);
-        const menuItem = await this.d.wait(until.elementLocated(item), 4000);
-        await this.d.wait(until.elementIsVisible(menuItem), 2000);
-        await menuItem.click();
+        // Pick the *visible* match rather than the first one. The locator is
+        // document-wide, and a dismissed menu from an earlier attempt can still
+        // be in the DOM: `elementLocated` then returns that corpse and
+        // `elementIsVisible` waits out its timeout on an element that will
+        // never be shown again.
+        // `wait` only resolves on a truthy value, so the null in the union is
+        // unreachable by the time it returns.
+        const menuItem = (await this.d.wait(
+          async () => {
+            for (const el of await this.d.findElements(item)) {
+              // Laid out, rather than `isDisplayed`. The menu opens at the
+              // row's own coordinates, so on a short window it lands past the
+              // fold - where WebKit calls it not displayed even though it is
+              // mounted, styled and one dispatch away from being clicked. A
+              // real box is what separates that from the corpse of a dismissed
+              // menu, which is what this check is actually for.
+              const box = await this.d.executeScript<{ w: number; h: number }>(
+                "const r = arguments[0].getBoundingClientRect();" +
+                  "return { w: r.width, h: r.height };",
+                el,
+              );
+              if (box.w > 0 && box.h > 0) return el;
+            }
+            return null;
+          },
+          4000,
+          `context-menu item "${label}" never took a size on screen`,
+        )) as WebElement;
+        await clickPossiblyHidden(this.d, menuItem);
         await delay(400);
         return;
       } catch (e) {
@@ -251,8 +285,12 @@ export class SidebarPage {
   async joinChannel(name: string): Promise<void> {
     await this.ensureChannelsTab();
     for (let attempt = 0; attempt < 4; attempt++) {
-      const el = await this.d.wait(until.elementLocated(this.byChannelName(name)), config.waitTimeout);
-      await this.d.actions().doubleClick(el).perform();
+      // Re-open per attempt: a double-click that landed as a select-only also
+      // closed the drawer on a narrow window, and the Actions API reports the
+      // now-offscreen row as MoveTargetOutOfBounds rather than as a miss.
+      await ensureSidebarOpen(this.d);
+      const el = await locateForGesture(this.d, this.byChannelName(name));
+      await doubleClickPossiblyHidden(this.d, el);
       try {
         await this.waitForMembership(name, 4000);
         return;
@@ -271,13 +309,11 @@ export class SidebarPage {
    */
   private async userMenuAction(name: string, label: string): Promise<void> {
     await this.ensureMembersTab();
-    const row = await this.d.wait(
-      until.elementLocated(
-        By.css(`[data-testid="${TID.memberItem}"][${MEMBER_NAME_ATTR}="${cssAttrEscape(name)}"]`),
-      ),
-      config.waitTimeout,
+    const row = await locateForGesture(
+      this.d,
+      By.css(`[data-testid="${TID.memberItem}"][${MEMBER_NAME_ATTR}="${cssAttrEscape(name)}"]`),
     );
-    await this.d.actions().contextClick(row).perform();
+    await contextClickPossiblyHidden(this.d, row);
     await delay(400);
     const item = await this.d.wait(
       until.elementLocated(By.xpath(`//button[normalize-space(.)=${xpathLiteral(label)}]`)),
@@ -328,23 +364,25 @@ export class SidebarPage {
    */
   async registerUser(name: string): Promise<void> {
     await this.ensureMembersTab();
-    const row = await this.d.wait(
-      until.elementLocated(
-        By.css(`[data-testid="${TID.memberItem}"][${MEMBER_NAME_ATTR}="${cssAttrEscape(name)}"]`),
-      ),
-      config.waitTimeout,
+    const row = await locateForGesture(
+      this.d,
+      By.css(`[data-testid="${TID.memberItem}"][${MEMBER_NAME_ATTR}="${cssAttrEscape(name)}"]`),
     );
-    await this.d.actions().contextClick(row).perform();
+    await contextClickPossiblyHidden(this.d, row);
     await delay(400);
-
     const menuItem = await this.d.wait(
       until.elementLocated(
-        By.xpath("//div[contains(@class,'menu')]//button[normalize-space(.)='Register']"),
+        // By caption alone, as `channelMenuAction` does. The container was
+        // matched on `contains(@class,'menu')`, which a CSS-module hash spells
+        // `_contextMenu_…` - capital M, and XPath's contains is case-sensitive,
+        // so the ancestor never matched once the menu stopped being the only
+        // thing on screen.
+        By.xpath("//button[normalize-space(.)='Register']"),
       ),
       8000,
     );
     await this.d.wait(until.elementIsVisible(menuItem), 5000);
-    await menuItem.click();
+    await clickPossiblyHidden(this.d, menuItem);
 
     // Located after the click, so the wait cannot resolve against the menu item
     // that is still on screen when it starts.
@@ -358,7 +396,7 @@ export class SidebarPage {
       8000,
     );
     await this.d.wait(until.elementIsVisible(confirm), 5000);
-    await confirm.click();
+    await clickPossiblyHidden(this.d, confirm);
     await delay(400);
   }
 
