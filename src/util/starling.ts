@@ -121,6 +121,12 @@ export class StarlingServer {
         // that asserts on it fails describing a cipher choice that was in fact
         // correct. Everything else stays at info; voice logs nothing per packet.
         RUST_LOG: process.env.E2E_STARLING_LOG ?? "info,starling_voice=debug",
+        // Both of Starling's log emitters colour by default, and neither asks
+        // whether stderr is a terminal - `docker logs` is not one either. Here
+        // stderr is a pipe into `output`, which tests regex for `conn=N` and
+        // the like; escape codes around the `=` would break every one of them,
+        // and .tmp/starling.log is easier to read without them.
+        NO_COLOR: "1",
         // The operator API's bearer token, which its config names by
         // environment variable rather than holding in plaintext. Without it
         // the API refuses every request, and the suite's SuperUser setup —

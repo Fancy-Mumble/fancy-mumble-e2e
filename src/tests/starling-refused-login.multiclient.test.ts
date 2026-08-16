@@ -107,14 +107,15 @@ describe("Starling refuses a login cleanly", { concurrency: 1, skip }, () => {
     // up either way, because this client tears down its own socket when it is
     // rejected. The gateway names the initiator in the reason it logs:
     // `disconnected by the server` when a service asked for it, against
-    // `peer closed` or `connection reset` when the client went first.
+    // `peer closed` or `connection reset` when the client went first. Text
+    // values are quoted in the log, so a reason with spaces in it is one value.
     //
     // Only the first of those is the fix. Without it the server never asks,
     // and whether the connection lingers is left entirely to the client's
     // goodwill - which is exactly how the reported session stayed half open
     // for half a minute, pinging, on a client that took a different path.
     const closed = new RegExp(
-      `client disconnected conn=${conn}\\b[^\\n]*reason=disconnected by the server`,
+      `client disconnected conn=${conn}\\b[^\\n]*reason="disconnected by the server"`,
     );
     const deadline = Date.now() + SETTLE_MS;
     while (Date.now() < deadline) {
