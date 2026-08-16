@@ -1,4 +1,4 @@
-import { spawn, type ChildProcess } from "node:child_process";
+import { spawn, spawnSync, type ChildProcess } from "node:child_process";
 import { mkdtempSync, rmSync, existsSync, writeFileSync } from "node:fs";
 import net from "node:net";
 import os from "node:os";
@@ -6,7 +6,6 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { killTree } from "./proc";
 import { delay } from "./wait";
-import { binaryContains } from "./preconditions";
 
 const thisDir = path.dirname(fileURLToPath(import.meta.url));
 /** Repo root (fancy-mumble-e2e/). `src/util/` is two levels down. */
@@ -262,24 +261,44 @@ export class StarlingServer {
  * That cost this suite two rig outages in one day, and once landed mid-run,
  * where it read as flakiness rather than as a config error.
  *
- * So the harness stops guessing and asks the binary it is about to spawn, the
- * same way `preconditions.ts` asks the client binary whether it knows
- * `presence_set_enabled`. The rename left no aliases behind, so the old name's
- * presence is the discriminator; a binary too new to contain it gets the new
- * name, and so does a missing binary (the tree is post-rename, and a start with
- * no binary fails for its own reasons a moment later).
+ * So the harness stops guessing and asks the binary it is about to spawn. It
+ * used to ask by scanning for the old name's bytes, which broke when `migrate`
+ * learned to read a murmur database (starling 26af49e, 2026-08-12):
+ * `virtual_servers` is murmur's own table name too, so every post-rename binary
+ * now contains the string and the scan chose the dead vocabulary for all of
+ * them. Same word, two meanings - no scan can separate them.
  *
- * Memoised: a per-file runner pays the scan once, not once per suite.
+ * `check-config` settles it instead: it loads exactly what a start would,
+ * without binding a port. Only the diagnostic naming our key counts as an
+ * answer; any other failure (a missing field, an unreadable path, no binary at
+ * all) leaves the current name in place, so a probe that fails for its own
+ * reasons cannot silently select the dead one.
+ *
+ * Memoised: a per-file runner pays the probe once, not once per suite.
  */
 let instancesTableName: string | null = null;
 function instancesTable(): string {
-  if (instancesTableName === null) {
-    instancesTableName =
-      existsSync(STARLING_BIN) && binaryContains(STARLING_BIN, "virtual_servers")
-        ? "virtual_servers"
-        : "instances";
-  }
+  if (instancesTableName === null) instancesTableName = detectInstancesTable();
   return instancesTableName;
+}
+
+function detectInstancesTable(): string {
+  if (!existsSync(STARLING_BIN)) return "instances";
+  const probeDir = mkdtempSync(path.join(os.tmpdir(), "starling-probe-"));
+  try {
+    const probe = path.join(probeDir, "starling.toml");
+    writeFileSync(probe, "[[instances]]\nid = 1\n", "utf8");
+    const asked = spawnSync(STARLING_BIN, ["check-config", "--config", probe], {
+      encoding: "utf8",
+    });
+    return `${asked.stdout ?? ""}${asked.stderr ?? ""}`.includes("unknown field `instances`")
+      ? "virtual_servers"
+      : "instances";
+  } catch {
+    return "instances";
+  } finally {
+    rmSync(probeDir, { recursive: true, force: true });
+  }
 }
 
 function config(port: number, http: number, media: number, dataDir: string): string {
