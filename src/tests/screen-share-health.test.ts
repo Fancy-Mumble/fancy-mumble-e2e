@@ -120,10 +120,21 @@ describe("screen share: delivery health (freezes)", { skip: tkinterMissing() }, 
       kbpsSeries.push(await app.stream.readStatsNumber("Connection Speed"));
       bufferSeries.push(await app.stream.readStatsNumber("Buffer Health"));
     }
-    console.log(`fps series:    [${fpsSeries.join(", ")}]`);
-    console.log(`freeze series: [${freezeSeries.join(", ")}]`);
-    console.log(`kbps series:   [${kbpsSeries.join(", ")}]`);
-    console.log(`buffer series: [${bufferSeries.join(", ")}]`);
+    // A series of nothing but NaN is not a reading, and printing it as one
+    // invites the next reader to debug a stat that this viewer family does not
+    // have. `Buffer Health` is the case: it is derived from
+    // `jitterBufferDelay / jitterBufferEmittedCount`, and the native viewer
+    // (mandatory on Linux, where WebKitGTK has no WebRTC) reports both as 0
+    // because the Rust peer feeds decoded frames straight to the painter -
+    // there is no jitter buffer to measure. Say that instead of showing 24 NaNs.
+    const series = (values: number[], absent: string) =>
+      values.every((v) => Number.isNaN(v)) ? absent : `[${values.join(", ")}]`;
+    console.log(`fps series:    ${series(fpsSeries, "unavailable")}`);
+    console.log(`freeze series: ${series(freezeSeries, "unavailable")}`);
+    console.log(`kbps series:   ${series(kbpsSeries, "unavailable")}`);
+    console.log(
+      `buffer series: ${series(bufferSeries, "n/a - no jitter buffer on the native viewer")}`,
+    );
 
     const freezes = await app.stream.readStatsFreezes();
     assert.ok(freezes.length >= 1, "stats panel shows no freeze row");
