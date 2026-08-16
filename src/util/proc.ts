@@ -35,11 +35,12 @@ function signal(pid: number, sig: NodeJS.Signals): void {
  * group (the driver is spawned `detached`, giving it its own group).
  *
  * SIGTERM is asked first and SIGKILL follows if the process is still there.
- * Starling does not exit on SIGTERM, so the polite signal alone leaked one
- * server per run - by the end of a working day, a dozen of them still
- * running, each holding its data dir. The escalation is what actually
- * reaps them; the grace period is for the processes that do shut down
- * cleanly and should be allowed to.
+ * Starling used to ignore the polite signal in effect - it drained, then sat
+ * on the streams its own services were waiting to see closed - and leaked a
+ * server per run, a dozen of them by the end of a working day, each holding
+ * its data dir. It exits in milliseconds now (`starling-runtime`'s drain), so
+ * the grace period is for processes that shut down cleanly and the escalation
+ * is what it always should have been: the thing that never has to happen.
  */
 export function killTree(pid: number | undefined): void {
   if (!pid) return;
