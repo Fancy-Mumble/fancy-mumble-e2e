@@ -141,6 +141,23 @@ export class TauriApp {
   }
 
   /**
+   * Turn the release build's stdout tracing on (dev builds always have it).
+   * The `RUST_LOG` filter is set by the launcher from `E2E_CLIENT_LOG`; this
+   * flips the sink that filter feeds.
+   */
+  async enableTerminalLogging(): Promise<void> {
+    const result = await this.driver.executeAsyncScript<string>(`
+      const cb = arguments[arguments.length - 1];
+      const inv = window.__TAURI_INTERNALS__ && window.__TAURI_INTERNALS__.invoke;
+      if (!inv) { cb('no-invoke'); return; }
+      inv('set_terminal_logging', { enabled: true }).then(() => cb('ok')).catch((e) => cb('err:' + e));
+    `);
+    if (result !== "ok") {
+      throw new Error(`enableTerminalLogging failed: ${result}`);
+    }
+  }
+
+  /**
    * Turn on the app's file logging, so tests can read backend tracing (e.g.
    * screenshare pipeline timings) after a run.
    *
@@ -311,6 +328,16 @@ export class TauriApp {
     const dataDir = mkdtempSync(path.join(os.tmpdir(), "fancy-e2e-"));
     const env = makeIsolatedEnv(dataDir, opts.captureWindowTitle);
     Object.assign(env, opts.extraEnv ?? {});
+    // The client's own tracing, the counterpart to `E2E_STARLING_LOG` on the
+    // server side. Off unless asked for, because it is per-frame chatty in the
+    // capture pipeline - but without it the app's account of a media failure
+    // does not exist anywhere: the webview console carries only what the UI
+    // logs, and the Rust half (capture, encode, the WebRTC peer) writes to
+    // stderr. tauri-driver spawns the app, so that stderr lands in
+    // `.tmp/tauri-driver-<port>.log`.
+    //
+    //   E2E_CLIENT_LOG=fancy_screenshare=debug npm run e2e -- <file>
+    if (process.env.E2E_CLIENT_LOG) env.RUST_LOG = process.env.E2E_CLIENT_LOG;
     // Give each instance its own X display so two client windows never contend
     // for keyboard focus (WebKitWebDriver key events depend on window focus);
     // the per-instance Xvfb servers are started by the runner (:99 + instance).
@@ -341,6 +368,24 @@ export class TauriApp {
       t = lap("session", t);
       const app = new TauriApp(driver, proc, dataDir);
       await app.waitDomReady();
+      // Asking for client logs implies wanting them written somewhere. The
+      // release build's *terminal* sink is gated behind a runtime toggle
+      // (`terminal_enabled()` is `cfg!(debug_assertions) || <toggle>`), so
+      // `RUST_LOG` alone produces nothing at all and reads as "the app logged
+      // nothing about the failure". Flip the toggle through the same
+      // `__TAURI_INTERNALS__.invoke` every other harness command uses; the
+      // app's stderr lands in `.tmp/tauri-driver-<port>.log`, where tauri-
+      // driver (its parent) writes it.
+      if (process.env.E2E_CLIENT_LOG) {
+        // Both sinks: the stdout one lands in the tauri-driver log when the
+        // driver passes the app's stdout through, and the file one is the
+        // fallback that cannot be swallowed by any intermediary - it lives in
+        // the instance's isolated data dir
+        // (`.local/share/com.fancymumble.app/logs/`), which `E2E_LOG_ARCHIVE`
+        // copies out on close.
+        await app.enableTerminalLogging();
+        await app.enableFileLogging();
+      }
       t = lap("boot1", t);
       await app.applyTestMode();
       t = lap("boot2", t);
