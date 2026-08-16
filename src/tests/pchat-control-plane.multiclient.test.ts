@@ -30,6 +30,12 @@ describe("persistent chat control messages", () => {
     await alice.sidebar.joinChannel(channelName);
     await bob.sidebar.joinChannel(channelName);
     await alice.chat.waitForMember(bobName);
+
+    // Alice created the channel, so she holds the archive key and Bob does
+    // not. Sharing it is gated behind her explicit consent
+    // (KeyShareWarningDialog), so without this Bob decrypts nothing and every
+    // assertion about what he can see fails as if delivery were broken.
+    await alice.chat.approveKeyShares();
   });
 
   after(async () => {
