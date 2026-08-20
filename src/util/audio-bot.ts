@@ -54,6 +54,7 @@ const MSG = {
   serverSync: 5,
   channelRemove: 6,
   channelState: 7,
+  userRemove: 8,
   userState: 9,
   textMessage: 11,
   permissionDenied: 12,
@@ -81,12 +82,33 @@ export interface BotSpec {
   flavour: Flavour;
   /** Room to sit in. Created under the root when it does not exist. */
   room: string;
-  source: SourceSpec;
+  /**
+   * A clip to loop for as long as the bot is up — the load-generator case.
+   *
+   * Leave it unset for a bot that only speaks when told to, and drive it with
+   * [`AudioBot.speak`] instead. A bot with no source connects, joins its room
+   * and then sits silent, which is what a conversational bot wants between
+   * its turns.
+   */
+  source?: SourceSpec;
   /** Opus frame duration; 10, 20, 40 or 60. */
   frameMs?: number;
   bitrateKbps?: number;
   /** Restart the clip when it runs out. */
   loop?: boolean;
+}
+
+/** A `TextMessage` that arrived on this connection. */
+export interface TextEvent {
+  /** The session that sent it, or 0 when the server itself did. */
+  actor: number;
+  /** That session's name, if this connection has seen a `UserState` for it. */
+  actorName: string | undefined;
+  message: string;
+  /** Channels it was addressed to; empty for a direct message. */
+  channelIds: number[];
+  /** Sessions it was addressed to; non-empty means it was private. */
+  sessions: number[];
 }
 
 /** What a running bot reports about itself. */
@@ -210,6 +232,9 @@ const str = (fields: Decoded, field: number): string | undefined => {
   const value = fields.get(field)?.[0];
   return Buffer.isBuffer(value) ? value.toString("utf8") : undefined;
 };
+/** Every value of a repeated scalar field — `TextMessage` has three of them. */
+const numbers = (fields: Decoded, field: number): number[] =>
+  (fields.get(field) ?? []).filter((value): value is number => typeof value === "number");
 
 /**
  * Mumble's own variable-length integer, which is **not** protobuf's.
@@ -237,6 +262,96 @@ function mumbleVarint(value: number): Buffer {
   wide[0] = 0xf0;
   wide.writeUInt32BE(value >>> 0, 1);
   return wide;
+}
+
+/**
+ * Read one Mumble varint, for the *server to client* direction.
+ *
+ * Only the four short forms and the 32-bit escape are decoded, because the one
+ * caller wants a session id out of the front of an audio packet and a session
+ * id is small. Anything else — the 64-bit form, the negative and the inverted
+ * encodings, all of which exist — returns `null` rather than a wrong number:
+ * this is used to notice that somebody is speaking, and a guess would be worse
+ * than a shrug.
+ */
+function readMumbleVarint(data: Buffer, at: number): { value: number; size: number } | null {
+  if (at >= data.length) return null;
+  const lead = data[at];
+  if ((lead & 0x80) === 0x00) return { value: lead & 0x7f, size: 1 };
+  if ((lead & 0xc0) === 0x80) {
+    return at + 1 < data.length ? { value: ((lead & 0x3f) << 8) | data[at + 1], size: 2 } : null;
+  }
+  if ((lead & 0xe0) === 0xc0) {
+    return at + 2 < data.length
+      ? { value: ((lead & 0x1f) << 16) | (data[at + 1] << 8) | data[at + 2], size: 3 }
+      : null;
+  }
+  if ((lead & 0xf0) === 0xe0) {
+    return at + 3 < data.length
+      ? {
+          value: (lead & 0x0f) * 2 ** 24 + (data[at + 1] << 16) + (data[at + 2] << 8) + data[at + 3],
+          size: 4,
+        }
+      : null;
+  }
+  if ((lead & 0xfc) === 0xf0) {
+    return at + 4 < data.length ? { value: data.readUInt32BE(at + 1), size: 5 } : null;
+  }
+  return null;
+}
+
+/** An audio packet that arrived on the tunnel, taken apart as far as needed. */
+export interface IncomingVoice {
+  sender: number;
+  /** The Opus payload, or `null` when the packet was not Opus or was malformed. */
+  opus: Buffer | null;
+  /** The sender's talk-spurt ends with this packet. */
+  terminator: boolean;
+}
+
+/**
+ * Who sent an audio packet, and what they said — as bytes, not as sound.
+ *
+ * The two formats differ throughout. The legacy packet is `type|target`, then
+ * session, sequence, and (for Opus) a header varint whose low 13 bits are the
+ * payload length and bit 13 the terminator, then the payload; anything after
+ * it is positional data and is ignored. The protobuf `Audio` carries
+ * `sender_session` in field 3, the payload in field 5 and the terminator in
+ * field 16. Nothing here decodes Opus. What a caller does with the payload —
+ * hand it to a recogniser, count it — is its business; this connection is
+ * still not a listening client.
+ */
+function parseVoice(packet: Buffer): IncomingVoice | null {
+  if (packet.length < 2) return null;
+  const type = packet[0] >> 5;
+  if (type === 4) {
+    const session = readMumbleVarint(packet, 1);
+    if (session === null) return null;
+    const sequence = readMumbleVarint(packet, 1 + session.size);
+    if (sequence === null) return { sender: session.value, opus: null, terminator: false };
+    const at = 1 + session.size + sequence.size;
+    const header = readMumbleVarint(packet, at);
+    if (header === null) return { sender: session.value, opus: null, terminator: false };
+    const length = header.value & 0x1fff;
+    const start = at + header.size;
+    return {
+      sender: session.value,
+      opus: start + length <= packet.length ? packet.subarray(start, start + length) : null,
+      terminator: (header.value & 0x2000) !== 0,
+    };
+  }
+  if (type === 0) {
+    const fields = decode(packet.subarray(1));
+    const sender = num(fields, 3);
+    if (sender === undefined) return null;
+    const payload = fields.get(5)?.[0];
+    return {
+      sender,
+      opus: Buffer.isBuffer(payload) ? payload : null,
+      terminator: (num(fields, 16) ?? 0) !== 0,
+    };
+  }
+  return null;
 }
 
 // ---------------------------------------------------------------------------
@@ -275,12 +390,48 @@ export interface BotOptions {
   /** Called for every notable event, so a runner can log with its own format. */
   onEvent?: (bot: string, message: string) => void;
   connectTimeoutMs?: number;
+  /**
+   * Called for every `TextMessage` this connection receives, including the
+   * echo of the ones it sends itself — the server sends those back like any
+   * other, and a caller that does not want them filters on `actor`.
+   */
+  onText?: (event: TextEvent) => void;
+  /**
+   * Called for every audio packet that arrives on the tunnel from anyone but
+   * this bot itself, with the sender and the still-encoded payload (see
+   * [`parseVoice`]). Nothing is decoded here; a caller that only wants to know
+   * whether somebody is talking can ignore everything but the session.
+   */
+  onVoice?: (voice: IncomingVoice) => void;
 }
+
+/** How much audio to have in hand before an utterance starts going out. */
+const PREBUFFER_FRAMES = 10;
+
+/**
+ * How far ahead of real time a talker may run, in frames.
+ *
+ * **This is what stops the clicking.** The Fancy client has no jitter buffer:
+ * it primes on 100 ms of audio the first time and then only re-primes after
+ * 1.5 s of silence, so a talk-spurt that begins after a shorter pause — every
+ * sentence seam, every gap between turns — plays with whatever lead the sender
+ * gives it. A sender that paces at exactly real time gives it none: each 20 ms
+ * packet lands just as the previous one is consumed, every 10 ms callback
+ * comes up a few samples short, and the client's underrun ramp fires fifty
+ * times a second. That is a click train under the speech.
+ *
+ * So the schedule allows the sender to be up to this many frames *early*.
+ * Whenever it has frames in hand — at the start of a spurt, and again after a
+ * stall — it sends them at once until it is this far ahead, then paces. The
+ * receiver ends up with a lead of this much to absorb jitter, and the cost is
+ * the same amount of latency, which a listener cannot tell from a breath.
+ */
+const LEAD_FRAMES = 6;
 
 export class AudioBot {
   private socket!: tls.TLSSocket;
   private buffered = Buffer.alloc(0);
-  private stream!: OpusStream;
+  private stream: OpusStream | null = null;
   private timer: NodeJS.Timeout | null = null;
   private pinger: NodeJS.Timeout | null = null;
   private cursor = 0;
@@ -289,6 +440,9 @@ export class AudioBot {
 
   /** Channels seen during the handshake and after, by lowercased name. */
   private readonly channels = new Map<string, number>();
+
+  /** Everyone this connection has seen a `UserState` for, by session. */
+  private readonly names = new Map<number, string>();
 
   /** Channels *this* connection created, so [`stop`] can take them away. */
   private readonly created = new Set<number>();
@@ -323,14 +477,19 @@ export class AudioBot {
    */
   static async start(spec: BotSpec, opts: BotOptions): Promise<AudioBot> {
     const bot = new AudioBot(spec, opts);
-    bot.stream = await encodeToOpus(spec.source, bot.frameMs, spec.bitrateKbps ?? 48);
-    bot.say(
-      `encoded ${describe(spec.source)} -> ${bot.stream.packets.length} frames ` +
-        `(${((bot.stream.packets.length * bot.frameMs) / 1000).toFixed(1)} s)`,
-    );
+    if (spec.source) {
+      const stream = await encodeToOpus(spec.source, bot.frameMs, spec.bitrateKbps ?? 48);
+      bot.stream = stream;
+      bot.say(
+        `encoded ${describe(spec.source)} -> ${stream.packets.length} frames ` +
+          `(${((stream.packets.length * bot.frameMs) / 1000).toFixed(1)} s)`,
+      );
+    }
     await bot.login();
     await bot.enterRoom();
-    bot.startStreaming();
+    // A bot with no clip is a talker rather than a load generator: it sits
+    // quiet until somebody hands it an utterance through [`speak`].
+    if (spec.source) bot.startStreaming();
     return bot;
   }
 
@@ -410,6 +569,16 @@ export class AudioBot {
    * somebody else has to clean up.
    */
   private async enterRoom(): Promise<void> {
+    // No room named means "wherever the server puts me", which is the root.
+    // Worth having as its own case: the root channel is *not* reliably called
+    // "Root" — Starling names it after the instance — so asking for a name to
+    // stay put ends in a bot trying to create a channel it is already in and
+    // being refused.
+    if (this.spec.room.trim().length === 0) {
+      this.channelId = 0;
+      return;
+    }
+
     const wanted = this.spec.room.toLowerCase();
     // Already on the tree — the usual case when a room keeper made it — or
     // ours to create. A refusal leaves the bot in the root, still streaming.
@@ -557,6 +726,7 @@ export class AudioBot {
   }
 
   private sendFrame(): void {
+    if (!this.stream) return;
     const { packets } = this.stream;
     const last = this.cursor >= packets.length - 1;
     const opus = packets[this.cursor];
@@ -564,9 +734,7 @@ export class AudioBot {
     // The terminator tells the far end the talk-spurt ended, which is what
     // stops its jitter buffer waiting for a frame that is never coming.
     const terminator = last && !this.spec.loop;
-    this.write(this.spec.flavour === "fancy"
-      ? protobufAudio(this.sequence, opus, terminator)
-      : legacyAudio(this.sequence, opus, terminator));
+    this.write(this.audioPacket(opus, terminator));
 
     // The wire counts sequence in 10 ms units regardless of frame size, so a
     // 20 ms frame advances it by two. Getting this wrong makes a stream that
@@ -589,6 +757,171 @@ export class AudioBot {
     this.send(MSG.udpTunnel, payload);
     this.packetsSent += 1;
     this.bytesSent += payload.length;
+  }
+
+  /** One audio frame in whichever format this bot's announced version implies. */
+  private audioPacket(opus: Buffer, terminator: boolean): Buffer {
+    return this.spec.flavour === "fancy"
+      ? protobufAudio(this.sequence, opus, terminator)
+      : legacyAudio(this.sequence, opus, terminator);
+  }
+
+  // -- talking ------------------------------------------------------------
+
+  /** The name this connection knows for `session`, if it has seen one. */
+  nameOf(session: number): string | undefined {
+    return this.names.get(session);
+  }
+
+  /**
+   * Post a message to the channel the bot is in.
+   *
+   * Charged against the gateway's control bucket at roughly one a second
+   * (`gateway/src/listener.rs`, `is_rate_limited`), and a shed message is
+   * neither answered nor logged. One line per utterance is far under that, but
+   * a caller that wants to say two things in a row has to pace them itself —
+   * this deliberately does not queue, because a bot that silently lags its own
+   * speech is harder to diagnose than one that drops a line.
+   */
+  sendText(message: string): void {
+    if (!this.socket?.writable) return;
+    this.send(
+      MSG.textMessage,
+      Buffer.concat([uintField(3, this.channelId ?? 0), stringField(5, message)]),
+    );
+  }
+
+  /** True while an utterance is on the wire. */
+  get speaking(): boolean {
+    return this.utterances > 0;
+  }
+
+  /**
+   * Say one utterance: take Opus frames as they are produced and pace them onto
+   * the wire, resolving once the last one has been sent.
+   *
+   * This is the counterpart to the clip loop. The frames arrive from a TTS
+   * synthesis that is still running, so the queue can run dry mid-sentence;
+   * when it does the clock **restarts** rather than catching up, and the
+   * sender runs ahead again by [`LEAD_FRAMES`] as soon as it can, so the
+   * receiver gets its lead back. The sequence stays contiguous across the
+   * pause: the Fancy client's mixer inserts silence for a sequence gap on
+   * top of the silence the stall already caused, which would double every
+   * hiccup, and a stall short enough to matter is one it has already
+   * papered over.
+   *
+   * Utterances queue behind one another: two overlapping calls would interleave
+   * their frames into one unintelligible stream.
+   *
+   * `signal` cuts the utterance off — the bot is being talked over, or has
+   * decided to give way. The frame in hand goes out flagged as the terminator
+   * so the far end closes the talk-spurt cleanly instead of waiting out its
+   * jitter buffer, and the source is told to stop producing. Resolves normally;
+   * being interrupted is not an error.
+   */
+  speak(packets: AsyncIterable<Buffer>, opts: { signal?: AbortSignal } = {}): Promise<void> {
+    const turn = this.speaking$.then(() => this.utter(packets, opts.signal));
+    // The chain has to survive a failed utterance, or one TTS error silently
+    // mutes the bot for the rest of the run.
+    this.speaking$ = turn.then(
+      () => undefined,
+      () => undefined,
+    );
+    return turn;
+  }
+
+  private speaking$: Promise<void> = Promise.resolve();
+  private utterances = 0;
+
+  private async utter(packets: AsyncIterable<Buffer>, signal?: AbortSignal): Promise<void> {
+    if (signal?.aborted) return;
+    const queue: Buffer[] = [];
+    let finished = false;
+    let failure: unknown = null;
+    let wake: (() => void) | null = null;
+
+    const nudge = (): void => {
+      const waiter = wake;
+      wake = null;
+      waiter?.();
+    };
+    const more = (): Promise<void> => new Promise((resolve) => (wake = resolve));
+    signal?.addEventListener("abort", nudge, { once: true });
+
+    // The iterator is held by hand rather than driven by `for await`, so that
+    // an interruption can call `return()` on it from the outside while a
+    // `next()` is still waiting on the synthesiser. That is what stops the
+    // producer; breaking out of a `for await` would only stop the consumer.
+    const source = packets[Symbol.asyncIterator]();
+    const pump = (async () => {
+      try {
+        for (;;) {
+          const { value, done } = await source.next();
+          if (done || signal?.aborted) break;
+          queue.push(value);
+          nudge();
+        }
+      } catch (e) {
+        if (!signal?.aborted) failure = e;
+      } finally {
+        finished = true;
+        nudge();
+      }
+    })();
+
+    this.utterances += 1;
+    try {
+      // Fill the pipe before opening the tap. The synthesiser is faster than
+      // real time but its *first* chunk takes a few hundred milliseconds, and
+      // starting on frame one guarantees an underrun in the first word.
+      while (!finished && !signal?.aborted && queue.length < PREBUFFER_FRAMES) await more();
+
+      // The schedule: frame `n` is due at `base + (n - LEAD_FRAMES) * frameMs`,
+      // clamped to now. `base` resets after a stall, so the lead is rebuilt.
+      let base = performance.now();
+      let sent = 0;
+      while (!this.stopping && this.socket?.writable) {
+        if (signal?.aborted) {
+          // Cut off. Whatever frame is in hand carries the terminator; if
+          // there is none, the talk-spurt simply ends and the far end times it
+          // out, which is what a real client hears from a dropped connection.
+          const last = queue.shift();
+          if (last !== undefined) {
+            this.write(this.audioPacket(last, true));
+            this.sequence += this.frameMs / 10;
+          }
+          break;
+        }
+
+        // One frame of lookahead: the terminator rides on the *last* frame, so
+        // a frame can only go out once it is known not to be the last one.
+        if (queue.length === 0 || (queue.length === 1 && !finished)) {
+          if (finished && queue.length === 0) break;
+          await more();
+          base = performance.now();
+          sent = 0;
+          continue;
+        }
+
+        const opus = queue.shift() as Buffer;
+        const terminator = finished && queue.length === 0;
+        this.write(this.audioPacket(opus, terminator));
+        // 10 ms units on the wire regardless of frame size; see [`sendFrame`].
+        this.sequence += this.frameMs / 10;
+        sent += 1;
+
+        const due = base + (sent - LEAD_FRAMES) * this.frameMs;
+        await delay(Math.max(0, due - performance.now()));
+      }
+    } finally {
+      this.utterances -= 1;
+      signal?.removeEventListener("abort", nudge);
+      // Tell the source to stop, whether we finished, were stopped, or were
+      // interrupted. On a finished source this is a no-op.
+      await source.return?.().catch(() => undefined);
+      await pump;
+    }
+    if (failure) throw failure;
   }
 
   /** Everything a runner wants to print. */
@@ -661,28 +994,76 @@ export class AudioBot {
       if (this.buffered.length < 6 + length) break;
       const payload = this.buffered.subarray(6, 6 + length);
       this.buffered = this.buffered.subarray(6 + length);
-      // The tunnel carries other people's audio back; decoding it would make
-      // this a client. Everything else is a control message worth reading.
-      if (type !== MSG.udpTunnel) this.dispatch(type, decode(payload));
+      // The tunnel carries other people's audio back. Only the sender is read
+      // out of it — decoding the Opus would make this a client. Everything
+      // else is a control message worth reading.
+      if (type === MSG.udpTunnel) {
+        if (this.opts.onVoice) {
+          const voice = parseVoice(payload);
+          if (voice !== null && voice.sender !== this.session) this.opts.onVoice(voice);
+        }
+      } else {
+        this.dispatch(type, decode(payload));
+      }
     }
   }
 
   private dispatch(type: number, fields: Decoded): void {
-    if (type === MSG.channelState) {
-      const name = str(fields, 3);
-      const id = num(fields, 1);
-      if (name !== undefined && id !== undefined) this.channels.set(name.toLowerCase(), id);
-    }
-    if (type === MSG.channelRemove) {
-      const id = num(fields, 1);
-      for (const [name, known] of this.channels) if (known === id) this.channels.delete(name);
-    }
+    this.remember(type, fields);
+    if (type === MSG.textMessage) this.deliverText(fields);
     for (const waiter of [...this.waiters]) {
       if (waiter.match(type, fields)) {
         this.waiters.splice(this.waiters.indexOf(waiter), 1);
         waiter.resolve({ type, fields });
       }
     }
+  }
+
+  /**
+   * Keep the tree and the roster up to date.
+   *
+   * Names are learned here and nowhere else: a `TextMessage` carries only the
+   * sender's session, so without this the bots would be answering numbers.
+   */
+  private remember(type: number, fields: Decoded): void {
+    switch (type) {
+      case MSG.channelState: {
+        const name = str(fields, 3);
+        const id = num(fields, 1);
+        if (name !== undefined && id !== undefined) this.channels.set(name.toLowerCase(), id);
+        return;
+      }
+      case MSG.channelRemove: {
+        const id = num(fields, 1);
+        for (const [name, known] of this.channels) if (known === id) this.channels.delete(name);
+        return;
+      }
+      case MSG.userState: {
+        const session = num(fields, 1);
+        const name = str(fields, 3);
+        if (session !== undefined && name !== undefined) this.names.set(session, name);
+        return;
+      }
+      case MSG.userRemove: {
+        const session = num(fields, 1);
+        if (session !== undefined) this.names.delete(session);
+        return;
+      }
+      default:
+        return;
+    }
+  }
+
+  private deliverText(fields: Decoded): void {
+    if (!this.opts.onText) return;
+    const actor = num(fields, 1) ?? 0;
+    this.opts.onText({
+      actor,
+      actorName: this.names.get(actor),
+      message: str(fields, 5) ?? "",
+      channelIds: numbers(fields, 3),
+      sessions: numbers(fields, 2),
+    });
   }
 
   private readonly waiters: {
