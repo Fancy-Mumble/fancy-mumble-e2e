@@ -21,18 +21,14 @@ starling-data/
 # committed).
 .pnpm-store/
 
-# A local alias for vendor/server, needed only to build vendor/fancy-plugin-example.
+# A local alias for vendor/server, under the C++ server's upstream repository
+# name. Nothing needs it any more: vendor/fancy-plugin-example used to depend on
+# the plugin API by path, as a sibling checkout called `mumble-server`, and now
+# takes it from Starling over git instead. Ignored so an older working copy that
+# still has the link does not carry it into a commit.
 #
-# That repo depends on the plugin API by path, as a sibling checkout named
-# `mumble-server` (which is the upstream repository's name); ours is the
-# `vendor/server` submodule. Rather than patch a pristine checkout, point one at
-# the other. Not committed, because it is a filesystem link and not portable:
-#
-#   Windows:  cmd /c "mklink /J vendor\mumble-server vendor\server"
-#   Unix:     ln -s server vendor/mumble-server
-#
-# Only needed to *rebuild* the example plugins; see
-# vendor/starling/crates/plugin-host/host/tests/loads_the_published_examples.rs
+#   Windows:  cmd /c "rmdir vendor\mumble-server"
+#   Unix:     rm vendor/mumble-server
 vendor/mumble-server
 
 .env
