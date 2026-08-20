@@ -38,3 +38,7 @@
 	path = vendor/mumble-user-manager
 	url = https://github.com/SetZero/mumble-user-manager.git
 	branch = main
+[submodule "vendor/fancy-plugin-example"]
+	path = vendor/fancy-plugin-example
+	url = https://github.com/Fancy-Mumble/fancy-plugin-example.git
+	branch = main

@@ -21,4 +21,18 @@ starling-data/
 # committed).
 .pnpm-store/
 
+# A local alias for vendor/server, needed only to build vendor/fancy-plugin-example.
+#
+# That repo depends on the plugin API by path, as a sibling checkout named
+# `mumble-server` (which is the upstream repository's name); ours is the
+# `vendor/server` submodule. Rather than patch a pristine checkout, point one at
+# the other. Not committed, because it is a filesystem link and not portable:
+#
+#   Windows:  cmd /c "mklink /J vendor\mumble-server vendor\server"
+#   Unix:     ln -s server vendor/mumble-server
+#
+# Only needed to *rebuild* the example plugins; see
+# vendor/starling/crates/plugin-host/host/tests/loads_the_published_examples.rs
+vendor/mumble-server
+
 .env
