@@ -14,5 +14,10 @@
     "types": ["node"],
     "noEmit": true
   },
-  "include": ["src/**/*.ts", "vendor/client/crates/mumble-tauri/ui/src/testids.ts"]
+  "include": [
+    "src/**/*.ts",
+    "botroom/**/*.ts",
+    "botroom/**/*.mts",
+    "vendor/client/crates/mumble-tauri/ui/src/testids.ts"
+  ]
 }

@@ -1,0 +1,155 @@
+# botroom on the GPU box.
+#
+#   docker compose -f botroom/docker-compose.yml up -d llm
+#   docker compose -f botroom/docker-compose.yml run --rm botroom \
+#       --server mumble.example.org:64738 --channel Lounge \
+#       --topic "whether cities should ban private cars" --participants 3
+#
+# The GPU pins are the important part and they are not interchangeable:
+# `device_ids: ["1"]` is the RTX 3090 and `["0"]` is the RTX 3060, in the same
+# order `nvidia-smi` prints them. The 27B model at Q4_K_M needs the 3090 to
+# itself, which means the Qwen3-TTS serving `learn-jp` has to be on the 3060 —
+# see `docs/BOTROOM-PLAN.md` §7, and note that its own compose file has the
+# wrong id in it.
+#
+# The synthesiser *is* a service here now, and it replaces the learn-jp one
+# rather than joining it: same image, same cached weights (the external
+# volume), same port, but with `patches/qwen3-tts-server.py` mounted over the
+# server — the upstream server keeps generating for clients that have hung up
+# and has no length bound, and both of those wrecked the audio for everyone in
+# the room (see the patch header). The two instances cannot share the 3060, so
+# stop `~/learn-jp-speech/docker-compose.qwen.yml` before `up`, and vice versa.
+name: botroom
+
+services:
+  llm:
+    image: ghcr.io/ggml-org/llama.cpp:server-cuda
+    restart: unless-stopped
+    # A list, not a string: compose splits a string command shell-style and
+    # would eat the quotes out of the JSON below, which llama-server then
+    # refuses to parse. Thinking has to be off — see `botroom/llm.ts`.
+    command:
+      - -m
+      - /models/Qwen3.8-27B-Q4_K_M.gguf
+      - -ngl
+      - "99"
+      # Far more than a conversation needs — a turn's prompt is a couple of
+      # thousand tokens — but Qwen3.8's hybrid attention gives only every
+      # fourth layer a KV cache, so the room is cheap and `--history` can be
+      # raised a long way before anything has to be reconsidered.
+      - -c
+      - "65536"
+      - -fa
+      - "on"
+      - --jinja
+      - --chat-template-kwargs
+      - '{"enable_thinking":false}'
+      - --alias
+      - Qwen3.8-27B
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8080"
+    volumes:
+      - ${BOTROOM_MODELS:-./models}:/models:ro
+    ports: ["127.0.0.1:8090:8080"]
+    healthcheck:
+      # The model takes a minute to fault in from disk the first time; until it
+      # has, /health answers 503 rather than refusing the connection.
+      test: ["CMD-SHELL", "curl -sf http://localhost:8080/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 60
+      start_period: 300s
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              device_ids: ["1"] # RTX 3090
+              capabilities: ["gpu"]
+
+  tts:
+    image: ghcr.io/malaiwah/qwen3-tts-server:latest
+    restart: unless-stopped
+    environment:
+      QWEN3_TTS_MODEL_ID: Qwen/Qwen3-TTS-12Hz-1.7B-Base
+    volumes:
+      - qwen-hf-cache:/root/.cache/huggingface
+      - ./patches/qwen3-tts-server.py:/app/server.py:ro
+    ports: ["127.0.0.1:8882:8001"]
+    healthcheck:
+      test: ["CMD-SHELL", "python3 -c \"import urllib.request; urllib.request.urlopen('http://localhost:8001/health', timeout=4)\" || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 60
+      start_period: 300s
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              device_ids: ["0"] # RTX 3060, beside Whisper
+              capabilities: ["gpu"]
+
+  stt:
+    # Ears: what people in the channel *say*, so the bots can answer it. The
+    # box already had a Whisper, but a Japanese-distilled one on the CPU; this
+    # is `large-v3-turbo` on the 3060 next to the synthesiser, ~1.5 GB of VRAM
+    # and about a second per utterance. `botroom/humans.ts` posts Ogg Opus at
+    # `/asr?encode=true` and the service's own ffmpeg does the decoding.
+    image: onerahmet/openai-whisper-asr-webservice:latest-gpu
+    restart: unless-stopped
+    environment:
+      ASR_MODEL: large-v3-turbo
+      ASR_ENGINE: faster_whisper
+      # The image defaults to float32 on a GPU, which is 4 GB of VRAM for a
+      # model that needs a fraction of that; int8 is ~1.3 GB and no slower for
+      # a sentence at a time. The 3060 is shared with the synthesiser.
+      ASR_QUANTIZATION: int8
+    volumes:
+      - botroom-whisper:/root/.cache
+    ports: ["127.0.0.1:9002:9000"]
+    healthcheck:
+      # No curl in this image; python is what it is made of.
+      test: ["CMD-SHELL", "python3 -c \"import urllib.request; urllib.request.urlopen('http://localhost:9000/openapi.json', timeout=4)\" || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 60
+      start_period: 300s
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              device_ids: ["0"] # RTX 3060, beside the TTS
+              capabilities: ["gpu"]
+
+  botroom:
+    build:
+      context: ..
+      dockerfile: botroom/Dockerfile
+    # Not started by `up`: this is a one-shot the operator runs with arguments.
+    profiles: ["run"]
+    depends_on:
+      llm:
+        condition: service_healthy
+      tts:
+        condition: service_healthy
+      stt:
+        condition: service_healthy
+    extra_hosts: ["host.docker.internal:host-gateway"]
+    environment:
+      LLM_URL: http://llm:8080
+      LLM_MODEL: ${LLM_MODEL:-Qwen3.8-27B}
+      TTS_URL: http://tts:8001
+      STT_URL: http://stt:9000
+    volumes:
+      - ./transcripts:/transcripts
+
+volumes:
+  botroom-whisper: {}
+  # The learn-jp stack's download of the Qwen3-TTS weights, reused as is.
+  qwen-hf-cache:
+    external: true
+    name: learn-jp-qwen_qwen-hf-cache
