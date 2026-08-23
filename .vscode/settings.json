@@ -14,6 +14,35 @@
     ".tmp"
   ],
 
+  // Keep VS Code's OWN watcher out of them too - the setting above only binds
+  // rust-analyzer. Unexcluded, VS Code recursively watches all ~38k directories
+  // in this workspace (12.7k of them in .tmp/testbuild/.flatpak-builder alone),
+  // which exhausts the user's inotify budget: `fs.inotify.max_user_watches` is
+  // 65536 here and VS Code's watcher processes were holding ~64k of it. Vite
+  // then fails to start with `ENOSPC: System limit for number of file watchers
+  // reached`, which looks like a Vite bug and is not one. These excludes bring
+  // the watched set to ~1.4k directories.
+  "files.watcherExclude": {
+    "**/.git/objects/**": true,
+    "**/.git/subtree-cache/**": true,
+    "**/node_modules/**": true,
+    "**/target/**": true,
+    "**/dist/**": true,
+    "**/.tmp/**": true,
+    "**/test-results/**": true,
+    "**/starling-data/**": true
+  },
+  // Nothing in the excluded trees is worth searching either, and leaving them
+  // in makes every workspace-wide search read a Rust build directory.
+  "search.exclude": {
+    "**/node_modules": true,
+    "**/target": true,
+    "**/dist": true,
+    "**/.tmp": true,
+    "**/test-results": true,
+    "**/starling-data": true
+  },
+
   // Prettier owns TS/JS/JSON/CSS formatting. Config lives beside the code it
   // formats (vendor/client/crates/mumble-tauri/ui/.prettierrc.json) so the CLI
   // and the extension agree; ESLint stays responsible for correctness rules.

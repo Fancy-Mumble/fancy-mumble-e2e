@@ -52,7 +52,29 @@ services:
       - "8080"
     volumes:
       - ${BOTROOM_MODELS:-./models}:/models:ro
-    ports: ["127.0.0.1:8090:8080"]
+    # Bound to the WireGuard address, not loopback: learn-jp reaches this
+    # through the wg-nginx-proxy pod in the k3s cluster, which can only see
+    # nazuna at 10.8.0.8. It is a second consumer of the model this already
+    # keeps resident, because the 3090 has no room for another 27B.
+    #
+    # Deliberately NOT 0.0.0.0, which the speech containers use: this way the
+    # only non-local reachability is over the tunnel rather than nazuna's LAN.
+    # llama-server has no authentication of its own.
+    # TWO bindings, and both are load-bearing.
+    #
+    # 127.0.0.1 is what the bot itself uses (botroom/llm.ts talks to
+    # http://127.0.0.1:8090); dropping it takes the bot's own model away.
+    # 10.8.0.8 is the WireGuard address, added so learn-jp in the k3s cluster
+    # can reach this through the wg-nginx-proxy pod, which can only see nazuna
+    # there. It is a second consumer of the model already resident here,
+    # because the 3090 has no room for another 27B.
+    #
+    # Deliberately NOT 0.0.0.0, which the speech containers use: this keeps the
+    # only non-local reachability on the tunnel rather than nazuna's LAN.
+    # llama-server has no authentication of its own.
+    ports:
+      - "127.0.0.1:8090:8080"
+      - "10.8.0.8:8090:8080"
     healthcheck:
       # The model takes a minute to fault in from disk the first time; until it
       # has, /health answers 503 rather than refusing the connection.
