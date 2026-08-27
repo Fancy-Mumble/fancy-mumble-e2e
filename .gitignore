@@ -32,3 +32,6 @@ starling-data/
 vendor/mumble-server
 
 .env
+
+# built preview bundles, produced from vendor/client
+vendor/preview-out/

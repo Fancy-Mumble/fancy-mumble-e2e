@@ -1,0 +1,713 @@
+<title>Nebula v3 Gap List</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap">
+<style>
+/* Palette transcribed from ui/src/ui/nebula/tokens.ts so this document and
+   nebula-parity-spec.html read as one set. Light is the bare :root; dark is
+   redefined twice, and only ever at token level. */
+:root{
+--bg:#fdfbf6;--card:#ffffff;--card2:rgba(40,48,80,.05);
+--line:rgba(40,48,80,.09);--line2:rgba(40,48,80,.16);
+--text:#252a3c;--muted:#666e85;--dim:#98a0b4;
+--accent:#4a6fc4;--accent-soft:rgba(74,111,196,.12);--accent-line:rgba(74,111,196,.34);
+--ok:#1ba572;--bad:#b8544f;--bad-soft:rgba(184,84,79,.11);
+--warn:#9a742f;--warn-soft:rgba(154,116,47,.13);
+--tint:radial-gradient(1100px 520px at 18% -8%,rgba(22,145,220,.10),transparent 58%),radial-gradient(900px 560px at 104% 104%,rgba(110,120,235,.07),transparent 62%);
+--sans:"Geist","Inter",system-ui,-apple-system,"Segoe UI",sans-serif;
+--mono:"Geist Mono",ui-monospace,"Cascadia Mono","Consolas",monospace;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+--bg:#141d33;--card:rgba(120,172,255,.07);--card2:rgba(130,178,255,.10);
+--line:rgba(135,180,255,.11);--line2:rgba(135,180,255,.20);
+--text:#f1f5ff;--muted:#9fb3dd;--dim:#65779f;
+--accent:#7c9fe8;--accent-soft:rgba(124,159,232,.18);--accent-line:rgba(124,159,232,.40);
+--ok:#3cd88e;--bad:#f57e7e;--bad-soft:rgba(245,126,126,.13);
+--warn:#ecba55;--warn-soft:rgba(236,186,85,.13);
+--tint:radial-gradient(1100px 520px at 18% -8%,rgba(65,180,249,.16),transparent 58%),radial-gradient(900px 560px at 104% 104%,rgba(125,130,255,.12),transparent 62%);
+}}
+:root[data-theme="dark"]{
+--bg:#141d33;--card:rgba(120,172,255,.07);--card2:rgba(130,178,255,.10);
+--line:rgba(135,180,255,.11);--line2:rgba(135,180,255,.20);
+--text:#f1f5ff;--muted:#9fb3dd;--dim:#65779f;
+--accent:#7c9fe8;--accent-soft:rgba(124,159,232,.18);--accent-line:rgba(124,159,232,.40);
+--ok:#3cd88e;--bad:#f57e7e;--bad-soft:rgba(245,126,126,.13);
+--warn:#ecba55;--warn-soft:rgba(236,186,85,.13);
+--tint:radial-gradient(1100px 520px at 18% -8%,rgba(65,180,249,.16),transparent 58%),radial-gradient(900px 560px at 104% 104%,rgba(125,130,255,.12),transparent 62%);
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--tint),var(--bg);background-attachment:fixed;color:var(--text);font-family:var(--sans);font-size:15px;line-height:1.55;-webkit-font-smoothing:antialiased}
+.wrap{max-width:1180px;margin:0 auto;padding:56px 28px 96px;display:flex;flex-direction:column;gap:44px}
+.eyebrow{font-family:var(--mono);font-size:10.5px;font-weight:500;letter-spacing:.16em;text-transform:uppercase;color:var(--dim)}
+h1{margin:12px 0 0;font-size:clamp(30px,4.6vw,46px);font-weight:600;letter-spacing:-.022em;line-height:1.1;text-wrap:balance;max-width:20ch}
+.standfirst{margin:16px 0 0;max-width:66ch;font-size:16px;color:var(--muted)}
+.tally{margin-top:28px;display:flex;flex-wrap:wrap;gap:10px}
+.count{display:flex;align-items:baseline;gap:8px;padding:10px 15px;border-radius:12px;background:var(--card);border:1px solid var(--line)}
+.count b{font-family:var(--mono);font-size:19px;font-weight:500;font-variant-numeric:tabular-nums}
+.count span{font-size:12.5px;color:var(--muted)}
+.count.m b{color:var(--bad)}.count.p b,.count.d b{color:var(--warn)}.count.q b{color:var(--accent)}
+.strip{display:grid;grid-template-columns:repeat(auto-fit,minmax(215px,1fr));gap:1px;background:var(--line);border:1px solid var(--line);border-radius:14px;overflow:hidden}
+.strip>div{background:var(--bg);padding:15px 17px}
+.strip h3{margin:0 0 5px;font-size:12.5px;font-weight:600}
+.strip p{margin:0;font-size:12.5px;color:var(--muted)}
+.index{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:8px}
+.index a{display:flex;align-items:baseline;gap:10px;padding:11px 14px;border-radius:11px;border:1px solid var(--line);background:var(--card);color:inherit;text-decoration:none;font-size:13.5px}
+.index a:hover,.index a:focus-visible{border-color:var(--accent-line);background:var(--accent-soft)}
+.index a:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.index .n{font-family:var(--mono);font-size:11px;color:var(--dim)}
+.index .c{margin-left:auto;font-family:var(--mono);font-size:11.5px;font-variant-numeric:tabular-nums;color:var(--muted)}
+h2{margin:0;font-size:22px;font-weight:600;letter-spacing:-.014em;text-wrap:balance}
+.zone,.plan{display:flex;flex-direction:column;gap:16px;scroll-margin-top:24px}
+.zone-head{display:flex;align-items:baseline;gap:13px;padding-bottom:12px;border-bottom:1px solid var(--line2)}
+.zone-head .n{font-family:var(--mono);font-size:12px;font-weight:500;color:var(--dim);letter-spacing:.06em}
+.zone-head .where{margin-left:auto;font-family:var(--mono);font-size:11.5px;color:var(--dim)}
+.lede{margin:0;max-width:72ch;font-size:14.5px;color:var(--muted)}
+.items{display:flex;flex-direction:column;gap:12px}
+.item{padding:17px 19px;border-radius:14px;background:var(--card);border:1px solid var(--line);display:flex;flex-direction:column;gap:12px}
+.item-head{display:flex;align-items:baseline;gap:11px;flex-wrap:wrap}
+.item-head h3{margin:0;font-size:15.5px;font-weight:600;letter-spacing:-.008em}
+.chip{flex:none;font-family:var(--mono);font-size:10px;font-weight:500;letter-spacing:.1em;text-transform:uppercase;padding:3px 8px;border-radius:6px;white-space:nowrap}
+.c-missing{color:var(--bad);background:var(--bad-soft)}
+.c-partial,.c-defect{color:var(--warn);background:var(--warn-soft)}
+.c-ask{color:var(--accent);background:var(--accent-soft)}
+.pair{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+@media (max-width:720px){.pair{grid-template-columns:1fr;gap:12px}}
+.lbl{display:block;font-family:var(--mono);font-size:9.5px;font-weight:500;letter-spacing:.13em;text-transform:uppercase;color:var(--dim);margin-bottom:4px}
+.pair p{margin:0;font-size:14px;color:var(--muted)}
+.pair strong{color:var(--text);font-weight:500}
+.files{margin:0;padding-top:11px;border-top:1px solid var(--line);display:flex;flex-wrap:wrap;gap:7px}
+code{font-family:var(--mono);font-size:11.5px;padding:2px 7px;border-radius:5px;background:var(--card2);color:var(--muted);white-space:nowrap}
+.phases{display:flex;flex-direction:column;gap:12px}
+.phase{display:grid;grid-template-columns:58px 1fr;gap:20px;padding:20px;border-radius:14px;background:var(--card);border:1px solid var(--line)}
+@media (max-width:620px){.phase{grid-template-columns:1fr;gap:12px}}
+.phase .step{font-family:var(--mono);font-size:26px;font-weight:500;color:var(--accent);line-height:1;font-variant-numeric:tabular-nums}
+.phase h3{margin:0 0 7px;font-size:16.5px;font-weight:600;letter-spacing:-.01em}
+.phase .why{margin:0 0 12px;font-size:14px;color:var(--muted);max-width:68ch}
+.phase ul{margin:0 0 12px;padding-left:19px;display:flex;flex-direction:column;gap:5px}
+.phase li{font-size:14px;color:var(--muted)}
+.phase li b{color:var(--text);font-weight:500}
+.gate{border-color:var(--accent-line);background:var(--accent-soft)}
+.gate .step{font-size:20px}
+.parity{padding:22px 24px;border-radius:14px;border:1px solid var(--line);background:var(--card)}
+.parity h2{font-size:18px}
+.parity p{margin:9px 0 14px;font-size:14px;color:var(--muted);max-width:72ch}
+.parity ul{margin:0;padding:0;list-style:none;display:grid;grid-template-columns:repeat(auto-fit,minmax(228px,1fr));gap:6px 20px}
+.parity li{font-size:13.5px;color:var(--muted);padding-left:17px;position:relative}
+.parity li::before{content:"";position:absolute;left:2px;top:.58em;width:6px;height:6px;border-radius:50%;background:var(--ok)}
+.method{padding-top:22px;border-top:1px solid var(--line2);font-size:13px;color:var(--dim);max-width:78ch;display:flex;flex-direction:column;gap:10px}
+.method p{margin:0}
+.method b{color:var(--muted);font-weight:500}
+</style>
+
+<div class="wrap">
+
+<header>
+  <div class="eyebrow">Fancy Mumble &middot; Nebula &middot; v3 mock</div>
+  <h1>What the v3 mock draws that the client doesn't</h1>
+  <p class="standfirst">Forty things the <em>Fancy Mumble 2026 v3</em> canvas shows and the Nebula pack does not have today, each placed in the part of the window it belongs to and checked against the pack's own source. The largest single block is the server rail, which is not a variation on anything Nebula currently draws &mdash; it is a new column in the window.</p>
+  <div class="tally">
+    <div class="count m"><b>35</b><span>missing outright</span></div>
+    <div class="count p"><b>3</b><span>partly there</span></div>
+    <div class="count d"><b>1</b><span>reachable and wrong</span></div>
+    <div class="count q"><b>1</b><span>needs your call</span></div>
+  </div>
+</header>
+
+<section class="strip" aria-label="How to read an item">
+  <div><h3>Missing</h3><p>Nothing in <code>ui/nebula</code> matches. A drawing and its wiring are both new work.</p></div>
+  <div><h3>Partly there</h3><p>The control exists but sits somewhere else, or carries fewer states than the mock gives it.</p></div>
+  <div><h3>Reachable and wrong</h3><p>Already shipped, already incorrect. Nothing to invent; something to correct.</p></div>
+  <div><h3>Needs your call</h3><p>The mock draws it and <code>ARCHITECTURE.md</code> records it as deliberately out of scope.</p></div>
+</section>
+
+<nav class="index" aria-label="Zones">
+  <a href="#z1"><span class="n">01</span> Server rail <span class="c">6</span></a>
+  <a href="#z2"><span class="n">02</span> Channel tree <span class="c">4</span></a>
+  <a href="#z3"><span class="n">03</span> Channel header <span class="c">4</span></a>
+  <a href="#z4"><span class="n">04</span> Message list <span class="c">8</span></a>
+  <a href="#z5"><span class="n">05</span> Voice dock &amp; stage <span class="c">2</span></a>
+  <a href="#z6"><span class="n">06</span> Settings &rsaquo; Personalize <span class="c">5</span></a>
+  <a href="#z7"><span class="n">07</span> Settings &rsaquo; Voice <span class="c">3</span></a>
+  <a href="#z8"><span class="n">08</span> Times and format <span class="c">2</span></a>
+  <a href="#z9"><span class="n">09</span> Across the shell <span class="c">6</span></a>
+  <a href="#plan"><span class="n">&rarr;</span> The build order <span class="c">7 + 1</span></a>
+</nav>
+
+<section class="zone" id="z1">
+  <div class="zone-head"><span class="n">01</span><h2>The server rail</h2><span class="where">left of the 290px sidebar</span></div>
+  <p class="lede">The mock puts a 56px vertical rail at the far left of the window and hangs the whole multi-server story off it. Nebula has no rail: <code>SidebarShell</code> is the leftmost column, and <code>ServerList.tsx</code> is the connect screen's list of saved logins, not a rail. This is the one zone that changes the window's column model, so everything in it lands together.</p>
+  <div class="items">
+
+    <article class="item">
+      <div class="item-head"><span class="chip c-missing">missing</span><h3>The rail itself</h3></div>
+      <div class="pair">
+        <div><span class="lbl">In the mock</span><p>A 56px column: a pin toggle at the top, one tile per connected or saved server, a <strong>+</strong> tile, and a disconnect control at the bottom. It survives every screen &mdash; chat, friends, connect, settings.</p></div>
+        <div><span class="lbl">In the client</span><p>No rail. The window is title bar, then the 290px sidebar, then the pane. Server switching lives in the title-bar pill and on the connect screen.</p></div>
+      </div>
+      <p class="files"><code>sidebar/ServerRail.tsx</code> <code>NebulaClientApp.tsx</code> <code>selectors.ts</code></p>
+    </article>
+
+    <article class="item">
+      <div class="item-head"><span class="chip c-missing">missing</span><h3>Tile states and the unread pip</h3></div>
+      <div class="pair">
+        <div><span class="lbl">In the mock</span><p>Six states on one tile: active-connected, connected-with-unread, quiet, connecting, dragging, drop target. The count reads against the tile's own icon and truncates above 99.</p></div>
+        <div><span class="lbl">In the client</span><p>Nothing to carry them. Unread counts exist in the store but no Nebula surface shows a per-server total.</p></div>
+      </div>
+      <p class="files"><code>sidebar/ServerRail.tsx</code> <code>selectors.ts</code></p>
+    </article>
+
+    <article class="item">
+      <div class="item-head"><span class="chip c-missing">missing</span><h3>Drag to reorder</h3></div>
+      <div class="pair">
+        <div><span class="lbl">In the mock</span><p>Tiles reorder by dragging, with a visible landing position while a tile is in flight.</p></div>
+        <div><span class="lbl">In the client</span><p>The <code>serverTabOrder</code> preference already exists and is already migrated from the old local-storage key. Nothing in <code>ui/nebula</code> reads or writes it.</p></div>
+      </div>
+      <p class="files"><code>sidebar/ServerRail.tsx</code> <code>core/preferencesStorage.ts</code></p>
+    </article>
+
+    <article class="item">
+      <div class="item-head"><span class="chip c-missing">missing</span><h3>The hover card</h3></div>
+      <div class="pair">
+        <div><span class="lbl">In the mock</span><p>Hovering a tile opens a card that holds while the pointer moves onto it. Banner, icon, name and a stat row (<code>3/101 online</code>, <code>18 ms</code>, <code>Mumble 1.6.0</code>), then one of three bodies: <strong>connected</strong> &mdash; who is in your channel and who is speaking; <strong>idle</strong> &mdash; unread per channel, saved identities, &ldquo;Switch to kumo.jp&rdquo;; <strong>connecting</strong> &mdash; &ldquo;Handshaking with the server&hellip;&rdquo; and Cancel.</p></div>
+        <div><span class="lbl">In the client</span><p>No equivalent anywhere. <code>ServerInfoPanel</code> is a full-window surface for the server you are already on, not a peek at one you are not.</p></div>
+      </div>
+      <p class="files"><code>sidebar/ServerRailCard.tsx</code> <code>selectors.ts</code> <code>useServerLivery.ts</code></p>
+    </article>
+
+    <article class="item">
+      <div class="item-head"><span class="chip c-missing">missing</span><h3>The pinned rail panel</h3></div>
+      <div class="pair">
+        <div><span class="lbl">In the mock</span><p>The pin toggle expands the rail into a panel: a &ldquo;Servers&rdquo; header with <strong>+ Add</strong>, rows carrying each server's banner behind its icon, stats and unread badge, an &ldquo;Add a server&rdquo; row, and a line explaining that hovering a tile gives the same card without pinning.</p></div>
+        <div><span class="lbl">In the client</span><p>Nothing. The closest shape is the connect screen's <code>ServerList</code>, which is a different column with a different job.</p></div>
+      </div>
+      <p class="files"><code>sidebar/ServerRailPanel.tsx</code> <code>NebulaClientApp.tsx</code></p>
+    </article>
+
+    <article class="item">
+      <div class="item-head"><span class="chip c-missing">missing</span><h3>Add-server fills in the name you already chose</h3></div>
+      <div class="pair">
+        <div><span class="lbl">In the mock</span><p>The display-name field arrives filled from the profile and pre-selected, labelled &ldquo;from your profile &middot; selected&rdquo;, so it can be typed over in one go.</p></div>
+        <div><span class="lbl">In the client</span><p><code>AddServerDialog.tsx</code> starts the field at <code>useState("")</code>. <code>preferences.defaultUsername</code> is written by the Profile page and read by nothing else in the pack.</p></div>
+      </div>
+      <p class="files"><code>connect/AddServerDialog.tsx</code></p>
+    </article>
+
+  </div>
+</section>
+
+<section class="zone" id="z2">
+  <div class="zone-head"><span class="n">02</span><h2>The channel tree</h2><span class="where">sidebar, chat screen</span></div>
+  <p class="lede">Two dialogs the tree needs before an action can finish, and two marks a row cannot currently carry.</p>
+  <div class="items">
+
+    <article class="item">
+      <div class="item-head"><span class="chip c-missing">missing</span><h3>Password prompt for a protected channel</h3></div>
+      <div class="pair">
+        <div><span class="lbl">In the mock</span><p>The channel's name set apart from the sentence, one password field, Join and Cancel, and a refused state that keeps what was typed &mdash; &ldquo;That password was refused. Your entry is kept.&rdquo;</p></div>
+        <div><span class="lbl">In the client</span><p>Nothing matches <code>joinChannelWithPassword</code> in the pack, so joining a protected channel fails silently. Nebula already prompts for a <em>server</em> password and a TOTP code &mdash; this is the same moment one level down.</p></div>
+      </div>
+      <p class="files"><code>sidebar/ChannelPasswordDialog.tsx</code> <code>runtime/ConnectionOverlays.tsx</code></p>
+    </article>
+
+    <article class="item">
+      <div class="item-head"><span class="chip c-missing">missing</span><h3>Move everyone out of a channel</h3></div>
+      <div class="pair">
+        <div><span class="lbl">In the mock</span><p>&ldquo;Move everyone out of #Gaming &middot; 4 people will be moved. They keep their voice state.&rdquo; A searchable destination list showing each channel's occupancy and lock state, then a confirm that names both ends.</p></div>
+        <div><span class="lbl">In the client</span><p>Absent. A moderator moves one person at a time from the user menu &mdash; which already has a channel picker worth reusing rather than designing twice.</p></div>
+      </div>
+      <p class="files"><code>sidebar/MoveUsersDialog.tsx</code> <code>user/UserMenu.tsx</code> <code>sidebar/ChannelMenu.tsx</code></p>
+    </article>
+
+    <article class="item">
+      <div class="item-head"><span class="chip c-missing">missing</span><h3>&ldquo;2 empty channels hidden&rdquo;</h3></div>
+      <div class="pair">
+        <div><span class="lbl">In the mock</span><p>When empty channels are hidden the tree ends with a quiet row saying how many are hidden, which un-hides them when clicked.</p></div>
+        <div><span class="lbl">In the client</span><p><code>ChannelMenu</code> has the toggle, but once it is on the tree simply gets shorter with nothing to say so.</p></div>
+      </div>
+      <p class="files"><code>sidebar/ChannelList.tsx</code></p>
+    </article>
+
+    <article class="item">
+      <div class="item-head"><span class="chip c-missing">missing</span><h3>A muted channel is recognisable in the tree</h3></div>
+      <div class="pair">
+        <div><span class="lbl">In the mock</span><p>The AFK row carries a muted glyph, so a silenced channel reads as silenced without opening it.</p></div>
+        <div><span class="lbl">In the client</span><p><code>ChannelList</code> draws no mute state on a row. The mute action itself exists on the channel menu.</p></div>
+      </div>
+      <p class="files"><code>sidebar/ChannelList.tsx</code></p>
+    </article>
+
+  </div>
+</section>
+
+<section class="zone" id="z3">
+  <div class="zone-head"><span class="n">03</span><h2>The channel header</h2><span class="where">66px, above the conversation</span></div>
+  <p class="lede">The header stays two glyphs wide in the mock &mdash; search, then a kebab. What changes is what it can say without growing, and the panel that opens behind it.</p>
+  <div class="items">
+
+    <article class="item">
+      <div class="item-head"><span class="chip c-missing">missing</span><h3>Encryption and key trust</h3></div>
+      <div class="pair">
+        <div><span class="lbl">In the mock</span><p>Two facts beside the channel name, not one badge: whether the channel persists its history, and whether it is end-to-end encrypted. Trust cycles through four levels, distinguishable without colour alone, and the badge itself is the way into verification.</p></div>
+        <div><span class="lbl">In the client</span><p>No <code>trustLevel</code> or key-trust reference anywhere in the pack. The persistent-chat machinery runs and a revoked key disables the composer, but the trust level it computes is thrown away.</p></div>
+      </div>
+      <p class="files"><code>chat/ChatHeader.tsx</code> <code>chat/KeyTrustBadge.tsx</code></p>
+    </article>
+
+    <article class="item">
+      <div class="item-head"><span class="chip c-missing">missing</span><h3>New pins, new downloads</h3></div>
+      <div class="pair">
+        <div><span class="lbl">In the mock</span><p>The kebab carries a news mark distinct from its pressed state, and each menu item carries its own mark, so the reader knows which of the two to pick. Both clear on open.</p></div>
+        <div><span class="lbl">In the client</span><p><code>NebulaClientApp.tsx</code> says it plainly in a comment: &ldquo;Pinned messages have no <em>unseen</em> concept in Nebula's chrome.&rdquo; The store's flags and clearing actions already exist.</p></div>
+      </div>
+      <p class="files"><code>chat/ChatHeader.tsx</code> <code>NebulaClientApp.tsx</code></p>
+    </article>
+
+    <article class="item">
+      <div class="item-head"><span class="chip c-missing">missing</span><h3>Channel info panel</h3></div>
+      <div class="pair">
+        <div><span class="lbl">In the mock</span><p>The largest new surface. Description with an edit affordance and an &ldquo;Edited by Sebi &middot; 3 days ago&rdquo; line; members split online from offline with last-seen; an <strong>encryption keys</strong> block naming who holds them, with two resets &mdash; keys only, or keys and a full history wipe, each with its consequence written out; channel id, whether you can delete messages here, and raw permissions behind developer mode.</p></div>
+        <div><span class="lbl">In the client</span><p>The header's Info item opens <em>server</em> info. There is no way to read a channel's own description, see who is in it including people currently offline, or touch its keys.</p></div>
+      </div>
+      <p class="files"><code>channel/ChannelInfoPanel.tsx</code> <code>server/ServerInfoPanel.tsx</code> <code>NebulaClientApp.tsx</code></p>
+    </article>
+
+    <article class="item">
+      <div class="item-head"><span class="chip c-partial">partly there</span><h3>Mute, and move everyone, from the header</h3></div>
+      <div class="pair">
+        <div><span class="lbl">In the mock</span><p>The header kebab carries Members, Share screen, Watch together, Pinned messages, Downloads, Channel info, &ldquo;Move everyone out&hellip;&rdquo; and Mute channel &mdash; the full set for the channel you are reading.</p></div>
+        <div><span class="lbl">In the client</span><p>Mute lives on the sidebar's <code>ChannelMenu</code> only. The header kebab has Members, Share screen, Pinned messages, Info and Downloads &mdash; no mute, no move, no channel info, no watch together.</p></div>
+      </div>
+      <p class="files"><code>chat/ChatHeader.tsx</code></p>
+    </article>
+
+  </div>
+</section>
+
+<section class="zone" id="z4">
+  <div class="zone-head"><span class="n">04</span><h2>The message list</h2><span class="where">the densest zone</span></div>
+  <p class="lede">Six additions, one control that exists in a thinner form than the mock gives it, and one feature the architecture notes currently rule out.</p>
+  <div class="items">
+
+    <article class="item">
+      <div class="item-head"><span class="chip c-missing">missing</span><h3>A message that is still sending, and one that failed</h3></div>
+      <div class="pair">
+        <div><span class="lbl">In the mock</span><p>The message sits where it will land, at reduced weight, with indeterminate progress and &ldquo;Sending&hellip;&rdquo;. On failure the same row turns to an error &mdash; &ldquo;Didn't send&rdquo;, Retry, Dismiss &mdash; keeping the body intact.</p></div>
+        <div><span class="lbl">In the client</span><p>Nebula hands the message to the store and forgets it. On a slow link nothing appears until the server echoes it back, and a failed send leaves no row to retry &mdash; the text is gone.</p></div>
+      </div>
+      <p class="files"><code>chat/PendingMessageRow.tsx</code> <code>chat/MessageList.tsx</code></p>
+    </article>
+
+    <article class="item">
+      <div class="item-head"><span class="chip c-missing">missing</span><h3>Clicking a mention</h3></div>
+      <div class="pair">
+        <div><span class="lbl">In the mock</span><p>A person opens the profile card anchored to the mention. A role, <code>@everyone</code> or <code>@here</code> opens who it resolves to right now &mdash; faces and names, capped, with &ldquo;Showing 30 &middot; 4 more&rdquo;.</p></div>
+        <div><span class="lbl">In the client</span><p>Typing <code>@</code> autocompletes; clicking the resulting mention does nothing. The profile card and a point-anchoring helper already exist, so the person case is mostly wiring &mdash; the group list is the new drawing.</p></div>
+      </div>
+      <p class="files"><code>chat/MentionPopover.tsx</code> <code>chat/MessageRow.tsx</code> <code>user/ProfileCard.tsx</code></p>
+    </article>
+
+    <article class="item">
+      <div class="item-head"><span class="chip c-missing">missing</span><h3>Who has read this</h3></div>
+      <div class="pair">
+        <div><span class="lbl">In the mock</span><p>An item on the message menu that expands in place into readers with faces, names and the time each of them got there, with the count on the item itself.</p></div>
+        <div><span class="lbl">In the client</span><p>Nebula draws a read indicator but cannot say who is behind it.</p></div>
+      </div>
+      <p class="files"><code>chat/MessageMenu.tsx</code></p>
+    </article>
+
+    <article class="item">
+      <div class="item-head"><span class="chip c-missing">missing</span><h3>Open an image in its own window</h3></div>
+      <div class="pair">
+        <div><span class="lbl">In the mock</span><p>A message-menu item for images, so a reference stays visible while you carry on typing.</p></div>
+        <div><span class="lbl">In the client</span><p>Images open in a lightbox that covers the conversation. The detached-window path exists for <em>streams</em> only (<code>open_stream_popout</code>); nothing detaches an image.</p></div>
+      </div>
+      <p class="files"><code>chat/MessageMenu.tsx</code> <code>chat/share/ScreenShareStage.tsx</code></p>
+    </article>
+
+    <article class="item">
+      <div class="item-head"><span class="chip c-missing">missing</span><h3>Typing indicator</h3></div>
+      <div class="pair">
+        <div><span class="lbl">In the mock</span><p>&ldquo;Sebi is typing&hellip;&rdquo; under the last message, with the three-dot animation.</p></div>
+        <div><span class="lbl">In the client</span><p>Nebula <em>sends</em> typing state &mdash; <code>Composer</code> imports <code>useTypingIndicator</code> &mdash; and never renders anyone else's. <code>typingUsers</code> is in the store; Standard and Aurora both draw it and Nebula is the only pack that doesn't.</p></div>
+      </div>
+      <p class="files"><code>chat/MessageList.tsx</code> <code>@standard/&hellip;/TypingIndicator.tsx</code></p>
+    </article>
+
+    <article class="item">
+      <div class="item-head"><span class="chip c-missing">missing</span><h3>Link preview card</h3></div>
+      <div class="pair">
+        <div><span class="lbl">In the mock</span><p>A shared video renders as a card &mdash; thumbnail, title, &ldquo;youtube.com &middot; 5:51&rdquo; &mdash; with a <strong>Watch together</strong> button on it.</p></div>
+        <div><span class="lbl">In the client</span><p>Links render as links. There is no preview card, and no entry point to a shared session.</p></div>
+      </div>
+      <p class="files"><code>chat/MessageRow.tsx</code> <code>primitives/LinkGuard.tsx</code></p>
+    </article>
+
+    <article class="item">
+      <div class="item-head"><span class="chip c-partial">partly there</span><h3>Quick reactions on the message menu</h3></div>
+      <div class="pair">
+        <div><span class="lbl">In the mock</span><p>The menu opens with a row of three recent emoji and a &ldquo;+&rdquo; leading to the full picker, above the divider.</p></div>
+        <div><span class="lbl">In the client</span><p><code>MessageMenu</code> has one React item that opens the picker. Reactions themselves work and render on the row.</p></div>
+      </div>
+      <p class="files"><code>chat/MessageMenu.tsx</code> <code>chat/popover/EmojiPopover.tsx</code></p>
+    </article>
+
+    <article class="item">
+      <div class="item-head"><span class="chip c-ask">needs your call</span><h3>Watch together, host side</h3></div>
+      <div class="pair">
+        <div><span class="lbl">In the mock</span><p>A full host bar: HOST, &ldquo;2 watching&rdquo;, transport and progress, and three exits &mdash; Request state, Leave, End for everyone. Reached from the link card, the header kebab and the voice dock.</p></div>
+        <div><span class="lbl">In the client</span><p>Not present, and <code>nebula/ARCHITECTURE.md</code> records &ldquo;Watch together, host side&rdquo; as deliberately out of scope. The mock now draws it in three places, so the note and the mock disagree &mdash; worth settling before anyone starts.</p></div>
+      </div>
+      <p class="files"><code>nebula/ARCHITECTURE.md</code></p>
+    </article>
+
+  </div>
+</section>
+
+<section class="zone" id="z5">
+  <div class="zone-head"><span class="n">05</span><h2>Voice dock and the share stage</h2><span class="where">sidebar footer, chat pane</span></div>
+  <p class="lede">The stage is close to done &mdash; fit modes, the filmstrip, screenshots, camera, fullscreen, pop-out, quality, source and the screenshot permission are all already there. Two gaps remain.</p>
+  <div class="items">
+
+    <article class="item">
+      <div class="item-head"><span class="chip c-missing">missing</span><h3>Stage size</h3></div>
+      <div class="pair">
+        <div><span class="lbl">In the mock</span><p>The stream menu opens with a <strong>Stage size</strong> group &mdash; Compact, Standard, Tall &mdash; above the quality and source rows.</p></div>
+        <div><span class="lbl">In the client</span><p>The stage has one height plus a drag handle. The menu goes straight to Stream quality.</p></div>
+      </div>
+      <p class="files"><code>chat/share/ScreenShareStage.tsx</code></p>
+    </article>
+
+    <article class="item">
+      <div class="item-head"><span class="chip c-partial">partly there</span><h3>The dock menu</h3></div>
+      <div class="pair">
+        <div><span class="lbl">In the mock</span><p>Two labelled groups: SHARE (Share your camera, Watch together) and AUDIO (Sound &amp; devices, Stats for nerds with its <code>&#8984;&#8679;I</code> hint).</p></div>
+        <div><span class="lbl">In the client</span><p><code>VoiceDock</code>'s menu has Share your camera, Sound &amp; devices and Server admin &mdash; no group labels, no watch together, no stats entry.</p></div>
+      </div>
+      <p class="files"><code>sidebar/VoiceDock.tsx</code></p>
+    </article>
+
+  </div>
+</section>
+
+<section class="zone" id="z6">
+  <div class="zone-head"><span class="n">06</span><h2>Settings &rsaquo; Personalize</h2><span class="where">one page, five controls</span></div>
+  <p class="lede">The page has Theme, Message style, Chat background, Channel viewer and Interface design. Five of the mock's controls have nowhere to live yet, and one of them is already being honoured with no way to set it.</p>
+  <div class="items">
+
+    <article class="item">
+      <div class="item-head"><span class="chip c-missing">missing</span><h3>Typeface</h3></div>
+      <div class="pair">
+        <div><span class="lbl">In the mock</span><p>Eight tiles &mdash; System Default, Inter, Roboto, Space Mono, Monospace, Serif, Humanist, Rounded &mdash; each set in the face it selects, so the choice is made by looking.</p></div>
+        <div><span class="lbl">In the client</span><p>No typeface control in the pack. This is the setting people reach for first when the default is hard for them to read.</p></div>
+      </div>
+      <p class="files"><code>settings/PersonalizeSettings.tsx</code></p>
+    </article>
+
+    <article class="item">
+      <div class="item-head"><span class="chip c-missing">missing</span><h3>Text size</h3></div>
+      <div class="pair">
+        <div><span class="lbl">In the mock</span><p>Small / Medium / Large, an exact pixel field beside them, and a specimen line rendered at the size being chosen.</p></div>
+        <div><span class="lbl">In the client</span><p>Absent. Worth settling what the setting actually scales first &mdash; Nebula's own type scale is fixed.</p></div>
+      </div>
+      <p class="files"><code>settings/PersonalizeSettings.tsx</code> <code>tokens.ts</code></p>
+    </article>
+
+    <article class="item">
+      <div class="item-head"><span class="chip c-missing">missing</span><h3>Compact mode</h3></div>
+      <div class="pair">
+        <div><span class="lbl">In the mock</span><p>One switch, with a hint that draws the line explicitly: it tightens sidebar rows, headers and settings, while message spacing stays with <strong>Message style</strong> above.</p></div>
+        <div><span class="lbl">In the client</span><p>Absent. Note the trap the mock's hint is written to avoid &mdash; Message style already has a &ldquo;Compact&rdquo; option, so two controls would otherwise share a word.</p></div>
+      </div>
+      <p class="files"><code>settings/PersonalizeSettings.tsx</code></p>
+    </article>
+
+    <article class="item">
+      <div class="item-head"><span class="chip c-missing">missing</span><h3>Always show message actions</h3></div>
+      <div class="pair">
+        <div><span class="lbl">In the mock</span><p>One switch that pins the hover strip open, and says where it then sits: in the gutter beside the message rather than over it.</p></div>
+        <div><span class="lbl">In the client</span><p>Absent. An accessibility setting for anyone who doesn't hover reliably, touch included.</p></div>
+      </div>
+      <p class="files"><code>settings/PersonalizeSettings.tsx</code> <code>chat/MessageRow.tsx</code></p>
+    </article>
+
+    <article class="item">
+      <div class="item-head"><span class="chip c-missing">missing</span><h3>Chat background fit &mdash; Cover or Tile</h3></div>
+      <div class="pair">
+        <div><span class="lbl">In the mock</span><p>Two options inside the existing Chat background group, previewed on the actual image, beside blur, opacity and dim.</p></div>
+        <div><span class="lbl">In the client</span><p><code>ChatBackdrop</code> already honours the setting; nothing in Nebula can set it, so it is permanently whatever it was last left at.</p></div>
+      </div>
+      <p class="files"><code>settings/PersonalizeSettings.tsx</code> <code>chat/ChatBackdrop.tsx</code></p>
+    </article>
+
+  </div>
+</section>
+
+<section class="zone" id="z7">
+  <div class="zone-head"><span class="n">07</span><h2>Settings &rsaquo; Voice</h2><span class="where">devices, gate, processing</span></div>
+  <p class="lede">Devices, activation, the gate, auto gain, the algorithm picker, transmission, TCP fallback, the legacy backend and statistics are all in place. Three things are not &mdash; and one of them is the reason people give up on a microphone entirely.</p>
+  <div class="items">
+
+    <article class="item">
+      <div class="item-head"><span class="chip c-missing">missing</span><h3>The microphone is busy</h3></div>
+      <div class="pair">
+        <div><span class="lbl">In the mock</span><p>A banner above the input device: what failed, and who is holding the device when the names are known. A plainer message for a failure that is not a busy device. It clears itself when the microphone frees up &mdash; no dismiss button, no stale warning.</p></div>
+        <div><span class="lbl">In the client</span><p>Nothing. The meter simply stays flat. The backend already reports this, names the apps when it can, and pushes an update the moment it changes.</p></div>
+      </div>
+      <p class="files"><code>settings/VoiceSettings.tsx</code> <code>core/&hellip;/useCaptureError.ts</code></p>
+    </article>
+
+    <article class="item">
+      <div class="item-head"><span class="chip c-missing">missing</span><h3>Noise suppression, in detail</h3></div>
+      <div class="pair">
+        <div><span class="lbl">In the mock</span><p>One slider per knob the chosen algorithm reports &mdash; VAD threshold, attenuation, attack, release &mdash; each with its own range and default, a &ldquo;changed&rdquo; mark against any that has moved, and a reset. Algorithms with no knobs say so instead of showing an empty box.</p></div>
+        <div><span class="lbl">In the client</span><p>Nebula picks the algorithm and exposes none of its parameters. The knob set differs per algorithm and comes from the backend, so it cannot be a fixed list of sliders.</p></div>
+      </div>
+      <p class="files"><code>settings/VoiceSettings.tsx</code></p>
+    </article>
+
+    <article class="item">
+      <div class="item-head"><span class="chip c-missing">missing</span><h3>Exclusive microphone access (Windows)</h3></div>
+      <div class="pair">
+        <div><span class="lbl">In the mock</span><p>One switch carrying a WINDOWS tag, with a hint that states the trade honestly: lower latency, and no other application can use the microphone while Fancy Mumble is running.</p></div>
+        <div><span class="lbl">In the client</span><p>Absent. Related to the banner above &mdash; turning this on is one way to cause it.</p></div>
+      </div>
+      <p class="files"><code>settings/VoiceSettings.tsx</code></p>
+    </article>
+
+  </div>
+</section>
+
+<section class="zone" id="z8">
+  <div class="zone-head"><span class="n">08</span><h2>Times and format</h2><span class="where">everywhere a time is printed</span></div>
+  <p class="lede">The Language &amp; format page offers 12-hour or 24-hour, a date format and a number format &mdash; and nothing in Nebula reads any of them, so the page appears to work and changes nothing.</p>
+  <div class="items">
+
+    <article class="item">
+      <div class="item-head"><span class="chip c-defect">reachable and wrong</span><h3>Timestamps ignore the user's settings</h3></div>
+      <div class="pair">
+        <div><span class="lbl">In the mock</span><p>Message times, day dividers, the activity log and the lightbox all follow the three settings, and the preview block on the page is explicitly sized for the wider 12-hour form.</p></div>
+        <div><span class="lbl">In the client</span><p><code>selectors.ts</code> formats with the browser's own defaults &mdash; <code>toLocaleTimeString(undefined, &hellip;)</code> in <code>formatTime</code>, and the same for day dividers and relative dates. A shared formatter already handles all of this, including asking Windows for its clock format where the webview's answer is unreliable.</p></div>
+      </div>
+      <p class="files"><code>selectors.ts</code> <code>chat/MessageRow.tsx</code> <code>sidebar/DirectMessageList.tsx</code></p>
+    </article>
+
+    <article class="item">
+      <div class="item-head"><span class="chip c-missing">missing</span><h3>Show times in server time</h3></div>
+      <div class="pair">
+        <div><span class="lbl">In the mock</span><p>A switch with the consequence spelt out &mdash; off, times use your machine's zone; on, they use the server's &mdash; and a live &ldquo;Now showing:&rdquo; line under it.</p></div>
+        <div><span class="lbl">In the client</span><p>The Language &amp; format page has language, time, date and number formats. No time-zone control.</p></div>
+      </div>
+      <p class="files"><code>settings/LocalizationSettings.tsx</code></p>
+    </article>
+
+  </div>
+</section>
+
+<section class="zone" id="z9">
+  <div class="zone-head"><span class="n">09</span><h2>Across the shell</h2><span class="where">search, toasts, connect, profile, friends</span></div>
+  <p class="lede">Six smaller items that each sit on a surface which otherwise already exists.</p>
+  <div class="items">
+
+    <article class="item">
+      <div class="item-head"><span class="chip c-missing">missing</span><h3>Pictures in search</h3></div>
+      <div class="pair">
+        <div><span class="lbl">In the mock</span><p>A Pictures filter, and with an empty query it becomes a browsable grid of everything shared in the channel &mdash; &ldquo;20 of 63&rdquo; &mdash; paging as the reader reaches the bottom, with a placeholder tile per image until it decodes.</p></div>
+        <div><span class="lbl">In the client</span><p><code>GlobalSearch</code> has Channels, People, Messages and Servers, and assumes a single list of rows. The grid is a second shape that list has to be able to become.</p></div>
+      </div>
+      <p class="files"><code>chrome/GlobalSearch.tsx</code></p>
+    </article>
+
+    <article class="item">
+      <div class="item-head"><span class="chip c-missing">missing</span><h3>Links in search</h3></div>
+      <div class="pair">
+        <div><span class="lbl">In the mock</span><p>A Links filter whose rows lead with the host &mdash; the part worth reading &mdash; then the path and who shared it where.</p></div>
+        <div><span class="lbl">In the client</span><p>Not a result type. The same host-first reasoning already governs <code>LinkWarningDialog</code>.</p></div>
+      </div>
+      <p class="files"><code>chrome/GlobalSearch.tsx</code> <code>primitives/LinkWarningDialog.tsx</code></p>
+    </article>
+
+    <article class="item">
+      <div class="item-head"><span class="chip c-missing">missing</span><h3>The toast stack</h3></div>
+      <div class="pair">
+        <div><span class="lbl">In the mock</span><p>Three stacked notices with their own actions: connection lost with a countdown and Reconnect; &ldquo;Microphone unavailable &mdash; switched to system default&rdquo; with a way into Voice settings; and &ldquo;Message didn't send.&rdquo; with Retry. Each dismissible.</p></div>
+        <div><span class="lbl">In the client</span><p><code>ConnectionOverlays</code> covers the server password prompt, TOTP and the reconnect banner. There is no stack, and neither of the other two notices exists.</p></div>
+      </div>
+      <p class="files"><code>runtime/ConnectionOverlays.tsx</code></p>
+    </article>
+
+    <article class="item">
+      <div class="item-head"><span class="chip c-missing">missing</span><h3>A server you can't reach</h3></div>
+      <div class="pair">
+        <div><span class="lbl">In the mock</span><p>The connect screen states it &mdash; &ldquo;Server unreachable&rdquo; &mdash; and offers the two things worth doing: Retry, or Edit connection.</p></div>
+        <div><span class="lbl">In the client</span><p><code>ConnectScreen</code> shows an &ldquo;offline&rdquo; chip and a last-seen note, then leaves you there.</p></div>
+      </div>
+      <p class="files"><code>connect/ConnectScreen.tsx</code></p>
+    </article>
+
+    <article class="item">
+      <div class="item-head"><span class="chip c-missing">missing</span><h3>Where someone is</h3></div>
+      <div class="pair">
+        <div><span class="lbl">In the mock</span><p>A small map under the written detail on the profile card, with three other states drawn beside it: loading tiles, no location on the profile, and maps switched off entirely.</p></div>
+        <div><span class="lbl">In the client</span><p>The card drops the location. The Privacy page even offers a switch to turn those maps off &mdash; a switch that currently does nothing, because there is no map to suppress. The card has both a plain and a styled form and the map has to sit in both.</p></div>
+      </div>
+      <p class="files"><code>user/ProfileCard.tsx</code> <code>settings/PrivacySettings.tsx</code></p>
+    </article>
+
+    <article class="item">
+      <div class="item-head"><span class="chip c-missing">missing</span><h3>Pending friend requests</h3></div>
+      <div class="pair">
+        <div><span class="lbl">In the mock</span><p>The messages sidebar ends with a footer &mdash; &ldquo;11 pending friend requests &middot; View&rdquo; &mdash; so the count is visible without leaving the list.</p></div>
+        <div><span class="lbl">In the client</span><p>The sidebar ends with the conversation list. <code>SidebarShell</code> already takes a <code>footer</code> slot, which is where this goes.</p></div>
+      </div>
+      <p class="files"><code>sidebar/DirectMessageList.tsx</code> <code>sidebar/SidebarShell.tsx</code></p>
+    </article>
+
+  </div>
+</section>
+
+<section class="plan" id="plan">
+  <div class="zone-head"><span class="n">&rarr;</span><h2>The build order</h2><span class="where">seven passes and a decision</span></div>
+  <p class="lede">Ordered by what unblocks what, not by size. Two constraints set the sequence: the rail changes the window's column model, so it goes first and alone; and the timestamp correction moves the width of every time column, so it lands before anything new is drawn against those columns.</p>
+
+  <div class="phases">
+
+    <div class="phase">
+      <div class="step">01</div>
+      <div>
+        <h3>The server rail</h3>
+        <p class="why">Its own pass, because it adds a column every other screen has to live beside. Build the shell and tile states first &mdash; the rest hangs off a model that has to exist anyway.</p>
+        <ul>
+          <li><b>Rail shell and tile states</b>, then the unread pip; a rail model in <code>selectors.ts</code> joining saved groups, live sessions and per-server unread.</li>
+          <li><b>Hover card</b> with its three bodies, reusing the livery data <code>ConnectScreen</code> already loads.</li>
+          <li><b>Pinned panel</b> &mdash; the same model at a second width.</li>
+          <li><b>Drag to reorder</b>, persisting to the <code>serverTabOrder</code> preference that already exists.</li>
+          <li><b>Add-server prefill</b> &mdash; a two-line change, but it belongs with the rail's &ldquo;+&rdquo;.</li>
+        </ul>
+        <p class="files"><code>sidebar/ServerRail*.tsx</code> <code>NebulaClientApp.tsx</code> <code>selectors.ts</code> <code>connect/AddServerDialog.tsx</code></p>
+      </div>
+    </div>
+
+    <div class="phase">
+      <div class="step">02</div>
+      <div>
+        <h3>Times and format</h3>
+        <p class="why">Small, and it has to precede the message-list work: 12-hour time is wider than 24-hour, so every new row drawn against a timestamp column would otherwise need re-measuring afterwards.</p>
+        <ul>
+          <li>Point <code>formatTime</code>, the day divider and the relative date at the shared formatter instead of the browser's defaults.</li>
+          <li>Add the <b>server time</b> switch and its &ldquo;Now showing:&rdquo; line to Language &amp; format.</li>
+          <li>Check the lightbox and the activity log follow too, not just the message rows.</li>
+        </ul>
+        <p class="files"><code>selectors.ts</code> <code>settings/LocalizationSettings.tsx</code></p>
+      </div>
+    </div>
+
+    <div class="phase">
+      <div class="step">03</div>
+      <div>
+        <h3>The message list</h3>
+        <p class="why">Pending and failed rows come first &mdash; today a failed send loses the text, which is the only item on this list that costs a person something.</p>
+        <ul>
+          <li><b>Pending and failed rows</b>, in whichever message style is set, without shifting the conversation when they resolve.</li>
+          <li><b>Mention popovers</b> &mdash; wire the person case to the existing card, then draw the group list.</li>
+          <li><b>Who has read this</b> and <b>open image in its own window</b> on the message menu, plus the quick-reaction row above the divider.</li>
+          <li><b>Typing indicator</b> &mdash; Nebula already sends it; render what the store holds.</li>
+          <li><b>Link preview card</b>, leaving its Watch-together button behind whatever the decision below settles.</li>
+        </ul>
+        <p class="files"><code>chat/MessageList.tsx</code> <code>chat/MessageRow.tsx</code> <code>chat/MessageMenu.tsx</code> <code>chat/PendingMessageRow.tsx</code> <code>chat/MentionPopover.tsx</code></p>
+      </div>
+    </div>
+
+    <div class="phase">
+      <div class="step">04</div>
+      <div>
+        <h3>The channel header and its panel</h3>
+        <p class="why">The info panel is the largest new surface after the rail, and the trust badge wants somewhere to lead &mdash; so the panel lands first and the header items follow into it.</p>
+        <ul>
+          <li><b>Channel info panel</b> as a full-window surface alongside pinned, downloads and server info; the key-ownership block needs the most room and the most caution.</li>
+          <li><b>Encryption and trust badges</b> beside the channel name, four levels, leading into verification.</li>
+          <li><b>News marks</b> on the kebab and inside it, clearing on open.</li>
+          <li>Fill out the kebab: mute channel, move everyone out, channel info.</li>
+        </ul>
+        <p class="files"><code>channel/ChannelInfoPanel.tsx</code> <code>chat/ChatHeader.tsx</code> <code>NebulaClientApp.tsx</code></p>
+      </div>
+    </div>
+
+    <div class="phase">
+      <div class="step">05</div>
+      <div>
+        <h3>The channel tree</h3>
+        <p class="why">The password prompt closes a flow that currently fails silently. The move dialog is entered from the menu built in pass 04, so it follows it.</p>
+        <ul>
+          <li><b>Password prompt</b>, matching <code>LeaveServerDialog</code> and <code>LinkWarningDialog</code> &mdash; both set the thing being acted on apart from the prose.</li>
+          <li><b>Move everyone out</b>, reusing the user menu's channel picker rather than a second design.</li>
+          <li><b>Hidden-channel row</b> and the <b>muted mark</b> on a channel row.</li>
+        </ul>
+        <p class="files"><code>sidebar/ChannelPasswordDialog.tsx</code> <code>sidebar/MoveUsersDialog.tsx</code> <code>sidebar/ChannelList.tsx</code></p>
+      </div>
+    </div>
+
+    <div class="phase">
+      <div class="step">06</div>
+      <div>
+        <h3>Settings</h3>
+        <p class="why">Eight controls on two pages that nothing else depends on &mdash; the pass to run in parallel with any of the above. Decide what text size actually scales before drawing it; Nebula's type scale is fixed today.</p>
+        <ul>
+          <li><b>Personalize:</b> typeface tiles, text size, compact mode, always-show-actions, background fit.</li>
+          <li><b>Voice:</b> the busy-microphone banner, the per-algorithm knobs, exclusive access on Windows.</li>
+          <li>The busy-microphone state is worth surfacing outside settings too &mdash; the microphone is usually busy while someone is trying to talk.</li>
+        </ul>
+        <p class="files"><code>settings/PersonalizeSettings.tsx</code> <code>settings/VoiceSettings.tsx</code> <code>settings/controls.tsx</code></p>
+      </div>
+    </div>
+
+    <div class="phase">
+      <div class="step">07</div>
+      <div>
+        <h3>The tail</h3>
+        <p class="why">Each of these sits on a surface that already exists, so they can be picked up in any order by whoever is free.</p>
+        <ul>
+          <li><b>Search:</b> the Pictures grid and the Links rows &mdash; the grid is the real work, since the results list has to become a second shape.</li>
+          <li><b>Toasts:</b> a stack, plus the microphone and send-failure notices.</li>
+          <li><b>Profile card:</b> the location map, in both the plain and the styled form.</li>
+          <li><b>Small:</b> stage size, the dock menu's two entries, the unreachable-server actions, the friend-requests footer.</li>
+        </ul>
+        <p class="files"><code>chrome/GlobalSearch.tsx</code> <code>runtime/ConnectionOverlays.tsx</code> <code>user/ProfileCard.tsx</code> <code>chat/share/ScreenShareStage.tsx</code> <code>sidebar/VoiceDock.tsx</code></p>
+      </div>
+    </div>
+
+    <div class="phase gate">
+      <div class="step">?</div>
+      <div>
+        <h3>Decide before any of it: watch together</h3>
+        <p class="why">The mock draws the host side in three places &mdash; the link card, the header kebab and the dock menu &mdash; and <code>nebula/ARCHITECTURE.md</code> lists &ldquo;Watch together, host side&rdquo; as deliberately out of scope. Passes 03, 04 and 05 all touch a menu that would carry its entry point, so settling this first avoids building those menus twice. If it stays out of scope, the link preview card in pass 03 ships without its button.</p>
+      </div>
+    </div>
+
+  </div>
+</section>
+
+<section class="parity">
+  <h2>Already at parity &mdash; don't rebuild these</h2>
+  <p>Checked against the mock and found equivalent or better in the pack. Listed so nobody spends a day re-drawing something that is already done.</p>
+  <ul>
+    <li>Title bar, including the &ldquo;+&rdquo; menu with recents and their occupancy</li>
+    <li>Mini mode</li>
+    <li>Connect screen livery &mdash; banner, icon, tagline, MOTD, tags, rules link</li>
+    <li>Identity picker and auto-connect</li>
+    <li>Composer: reply stack, staged files, upload tray, polls, GIF, emoji, format bar</li>
+    <li>Screen-share stage: fit modes, filmstrip, screenshot, camera, fullscreen, pop-out, quality, source</li>
+    <li>Profile card styling: frame, sticker, nameplate, name style, effect, colours, section toggles, live preview</li>
+    <li>Admin &rsaquo; Livery, including the connect preview and the contrast-clamp note</li>
+    <li>The rest of the admin console</li>
+    <li>Global search shell and its keyboard footer</li>
+    <li>Settings navigation</li>
+    <li>Leave-server dialog, with &ldquo;don't ask again&rdquo;</li>
+  </ul>
+</section>
+
+<footer class="method">
+  <p><b>How this was derived.</b> Every item was read off the <code>Fancy Mumble 2026 v3.dc.html</code> canvas and then checked against <code>crates/mumble-tauri/ui/src/ui/nebula</code> on <code>develop</code> &mdash; the pack's own source, not the older <code>nebula-parity-spec.html</code>, which compares Nebula against Standard rather than against this mock. Where a feature exists in Standard but not in Nebula it is recorded as missing here, since Nebula is what the mock describes.</p>
+  <p><b>One gap in the source.</b> The canvas file is larger than the design API returns in a single read, so the last stretch &mdash; the Admin section's Users and Onboarding sub-pages, and the state script at the end &mdash; was not readable. Both admin pages already exist in the client (<code>UsersAdmin.tsx</code>, <code>OnboardingAdmin.tsx</code>), so the risk is small, but this list may be short by whatever those two pages changed.</p>
+</footer>
+
+</div>

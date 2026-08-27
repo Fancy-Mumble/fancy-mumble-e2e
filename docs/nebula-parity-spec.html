@@ -1,0 +1,1330 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Nebula Parity Spec</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap">
+
+<style>
+  /* ------------------------------------------------------------------
+     Palette transcribed from ui/src/ui/nebula/tokens.ts.
+     Light is the bare :root so the un-stamped (system) state resolves;
+     dark is redefined twice - once for the OS preference, once for an
+     explicit toggle - and only ever at token level.
+     ------------------------------------------------------------------ */
+  :root {
+    --bg0: #fdfbf6;
+    --panel: rgba(255, 253, 246, .6);
+    --card: #ffffff;
+    --card2: rgba(40, 48, 80, .06);
+    --line: rgba(40, 48, 80, .055);
+    --line2: rgba(40, 48, 80, .12);
+    --text: #252a3c;
+    --muted: #666e85;
+    --dim: #98a0b4;
+    --hover: rgba(40, 48, 80, .05);
+    --accent: #4a6fc4;
+    --on-accent: #f7fbff;
+    --accent-soft: rgba(74, 111, 196, .14);
+    --accent-line: rgba(74, 111, 196, .34);
+    --ok: #1ba572;
+    --bad: #d05e5e;
+    --warn: #aa8138;
+    --shadow: 0 30px 60px rgba(50, 55, 85, .18);
+    --tint:
+      radial-gradient(1100px 500px at 22% -6%, rgba(22, 145, 220, .11), transparent 58%),
+      radial-gradient(900px 560px at 102% 108%, rgba(110, 120, 235, .07), transparent 62%);
+
+    --r-sm: 6px;
+    --r-md: 10px;
+    --r-lg: 14px;
+    --r-xl: 20px;
+
+    --sans: "Geist", "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+    --mono: "Geist Mono", "Space Mono", ui-monospace, "Cascadia Mono", monospace;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg0: #141d33;
+      --panel: rgba(110, 165, 255, .05);
+      --card: rgba(120, 172, 255, .10);
+      --card2: rgba(130, 178, 255, .17);
+      --line: rgba(135, 180, 255, .07);
+      --line2: rgba(135, 180, 255, .17);
+      --text: #f1f5ff;
+      --muted: #9fb3dd;
+      --dim: #65779f;
+      --hover: rgba(130, 178, 255, .12);
+      --accent: #7c9fe8;
+      --on-accent: #0b1224;
+      --accent-soft: rgba(124, 159, 232, .22);
+      --accent-line: rgba(124, 159, 232, .38);
+      --ok: #3cd88e;
+      --bad: #f57e7e;
+      --warn: #ecba55;
+      --shadow: 0 30px 80px rgba(2, 6, 18, .6);
+      --tint:
+        radial-gradient(1100px 500px at 22% -6%, rgba(65, 180, 249, .22), transparent 58%),
+        radial-gradient(900px 560px at 102% 108%, rgba(125, 130, 255, .15), transparent 62%),
+        radial-gradient(700px 400px at 60% 40%, rgba(65, 180, 249, .04), transparent 65%);
+    }
+  }
+
+  :root[data-theme="dark"] {
+    --bg0: #141d33;
+    --panel: rgba(110, 165, 255, .05);
+    --card: rgba(120, 172, 255, .10);
+    --card2: rgba(130, 178, 255, .17);
+    --line: rgba(135, 180, 255, .07);
+    --line2: rgba(135, 180, 255, .17);
+    --text: #f1f5ff;
+    --muted: #9fb3dd;
+    --dim: #65779f;
+    --hover: rgba(130, 178, 255, .12);
+    --accent: #7c9fe8;
+    --on-accent: #0b1224;
+    --accent-soft: rgba(124, 159, 232, .22);
+    --accent-line: rgba(124, 159, 232, .38);
+    --ok: #3cd88e;
+    --bad: #f57e7e;
+    --warn: #ecba55;
+    --shadow: 0 30px 80px rgba(2, 6, 18, .6);
+    --tint:
+      radial-gradient(1100px 500px at 22% -6%, rgba(65, 180, 249, .22), transparent 58%),
+      radial-gradient(900px 560px at 102% 108%, rgba(125, 130, 255, .15), transparent 62%),
+      radial-gradient(700px 400px at 60% 40%, rgba(65, 180, 249, .04), transparent 65%);
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--bg0);
+    background-image: var(--tint);
+    background-attachment: fixed;
+    color: var(--text);
+    font-family: var(--sans);
+    font-size: 15px;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .wrap {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 0 28px 96px;
+  }
+
+  /* -- masthead ---------------------------------------------------- */
+
+  .masthead {
+    padding: 72px 0 40px;
+    border-bottom: 1px solid var(--line2);
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+  }
+
+  .eyebrow {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: .14em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin: 0;
+  }
+
+  h1 {
+    margin: 0;
+    font-size: clamp(34px, 5vw, 52px);
+    font-weight: 600;
+    letter-spacing: -.025em;
+    line-height: 1.05;
+    text-wrap: balance;
+  }
+
+  .standfirst {
+    margin: 0;
+    max-width: 64ch;
+    font-size: 17px;
+    color: var(--muted);
+  }
+
+  .tally {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-top: 4px;
+  }
+
+  .tally span {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 7px;
+    padding: 7px 13px;
+    border: 1px solid var(--line2);
+    border-radius: 999px;
+    background: var(--card);
+    font-size: 12.5px;
+    color: var(--muted);
+  }
+
+  .tally b {
+    font-family: var(--mono);
+    font-weight: 500;
+    font-size: 13px;
+    color: var(--text);
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* -- shell layout ------------------------------------------------ */
+
+  .shell {
+    display: grid;
+    grid-template-columns: 232px minmax(0, 1fr);
+    gap: 56px;
+    align-items: start;
+    padding-top: 44px;
+  }
+
+  .rail {
+    position: sticky;
+    top: 28px;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .rail-title {
+    font-family: var(--mono);
+    font-size: 10.5px;
+    letter-spacing: .13em;
+    text-transform: uppercase;
+    color: var(--dim);
+    padding: 0 12px 10px;
+    margin: 0;
+  }
+
+  .rail a {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 8px 12px;
+    border-radius: var(--r-md);
+    color: var(--muted);
+    text-decoration: none;
+    font-size: 13.5px;
+    transition: background .12s ease, color .12s ease;
+  }
+
+  .rail a:hover { background: var(--hover); color: var(--text); }
+  .rail a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  .rail a i {
+    font-style: normal;
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--dim);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .rail hr {
+    border: 0;
+    border-top: 1px solid var(--line);
+    margin: 10px 12px;
+  }
+
+  /* -- generic blocks ---------------------------------------------- */
+
+  .content { display: flex; flex-direction: column; gap: 56px; min-width: 0; }
+
+  section > h2 {
+    margin: 0 0 6px;
+    font-size: 25px;
+    font-weight: 600;
+    letter-spacing: -.018em;
+    scroll-margin-top: 24px;
+  }
+
+  section > .intro {
+    margin: 0 0 24px;
+    max-width: 68ch;
+    color: var(--muted);
+    font-size: 14.5px;
+  }
+
+  code {
+    font-family: var(--mono);
+    font-size: .88em;
+    background: var(--card2);
+    border-radius: var(--r-sm);
+    padding: 1px 5px;
+    color: var(--text);
+  }
+
+  /* -- house rules ------------------------------------------------- */
+
+  .rules {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(232px, 1fr));
+    gap: 1px;
+    background: var(--line2);
+    border: 1px solid var(--line2);
+    border-radius: var(--r-lg);
+    overflow: hidden;
+  }
+
+  .rules div { background: var(--bg0); padding: 18px 20px; }
+
+  .rules h3 {
+    margin: 0 0 6px;
+    font-size: 11px;
+    font-family: var(--mono);
+    letter-spacing: .1em;
+    text-transform: uppercase;
+    color: var(--accent);
+    font-weight: 500;
+  }
+
+  .rules p { margin: 0; font-size: 13.5px; color: var(--muted); }
+
+  /* -- window map -------------------------------------------------- */
+
+  .map {
+    border: 1px solid var(--line2);
+    border-radius: var(--r-lg);
+    background: var(--card);
+    padding: 22px;
+    overflow-x: auto;
+  }
+
+  .map svg { display: block; width: 100%; min-width: 640px; height: auto; }
+
+  .map-key {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px 20px;
+    margin: 18px 2px 0;
+    padding-top: 16px;
+    border-top: 1px solid var(--line);
+    font-size: 12.5px;
+    color: var(--muted);
+  }
+
+  .map-key b {
+    font-family: var(--mono);
+    font-weight: 500;
+    color: var(--text);
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* -- kind chips --------------------------------------------------- */
+
+  .legend {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: 14px;
+  }
+
+  .legend div {
+    display: flex;
+    gap: 11px;
+    align-items: flex-start;
+    font-size: 13.5px;
+    color: var(--muted);
+  }
+
+  .kind {
+    flex: none;
+    display: inline-block;
+    padding: 3px 9px;
+    border-radius: 999px;
+    font-family: var(--mono);
+    font-size: 10px;
+    font-weight: 500;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+    border: 1px solid;
+  }
+
+  .k-surface { color: var(--accent); border-color: var(--accent-line); background: var(--accent-soft); }
+  .k-control { color: var(--muted); border-color: var(--line2); background: var(--card2); }
+  .k-state   { color: var(--warn); border-color: color-mix(in srgb, var(--warn) 40%, transparent); background: color-mix(in srgb, var(--warn) 12%, transparent); }
+  .k-defect  { color: var(--bad); border-color: color-mix(in srgb, var(--bad) 42%, transparent); background: color-mix(in srgb, var(--bad) 12%, transparent); }
+
+  /* -- spec cards --------------------------------------------------- */
+
+  .specs { display: flex; flex-direction: column; gap: 18px; }
+
+  .spec {
+    border: 1px solid var(--line2);
+    border-radius: var(--r-lg);
+    background: var(--card);
+    padding: 22px 24px;
+  }
+
+  .spec-head {
+    display: flex;
+    align-items: baseline;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-bottom: 10px;
+  }
+
+  .spec-head h3 {
+    margin: 0;
+    font-size: 17.5px;
+    font-weight: 600;
+    letter-spacing: -.012em;
+  }
+
+  .spec > .lede {
+    margin: 0 0 18px;
+    max-width: 70ch;
+    color: var(--muted);
+    font-size: 14px;
+  }
+
+  .spec dl {
+    display: grid;
+    grid-template-columns: 108px minmax(0, 1fr);
+    gap: 10px 20px;
+    margin: 0;
+    padding-top: 16px;
+    border-top: 1px solid var(--line);
+  }
+
+  .spec dt {
+    font-family: var(--mono);
+    font-size: 10.5px;
+    letter-spacing: .09em;
+    text-transform: uppercase;
+    color: var(--dim);
+    padding-top: 3px;
+  }
+
+  .spec dd { margin: 0; font-size: 14px; }
+  .spec dd p { margin: 0 0 8px; }
+  .spec dd p:last-child { margin-bottom: 0; }
+
+  .spec ul { margin: 0; padding-left: 18px; }
+  .spec li { margin-bottom: 5px; }
+  .spec li:last-child { margin-bottom: 0; }
+
+  .states {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 7px;
+    list-style: none;
+    margin: 0;
+    padding: 0;
+  }
+
+  .states li {
+    margin: 0;
+    padding: 4px 10px;
+    border: 1px solid var(--line2);
+    border-radius: var(--r-sm);
+    background: var(--card2);
+    font-size: 12.5px;
+    font-family: var(--mono);
+  }
+
+  /* -- out of scope -------------------------------------------------- */
+
+  .scope {
+    border: 1px dashed var(--line2);
+    border-radius: var(--r-lg);
+    padding: 22px 24px;
+    background: transparent;
+  }
+
+  .scope h2 { margin: 0 0 8px; font-size: 19px; font-weight: 600; }
+  .scope p { margin: 0 0 14px; color: var(--muted); font-size: 14px; max-width: 68ch; }
+
+  .scope ul {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 7px;
+  }
+
+  .scope li {
+    padding: 4px 11px;
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    font-size: 12.5px;
+    color: var(--dim);
+  }
+
+  footer {
+    margin-top: 64px;
+    padding-top: 22px;
+    border-top: 1px solid var(--line2);
+    font-size: 13px;
+    color: var(--dim);
+    max-width: 72ch;
+  }
+
+  footer code { background: transparent; padding: 0; color: var(--muted); }
+
+  @media (max-width: 900px) {
+    .shell { grid-template-columns: minmax(0, 1fr); gap: 32px; }
+    .rail { position: static; }
+    .spec dl { grid-template-columns: minmax(0, 1fr); gap: 4px 0; }
+    .spec dt { padding-top: 12px; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    * { transition: none !important; animation: none !important; }
+  }
+</style>
+
+</head>
+<body>
+<div class="wrap">
+
+  <header class="masthead">
+    <p class="eyebrow">Fancy Mumble · UI pack Nebula</p>
+    <h1>What Standard does that Nebula doesn't</h1>
+    <p class="standfirst">
+      Twenty-four things a person can do in the Standard client and cannot do in Nebula, each placed
+      in the window where it belongs and described down to its states. This is the work list — the
+      features already recorded as deliberately absent in <code>nebula/ARCHITECTURE.md</code> are
+      not on it.
+    </p>
+    <div class="tally">
+      <span><b>24</b> open items</span>
+      <span><b>14</b> in the client shell</span>
+      <span><b>9</b> in settings and connect</span>
+      <span><b>1</b> defect</span>
+    </div>
+  </header>
+
+  <div class="shell">
+
+    <nav class="rail" aria-label="Sections">
+      <p class="rail-title">Zones</p>
+      <a href="#rules">House rules <i>—</i></a>
+      <a href="#map">Window map <i>—</i></a>
+      <hr>
+      <a href="#titlebar">Title bar &amp; rail <i>1</i></a>
+      <a href="#sidebar">Sidebar <i>4</i></a>
+      <a href="#header">Channel header <i>4</i></a>
+      <a href="#messages">Message list <i>5</i></a>
+      <a href="#personalize">Personalize <i>5</i></a>
+      <a href="#voice">Voice <i>3</i></a>
+      <a href="#connect">Connect <i>1</i></a>
+      <a href="#profile">Profile card <i>1</i></a>
+      <hr>
+      <a href="#scope">Not in scope <i>—</i></a>
+    </nav>
+
+    <main class="content">
+
+      <!-- ============================================================ -->
+      <section id="rules">
+        <h2>House rules</h2>
+        <p class="intro">
+          These hold for every drawing below, and they are already true of the pack — a screen that
+          breaks one will look wrong next to the ones beside it.
+        </p>
+        <div class="rules">
+          <div>
+            <h3>Corners</h3>
+            <p>Four steps: 6 inset detail, 10 controls, 14 surfaces, 20 overlays. Pick by what the
+              element <em>is</em>, never by eye. Circles and pills are shapes, not radii.</p>
+          </div>
+          <div>
+            <h3>Two schemes, one accent</h3>
+            <p>Nebula follows the user's colour theme for light/dark and its accent, so every state
+              colour has to hold on both grounds. Design each screen twice.</p>
+          </div>
+          <div>
+            <h3>Glass is chrome only</h3>
+            <p>Title bar, sidebar and channel header blur what's behind them. Cards and panels sit
+              on the window colour and don't. Don't glass a card.</p>
+          </div>
+          <div>
+            <h3>Panels, not pages</h3>
+            <p>Nebula covers the shell with one full-window surface at a time — pinned, downloads,
+              server info. New surfaces join that set rather than opening a second window.</p>
+          </div>
+          <div>
+            <h3>Settings is one nav</h3>
+            <p>User settings and server administration share a single sidebar. A new control belongs
+              on an existing page; a new page needs a line in that nav.</p>
+          </div>
+          <div>
+            <h3>Copy is sentence case</h3>
+            <p>Menu items and buttons say what happens. Micro-labels above groups are the only
+              uppercase, and they carry letter-spacing.</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============================================================ -->
+      <section id="map">
+        <h2>Where the work is</h2>
+        <p class="intro">
+          Nebula's window, to scale, with the count of open items per zone. Fourteen of the
+          twenty-four are in the shell you see here; the rest are in settings, on the connect screen
+          and on the profile card, which cover this layout rather than sit in it.
+        </p>
+
+        <div class="map">
+          <svg viewBox="0 0 900 470" role="img" aria-labelledby="maptitle mapdesc">
+            <title id="maptitle">Nebula window zones with open item counts</title>
+            <desc id="mapdesc">
+              A schematic of the Nebula client window. The title bar spans the top and holds one
+              open item. A narrow server rail runs down the left edge. The 290 pixel sidebar holds
+              four open items. The channel header holds four. The message list holds five. The
+              composer and member panel hold none.
+            </desc>
+
+            <!-- window -->
+            <rect x="10" y="10" width="880" height="450" rx="20"
+                  fill="var(--bg0)" stroke="var(--line2)" stroke-width="1"/>
+
+            <!-- title bar -->
+            <path d="M10 30a20 20 0 0 1 20-20h840a20 20 0 0 1 20 20v24H10z" fill="var(--panel)"/>
+            <line x1="10" y1="54" x2="890" y2="54" stroke="var(--line2)"/>
+            <circle cx="34" cy="32" r="4.5" fill="var(--dim)"/>
+            <circle cx="50" cy="32" r="4.5" fill="var(--dim)"/>
+            <circle cx="66" cy="32" r="4.5" fill="var(--dim)"/>
+            <text x="440" y="36" text-anchor="middle" font-family="var(--mono)" font-size="10"
+                  letter-spacing="1.4" fill="var(--dim)">TITLE BAR · 44</text>
+            <g>
+              <circle cx="820" cy="32" r="10" fill="var(--accent-soft)" stroke="var(--accent-line)"/>
+              <text x="820" y="36" text-anchor="middle" font-family="var(--mono)" font-size="11"
+                    font-weight="500" fill="var(--accent)">1</text>
+            </g>
+
+            <!-- server rail -->
+            <rect x="10" y="54" width="56" height="406" fill="var(--panel)"/>
+            <line x1="66" y1="54" x2="66" y2="460" stroke="var(--line2)"/>
+            <rect x="26" y="74" width="24" height="24" rx="8" fill="var(--accent-soft)" stroke="var(--accent-line)"/>
+            <rect x="26" y="108" width="24" height="24" rx="8" fill="var(--card2)"/>
+            <rect x="26" y="142" width="24" height="24" rx="8" fill="var(--card2)"/>
+            <text x="38" y="300" text-anchor="middle" font-family="var(--mono)" font-size="9"
+                  letter-spacing="1" fill="var(--dim)" transform="rotate(-90 38 300)">SERVER RAIL</text>
+
+            <!-- sidebar -->
+            <rect x="66" y="54" width="290" height="406" fill="var(--panel)"/>
+            <line x1="356" y1="54" x2="356" y2="460" stroke="var(--line2)"/>
+            <rect x="86" y="74" width="250" height="26" rx="10" fill="var(--card2)"/>
+            <rect x="86" y="116" width="120" height="9" rx="4" fill="var(--line2)"/>
+            <rect x="86" y="140" width="250" height="24" rx="10" fill="var(--card)" stroke="var(--line)"/>
+            <rect x="86" y="172" width="250" height="24" rx="10" fill="transparent"/>
+            <rect x="98" y="180" width="150" height="8" rx="4" fill="var(--line2)"/>
+            <rect x="98" y="212" width="170" height="8" rx="4" fill="var(--line2)"/>
+            <rect x="98" y="244" width="130" height="8" rx="4" fill="var(--line2)"/>
+            <rect x="86" y="396" width="250" height="48" rx="14" fill="var(--card)" stroke="var(--line)"/>
+            <text x="211" y="290" text-anchor="middle" font-family="var(--mono)" font-size="10"
+                  letter-spacing="1.4" fill="var(--dim)">SIDEBAR · 290</text>
+            <g>
+              <circle cx="211" cy="322" r="13" fill="var(--accent-soft)" stroke="var(--accent-line)"/>
+              <text x="211" y="327" text-anchor="middle" font-family="var(--mono)" font-size="13"
+                    font-weight="500" fill="var(--accent)">4</text>
+            </g>
+
+            <!-- channel header -->
+            <rect x="356" y="54" width="284" height="66" fill="var(--panel)"/>
+            <line x1="356" y1="120" x2="640" y2="120" stroke="var(--line2)"/>
+            <circle cx="378" cy="87" r="8" fill="var(--card2)"/>
+            <rect x="396" y="79" width="86" height="8" rx="4" fill="var(--line2)"/>
+            <rect x="396" y="93" width="54" height="6" rx="3" fill="var(--line)"/>
+            <circle cx="588" cy="87" r="9" fill="var(--card2)"/>
+            <circle cx="614" cy="87" r="9" fill="var(--card2)"/>
+            <text x="498" y="66" text-anchor="middle" font-family="var(--mono)" font-size="9"
+                  letter-spacing="1.3" fill="var(--dim)">CHANNEL HEADER · 66</text>
+            <g>
+              <circle cx="524" cy="87" r="13" fill="var(--accent-soft)" stroke="var(--accent-line)"/>
+              <text x="524" y="92" text-anchor="middle" font-family="var(--mono)" font-size="13"
+                    font-weight="500" fill="var(--accent)">4</text>
+            </g>
+
+            <!-- message list -->
+            <rect x="356" y="120" width="284" height="270" fill="transparent"/>
+            <rect x="376" y="144" width="180" height="34" rx="14" fill="var(--card)" stroke="var(--line)"/>
+            <rect x="440" y="192" width="180" height="46" rx="14" fill="var(--accent-soft)" stroke="var(--accent-line)"/>
+            <rect x="376" y="252" width="150" height="30" rx="14" fill="var(--card)" stroke="var(--line)"/>
+            <text x="498" y="322" text-anchor="middle" font-family="var(--mono)" font-size="10"
+                  letter-spacing="1.4" fill="var(--dim)">MESSAGE LIST</text>
+            <g>
+              <circle cx="498" cy="354" r="13" fill="var(--accent-soft)" stroke="var(--accent-line)"/>
+              <text x="498" y="359" text-anchor="middle" font-family="var(--mono)" font-size="13"
+                    font-weight="500" fill="var(--accent)">5</text>
+            </g>
+
+            <!-- composer -->
+            <line x1="356" y1="390" x2="640" y2="390" stroke="var(--line2)"/>
+            <rect x="376" y="406" width="244" height="38" rx="14" fill="var(--card)" stroke="var(--line2)"/>
+            <text x="498" y="429" text-anchor="middle" font-family="var(--mono)" font-size="9"
+                  letter-spacing="1.3" fill="var(--dim)">COMPOSER · 0</text>
+
+            <!-- member panel -->
+            <line x1="640" y1="54" x2="640" y2="460" stroke="var(--line2)"/>
+            <rect x="640" y="54" width="250" height="406" fill="var(--panel)"/>
+            <rect x="662" y="80" width="90" height="8" rx="4" fill="var(--line2)"/>
+            <circle cx="672" cy="118" r="10" fill="var(--card2)"/>
+            <rect x="692" y="114" width="100" height="8" rx="4" fill="var(--line2)"/>
+            <circle cx="672" cy="152" r="10" fill="var(--card2)"/>
+            <rect x="692" y="148" width="78" height="8" rx="4" fill="var(--line2)"/>
+            <circle cx="672" cy="186" r="10" fill="var(--card2)"/>
+            <rect x="692" y="182" width="112" height="8" rx="4" fill="var(--line2)"/>
+            <text x="765" y="322" text-anchor="middle" font-family="var(--mono)" font-size="10"
+                  letter-spacing="1.4" fill="var(--dim)">MEMBER PANEL · 0</text>
+          </svg>
+
+          <p class="map-key">
+            <span>Not on this map — <b>5</b> Personalize</span>
+            <span><b>3</b> Voice</span>
+            <span><b>1</b> Connect screen</span>
+            <span><b>1</b> Profile card</span>
+          </p>
+        </div>
+      </section>
+
+      <!-- ============================================================ -->
+      <section id="legend">
+        <h2>How to read an item</h2>
+        <p class="intro">
+          Every item carries one of four tags. They say what kind of drawing is wanted, which is
+          usually a better guide to effort than the item's size.
+        </p>
+        <div class="legend">
+          <div><span class="kind k-surface">Surface</span><p>A whole panel or dialog that doesn't exist yet. Needs layout, empty state and dismissal.</p></div>
+          <div><span class="kind k-control">Control</span><p>A control on a page that already exists. Match the controls beside it.</p></div>
+          <div><span class="kind k-state">State</span><p>An indicator on something already drawn — a badge, a dot, a row variant.</p></div>
+          <div><span class="kind k-defect">Defect</span><p>Already reachable, already wrong. Nothing new to invent; something to correct.</p></div>
+        </div>
+      </section>
+
+      <!-- ============================================================ -->
+      <section id="titlebar">
+        <h2>Title bar &amp; server rail</h2>
+        <p class="intro">
+          Nebula stacks connected servers as tiles down a rail and puts the "+" in the title bar.
+          Standard lays them out as a horizontal tab strip. The rail is the better shape — what it
+          is missing is everything the strip carries besides identity.
+        </p>
+
+        <div class="specs">
+          <article class="spec">
+            <div class="spec-head"><span class="kind k-state">State</span><h3>Unread counts and tab order on the server rail</h3></div>
+            <p class="lede">
+              A rail tile shows which server it is and nothing else. There is no unread count, no
+              way to reorder the servers, and disconnecting has no confirmation.
+            </p>
+            <dl>
+              <dt>Must show</dt>
+              <dd>
+                <ul>
+                  <li>An unread count per server, legible against the tile's own hashed colour and truncated above 99.</li>
+                  <li>A drag affordance for reordering, and where a tile lands while dragging.</li>
+                  <li>A disconnect confirmation naming the server, with a "don't ask again" checkbox.</li>
+                </ul>
+              </dd>
+              <dt>States</dt>
+              <dd><ul class="states"><li>active</li><li>connected, unread</li><li>connected, quiet</li><li>connecting</li><li>dragging</li><li>drop target</li></ul></dd>
+              <dt>Data</dt>
+              <dd>Order persists to the <code>serverTabOrder</code> preference, which already exists and is already migrated from the old local-storage key. Sessions arrive in backend order; unlisted ones append.</dd>
+              <dt>Placement</dt>
+              <dd>On the 56px rail. The count has to work at tile size, so a corner pip is more likely than a trailing number.</dd>
+              <dt>Standard</dt>
+              <dd><code>components/layout/ServerTabsBar.tsx</code></dd>
+            </dl>
+          </article>
+        </div>
+      </section>
+
+      <!-- ============================================================ -->
+      <section id="sidebar">
+        <h2>Sidebar</h2>
+        <p class="intro">
+          Four gaps: two are dialogs the channel tree needs before an action can complete, one is a
+          search result type that has nowhere to render, and one is layout state that resets on
+          every launch.
+        </p>
+
+        <div class="specs">
+
+          <article class="spec">
+            <div class="spec-head"><span class="kind k-surface">Surface</span><h3>Password prompt for a protected channel</h3></div>
+            <p class="lede">
+              Joining a password-protected channel currently fails silently — nothing asks for the
+              password. Nebula already prompts for a <em>server</em> password and a TOTP code; this
+              is the same moment one level down.
+            </p>
+            <dl>
+              <dt>Must show</dt>
+              <dd>The channel's name set apart from the sentence around it, one password field, "Join" and "Cancel", and a wrong-password state that keeps what was typed.</dd>
+              <dt>States</dt>
+              <dd><ul class="states"><li>asking</li><li>submitting</li><li>rejected</li></ul></dd>
+              <dt>Data</dt>
+              <dd><code>joinChannelWithPassword(channelId, password)</code>. The channel entry carries the name.</dd>
+              <dt>Placement</dt>
+              <dd>Window-root dialog. <code>LeaveServerDialog</code> and <code>LinkWarningDialog</code> are the two precedents to match — both set the thing being acted on apart from the prose.</dd>
+              <dt>Standard</dt>
+              <dd><code>components/sidebar/channel/ChannelPasswordDialog.tsx</code></dd>
+            </dl>
+          </article>
+
+          <article class="spec">
+            <div class="spec-head"><span class="kind k-surface">Surface</span><h3>Move everyone out of a channel</h3></div>
+            <p class="lede">
+              A moderator can move one user from that user's menu. Clearing a whole channel means
+              repeating it once per person.
+            </p>
+            <dl>
+              <dt>Must show</dt>
+              <dd>Which channel is being emptied and how many people that is, a searchable destination picker over every other channel, and a confirm that names both ends of the move.</dd>
+              <dt>States</dt>
+              <dd><ul class="states"><li>picking</li><li>no destinations</li><li>moving</li><li>partially refused</li></ul></dd>
+              <dt>Data</dt>
+              <dd><code>moveChannelUsers(sourceId, targetId)</code>. Eligible destinations are every channel except the source.</dd>
+              <dt>Placement</dt>
+              <dd>Entered from the channel's context menu, under the existing moderation items. Nebula's user menu already has a "Move to channel" picker — reuse its list, not a second design.</dd>
+              <dt>Standard</dt>
+              <dd><code>components/sidebar/move/MoveUsersDialog.tsx</code></dd>
+            </dl>
+          </article>
+
+          <article class="spec">
+            <div class="spec-head"><span class="kind k-surface">Surface</span><h3>Pictures and links in search</h3></div>
+            <p class="lede">
+              Nebula's search finds channels, people, messages and servers. Standard also searches
+              shared pictures and links, and with an empty query the pictures filter becomes a
+              browsable grid of everything shared in the channel.
+            </p>
+            <dl>
+              <dt>Must show</dt>
+              <dd>
+                <ul>
+                  <li>Two more filters beside the existing ones: Pictures, Links.</li>
+                  <li>A picture grid that pages 20 at a time as the reader reaches the bottom, with a placeholder tile per image until it decodes.</li>
+                  <li>A link result that leads with the host, since that is the part worth reading — the same reasoning as the link warning dialog.</li>
+                </ul>
+              </dd>
+              <dt>States</dt>
+              <dd><ul class="states"><li>grid, loading first page</li><li>grid, paging</li><li>grid, end reached</li><li>no pictures</li></ul></dd>
+              <dt>Data</dt>
+              <dd><code>get_photos</code>, paged, deduplicated by source. Link results come back with the message they were found in.</dd>
+              <dt>Placement</dt>
+              <dd>Inside the existing search results, which today assume a single list of rows. The grid is a second shape that list has to be able to become.</dd>
+              <dt>Standard</dt>
+              <dd><code>components/sidebar/SidebarSearchView.tsx</code></dd>
+            </dl>
+          </article>
+
+          <article class="spec">
+            <div class="spec-head"><span class="kind k-state">State</span><h3>Remember collapsed sections and the open tab</h3></div>
+            <p class="lede">
+              Collapse a sidebar section and it comes back open next launch. Two preferences already
+              exist for this and Nebula writes neither.
+            </p>
+            <dl>
+              <dt>Must show</dt>
+              <dd>Nothing new — but the collapse affordance has to read as a persistent setting rather than a momentary one, which usually means the chevron animates and stays put rather than snapping back.</dd>
+              <dt>Data</dt>
+              <dd><code>sidebarSections</code>, <code>sidebarActiveTab</code>.</dd>
+              <dt>Placement</dt>
+              <dd>Sidebar section headers.</dd>
+            </dl>
+          </article>
+
+        </div>
+      </section>
+
+      <!-- ============================================================ -->
+      <section id="header">
+        <h2>Channel header</h2>
+        <p class="intro">
+          Nebula's header is deliberately two glyphs wide — search, then a kebab. That decision is
+          sound and these four items should not undo it; three of them are about what the header
+          can say without growing, and one is a panel behind it.
+        </p>
+
+        <div class="specs">
+
+          <article class="spec">
+            <div class="spec-head"><span class="kind k-state">State</span><h3>Encryption state and key trust</h3></div>
+            <p class="lede">
+              Nebula runs the persistent-chat machinery and honours a revoked key by disabling the
+              composer, but it never says whether the open channel is encrypted, whether its key is
+              trusted, or offers a way in to verify one. The trust level is already computed and
+              thrown away.
+            </p>
+            <dl>
+              <dt>Must show</dt>
+              <dd>
+                <ul>
+                  <li>Whether this channel persists its history, and whether it is end-to-end encrypted — two facts, not one badge.</li>
+                  <li>Key trust at four levels, distinguishable without colour alone.</li>
+                  <li>A way to reach the verification dialog from the badge itself.</li>
+                </ul>
+              </dd>
+              <dt>States</dt>
+              <dd><ul class="states"><li>Verified</li><li>Manually verified</li><li>Unverified</li><li>Disputed</li><li>not encrypted</li><li>not persisted</li></ul></dd>
+              <dt>Data</dt>
+              <dd><code>usePersistentChat()</code> returns <code>trustLevel</code> and <code>sendBlocked</code> today; Nebula uses only the second. Disputed is the one that must be impossible to miss.</dd>
+              <dt>Placement</dt>
+              <dd>Beside the channel name in the 66px header, at the scale of the existing subtitle. Verified is the common case and should be quiet; disputed should not be.</dd>
+              <dt>Standard</dt>
+              <dd><code>components/security/KeyTrustIndicator.tsx</code>, mounted in <code>ChatHeader</code></dd>
+            </dl>
+          </article>
+
+          <article class="spec">
+            <div class="spec-head"><span class="kind k-surface">Surface</span><h3>Channel info panel</h3></div>
+            <p class="lede">
+              The header's "Info" item opens <em>server</em> info. There is no way to read a
+              channel's own description, see who is in it including people currently offline, or
+              deal with its encryption keys.
+            </p>
+            <dl>
+              <dt>Must show</dt>
+              <dd>
+                <ul>
+                  <li>Name and description — rich text the server sends, which may be long and may contain images.</li>
+                  <li>Members, split online from offline, each row opening the same menu the roster does.</li>
+                  <li>Key ownership: who holds this channel's keys, and a reset with two modes — keys only, or a full wipe — each with a plain-language consequence, since one destroys history.</li>
+                  <li>Channel id and whether the viewer can delete messages here. Raw permissions only in developer mode.</li>
+                </ul>
+              </dd>
+              <dt>States</dt>
+              <dd><ul class="states"><li>reading</li><li>editing name/description</li><li>saving</li><li>no description</li><li>no members</li><li>refreshing</li></ul></dd>
+              <dt>Data</dt>
+              <dd><code>getPersistenceMode</code>, <code>queryKeyHolders</code>, <code>refreshState</code>, <code>canDeleteMessages</code>, and the description arrives lazily by size.</dd>
+              <dt>Placement</dt>
+              <dd>A full-window surface alongside pinned, downloads and server info. It is longer than any of them — the key-ownership block is the part that needs the most room and the most caution.</dd>
+              <dt>Standard</dt>
+              <dd><code>components/sidebar/channel/ChannelInfoPanel.tsx</code></dd>
+            </dl>
+          </article>
+
+          <article class="spec">
+            <div class="spec-head"><span class="kind k-control">Control</span><h3>Mute this channel</h3></div>
+            <p class="lede">A channel cannot be silenced. Standard has this on the header menu.</p>
+            <dl>
+              <dt>Must show</dt>
+              <dd>One menu item that flips between muting and unmuting, and reads as active while muted. A muted channel should also be recognisable in the sidebar without opening it.</dd>
+              <dt>States</dt>
+              <dd><ul class="states"><li>audible</li><li>muted</li></ul></dd>
+              <dt>Data</dt>
+              <dd><code>toggleSilenceChannel(channelId)</code>.</dd>
+              <dt>Placement</dt>
+              <dd>Header kebab, plus a mark on the sidebar row.</dd>
+            </dl>
+          </article>
+
+          <article class="spec">
+            <div class="spec-head"><span class="kind k-state">State</span><h3>New pins and new downloads</h3></div>
+            <p class="lede">
+              Pinned messages and downloads both live behind the kebab, and neither says when
+              something new has arrived. Standard badges the buttons because they are on the header;
+              here the news has to survive being collapsed into a single glyph.
+            </p>
+            <dl>
+              <dt>Must show</dt>
+              <dd>
+                <ul>
+                  <li>A mark on the kebab when anything behind it is new, distinct from the pressed state.</li>
+                  <li>A per-item mark inside the open menu, so the reader knows which of the two to pick.</li>
+                  <li>Both clear on open — not on close.</li>
+                </ul>
+              </dd>
+              <dt>States</dt>
+              <dd><ul class="states"><li>quiet</li><li>new pins</li><li>new downloads</li><li>both</li></ul></dd>
+              <dt>Data</dt>
+              <dd>Flags exist on the store; <code>clearUnseenPins</code> and <code>markDownloadsSeen</code> already do the clearing.</dd>
+              <dt>Placement</dt>
+              <dd>Header kebab and the menu items inside it.</dd>
+            </dl>
+          </article>
+
+        </div>
+      </section>
+
+      <!-- ============================================================ -->
+      <section id="messages">
+        <h2>Message list</h2>
+        <p class="intro">
+          The densest zone, and the one where a small drawing decision is felt most often. Four
+          additions and one correction.
+        </p>
+
+        <div class="specs">
+
+          <article class="spec">
+            <div class="spec-head"><span class="kind k-surface">Surface</span><h3>A message that is still sending, and one that failed</h3></div>
+            <p class="lede">
+              Nebula hands the message to the store and forgets it. On a slow link nothing appears
+              until the server echoes it back, and if the send fails there is no row to retry — the
+              text is simply gone.
+            </p>
+            <dl>
+              <dt>Must show</dt>
+              <dd>
+                <ul>
+                  <li>The message where it will land, at reduced weight, with indeterminate progress — the duration is unknown.</li>
+                  <li>On failure: the same row turned to an error, with Retry and Dismiss, keeping the body intact.</li>
+                  <li>The row must not shift the conversation when it resolves into the real message.</li>
+                </ul>
+              </dd>
+              <dt>States</dt>
+              <dd><ul class="states"><li>sending</li><li>failed</li><li>retrying</li><li>resolved</li></ul></dd>
+              <dt>Data</dt>
+              <dd><code>addPendingPlaceholder</code>, <code>markPendingFailed</code>, <code>retryPendingMessage</code>, <code>dismissPendingMessage</code>. Standard only draws this for messages carrying inline media or large enough to be perceptibly slow — worth keeping, so ordinary text still sends instantly.</dd>
+              <dt>Placement</dt>
+              <dd>Last row of the conversation, in the message style the user has chosen (bubbles, flat or compact).</dd>
+              <dt>Standard</dt>
+              <dd><code>components/chat/pending/PendingMessageItem.tsx</code></dd>
+            </dl>
+          </article>
+
+          <article class="spec">
+            <div class="spec-head"><span class="kind k-surface">Surface</span><h3>Clicking a mention</h3></div>
+            <p class="lede">
+              Typing <code>@</code> in the composer autocompletes. Clicking the resulting mention in
+              a sent message does nothing. Four kinds of mention need two different answers.
+            </p>
+            <dl>
+              <dt>Must show</dt>
+              <dd>
+                <ul>
+                  <li>A person → the profile card Nebula already draws, anchored to the mention.</li>
+                  <li>A role, <code>@everyone</code> or <code>@here</code> → who that resolves to right now, capped at 30 rows with a count of the remainder.</li>
+                  <li>Both clamped inside the window with a small gap from the mention and a margin from the edges.</li>
+                </ul>
+              </dd>
+              <dt>States</dt>
+              <dd><ul class="states"><li>person</li><li>role</li><li>everyone / here</li><li>resolves to nobody</li><li>clamped near an edge</li></ul></dd>
+              <dt>Data</dt>
+              <dd>Nebula already has the profile card and a point-anchoring helper, so the person case is mostly wiring. The group list is the new drawing.</dd>
+              <dt>Placement</dt>
+              <dd>Floating over the conversation, anchored to the clicked mention.</dd>
+              <dt>Standard</dt>
+              <dd><code>components/chat/mention/MentionPopover.tsx</code></dd>
+            </dl>
+          </article>
+
+          <article class="spec">
+            <div class="spec-head"><span class="kind k-control">Control</span><h3>Who has read this</h3></div>
+            <p class="lede">
+              Nebula shows a read indicator on a message but cannot say who is behind it. Standard
+              puts the list on the message's own menu.
+            </p>
+            <dl>
+              <dt>Must show</dt>
+              <dd>A list of readers with faces and names, and an honest empty state — "nobody yet" is information, not a failure.</dd>
+              <dt>States</dt>
+              <dd><ul class="states"><li>readers</li><li>nobody yet</li><li>many readers</li></ul></dd>
+              <dt>Placement</dt>
+              <dd>Inside the message menu rather than as a separate surface, so it stays anchored to the message it describes.</dd>
+            </dl>
+          </article>
+
+          <article class="spec">
+            <div class="spec-head"><span class="kind k-control">Control</span><h3>Pop an image out into its own window</h3></div>
+            <p class="lede">
+              Nebula opens images in a lightbox that covers the conversation. Standard can also
+              detach one into a small always-there window, which is what people use to keep a
+              reference visible while they carry on typing.
+            </p>
+            <dl>
+              <dt>Must show</dt>
+              <dd>One item on the message menu for images. The detached window carries the sender, their face, the caption and the time — that window already exists and is not being redesigned.</dd>
+              <dt>Placement</dt>
+              <dd>Message menu, next to the existing image actions. Worth a matching control inside the lightbox itself.</dd>
+            </dl>
+          </article>
+
+          <article class="spec">
+            <div class="spec-head"><span class="kind k-defect">Defect</span><h3>Timestamps ignore the user's date and time settings</h3></div>
+            <p class="lede">
+              Nebula's Language &amp; format page offers 12-hour or 24-hour, a date format, and
+              local-versus-server time — and nothing in Nebula reads any of them. Every timestamp
+              is formatted with the browser's own defaults, so the page appears to work and changes
+              nothing.
+            </p>
+            <dl>
+              <dt>Must show</dt>
+              <dd>
+                <ul>
+                  <li>Message times, day dividers, the activity log and the lightbox all following the three settings.</li>
+                  <li>12-hour time is wider than 24-hour. Wherever a timestamp sits in a fixed column or beside a name, both have to fit without the layout moving.</li>
+                </ul>
+              </dd>
+              <dt>States</dt>
+              <dd><ul class="states"><li>24h</li><li>12h with meridiem</li><li>auto, from the OS</li><li>server time</li></ul></dd>
+              <dt>Data</dt>
+              <dd>A shared formatter already handles all of this, including asking the OS for its clock format on Windows, where the webview's own answer is unreliable. Nebula formats its own instead.</dd>
+              <dt>Placement</dt>
+              <dd>Everywhere a time is printed. This is a correction rather than a new drawing, but it changes column widths, so it needs a look.</dd>
+            </dl>
+          </article>
+
+        </div>
+      </section>
+
+      <!-- ============================================================ -->
+      <section id="personalize">
+        <h2>Settings › Personalize</h2>
+        <p class="intro">
+          Nebula's Personalize page covers theme, message style, chat background, channel viewer and
+          interface design. Five settings that Standard offers have no control here — and one of
+          them is already being honoured with no way to set it.
+        </p>
+
+        <div class="specs">
+
+          <article class="spec">
+            <div class="spec-head"><span class="kind k-control">Control</span><h3>Typeface</h3></div>
+            <p class="lede">
+              Eight typefaces ship with the app and Nebula offers none of them. This is the setting
+              people reach for first when the default is hard for them to read.
+            </p>
+            <dl>
+              <dt>Must show</dt>
+              <dd>System Default, Inter, Roboto, Space Mono, Monospace, Serif, Humanist and Rounded — each tile set in the face it selects, so the choice is made by looking rather than by name.</dd>
+              <dt>Placement</dt>
+              <dd>A new group on Personalize. The existing segmented control is too narrow for eight options that each need to show their own face; this wants tiles, like the chat background group.</dd>
+            </dl>
+          </article>
+
+          <article class="spec">
+            <div class="spec-head"><span class="kind k-control">Control</span><h3>Text size</h3></div>
+            <p class="lede">Three named sizes plus an exact pixel value for people who want one.</p>
+            <dl>
+              <dt>Must show</dt>
+              <dd>Small, Medium, Large as the primary choice, with a numeric override available without cluttering the common path. Preview at the size being chosen.</dd>
+              <dt>Data</dt>
+              <dd>Two fields: the named size, and the custom pixel value used when it applies.</dd>
+              <dt>Placement</dt>
+              <dd>Beside the typeface group. Bear in mind Nebula's own type scale is fixed — decide what the setting actually scales before drawing it.</dd>
+            </dl>
+          </article>
+
+          <article class="spec">
+            <div class="spec-head"><span class="kind k-control">Control</span><h3>Compact mode</h3></div>
+            <p class="lede">A density switch, separate from message style — it tightens the whole client, not just the conversation.</p>
+            <dl>
+              <dt>Must show</dt>
+              <dd>One switch with a hint that says what tightens. Its relationship to the "Compact" message style needs settling: two controls with the same word are a trap.</dd>
+              <dt>Placement</dt>
+              <dd>Personalize, near message style — where the ambiguity is visible and can be written away.</dd>
+            </dl>
+          </article>
+
+          <article class="spec">
+            <div class="spec-head"><span class="kind k-control">Control</span><h3>Always show message actions</h3></div>
+            <p class="lede">
+              The hover strip on a message appears on hover. This pins it open — an accessibility
+              setting for anyone who doesn't hover reliably, including touch.
+            </p>
+            <dl>
+              <dt>Must show</dt>
+              <dd>One switch. The pinned strip must not cover the message it belongs to, which is the whole reason it hides today — so the pinned form may need a different position from the hovering one.</dd>
+              <dt>Placement</dt>
+              <dd>Personalize, with the message style group.</dd>
+            </dl>
+          </article>
+
+          <article class="spec">
+            <div class="spec-head"><span class="kind k-defect">Defect</span><h3>Background fit — cover or tile</h3></div>
+            <p class="lede">
+              Nebula's chat backdrop already honours a tile-versus-cover setting. Nothing anywhere
+              in Nebula can set it, so it is permanently whatever it was last left at.
+            </p>
+            <dl>
+              <dt>Must show</dt>
+              <dd>Two options in the chat background group, previewed on the actual image — the difference is invisible on an abstract swatch.</dd>
+              <dt>Placement</dt>
+              <dd>Inside the existing Chat background group, beside blur, opacity and dim.</dd>
+            </dl>
+          </article>
+
+        </div>
+      </section>
+
+      <!-- ============================================================ -->
+      <section id="voice">
+        <h2>Settings › Voice</h2>
+        <p class="intro">
+          Nebula's Voice page covers devices, activation, the gate and the calibrator. Three things
+          Standard offers are missing, and one of them is the reason people give up on a microphone
+          entirely.
+        </p>
+
+        <div class="specs">
+
+          <article class="spec">
+            <div class="spec-head"><span class="kind k-state">State</span><h3>The microphone is busy</h3></div>
+            <p class="lede">
+              When another application is holding the microphone, Nebula shows nothing — the meter
+              simply stays flat. The backend already reports this, names the apps responsible when it
+              can, and pushes an update the moment it changes.
+            </p>
+            <dl>
+              <dt>Must show</dt>
+              <dd>
+                <ul>
+                  <li>That the microphone could not be opened, and by whom when the names are known.</li>
+                  <li>A different, plainer message for a failure that is not a busy device.</li>
+                  <li>It clears itself when the microphone frees up — no dismiss button, no stale warning.</li>
+                </ul>
+              </dd>
+              <dt>States</dt>
+              <dd><ul class="states"><li>held, holders known</li><li>held, holders unknown</li><li>other failure</li><li>clear</li></ul></dd>
+              <dt>Placement</dt>
+              <dd>Above the input device control, where the person is already looking. Standard also surfaces it outside settings, which is worth considering — the mic is usually busy while someone is trying to talk, not while they are in settings.</dd>
+              <dt>Standard</dt>
+              <dd><code>hooks/useCaptureError.ts</code>, <code>pages/settings/AudioPanel.tsx</code></dd>
+            </dl>
+          </article>
+
+          <article class="spec">
+            <div class="spec-head"><span class="kind k-control">Control</span><h3>Noise suppression, in detail</h3></div>
+            <p class="lede">
+              Nebula picks the noise-suppression algorithm but exposes none of its knobs. The set of
+              knobs is different per algorithm and comes from the backend, so this cannot be a fixed
+              list of sliders.
+            </p>
+            <dl>
+              <dt>Must show</dt>
+              <dd>
+                <ul>
+                  <li>One slider per knob the chosen algorithm reports, each with its own range, step and default.</li>
+                  <li>Nothing at all for algorithms with no knobs — the group disappears rather than showing an empty box.</li>
+                  <li>A way back to the defaults, since these are easy to get lost in.</li>
+                </ul>
+              </dd>
+              <dt>States</dt>
+              <dd><ul class="states"><li>knobs</li><li>no knobs</li><li>loading the schema</li><li>changed from default</li></ul></dd>
+              <dt>Data</dt>
+              <dd>The schema is fetched per algorithm; values are stored keyed by knob id, with anything missing falling back to that knob's default. Expert mode gates this in Standard.</dd>
+              <dt>Placement</dt>
+              <dd>Under the algorithm picker, appearing and disappearing as the algorithm changes.</dd>
+            </dl>
+          </article>
+
+          <article class="spec">
+            <div class="spec-head"><span class="kind k-control">Control</span><h3>Exclusive microphone access (Windows)</h3></div>
+            <p class="lede">
+              Takes sole control of the input device for lower latency, at the cost of every other
+              application losing it.
+            </p>
+            <dl>
+              <dt>Must show</dt>
+              <dd>One switch, visible only on Windows, with a hint that states the trade honestly rather than only the benefit.</dd>
+              <dt>Placement</dt>
+              <dd>With the advanced input controls. This item and the busy-microphone banner are related — turning this on is one way to cause the other.</dd>
+            </dl>
+          </article>
+
+        </div>
+      </section>
+
+      <!-- ============================================================ -->
+      <section id="connect">
+        <h2>Connect screen</h2>
+        <div class="specs">
+          <article class="spec">
+            <div class="spec-head"><span class="kind k-control">Control</span><h3>Fill in the name they already chose</h3></div>
+            <p class="lede">
+              Adding a server opens a dialog whose username field is empty, even though the person
+              set a default name in settings. Standard prefills it.
+            </p>
+            <dl>
+              <dt>Must show</dt>
+              <dd>The saved default already in the field, selected so it can be typed over in one go. If no default is set the field stays empty and the existing validation stands.</dd>
+              <dt>Data</dt>
+              <dd><code>defaultUsername</code>, a preference Nebula already writes on the Profile page.</dd>
+              <dt>Placement</dt>
+              <dd>Add-server dialog, username field.</dd>
+            </dl>
+          </article>
+        </div>
+      </section>
+
+      <!-- ============================================================ -->
+      <section id="profile">
+        <h2>Profile card</h2>
+        <div class="specs">
+          <article class="spec">
+            <div class="spec-head"><span class="kind k-surface">Surface</span><h3>Where someone is</h3></div>
+            <p class="lede">
+              A person can put a location on their profile. Standard draws it as a small map on
+              their card; Nebula drops it. Nebula's Privacy page even offers a switch to turn those
+              maps off — a switch that currently does nothing, because there is no map to suppress.
+            </p>
+            <dl>
+              <dt>Must show</dt>
+              <dd>
+                <ul>
+                  <li>A small map on the profile card, sized to sit under the existing detail rows rather than dominate the card.</li>
+                  <li>Nothing at all when the viewer has turned maps off — the row goes, not just the tiles.</li>
+                  <li>A resting state before the tiles load, since this is the one part of the card that reaches the network.</li>
+                </ul>
+              </dd>
+              <dt>States</dt>
+              <dd><ul class="states"><li>located</li><li>loading tiles</li><li>maps disabled</li><li>no location</li></ul></dd>
+              <dt>Placement</dt>
+              <dd>Profile card, below the written detail. The card has both a plain and a styled form and the map has to sit in both.</dd>
+            </dl>
+          </article>
+        </div>
+      </section>
+
+      <!-- ============================================================ -->
+      <section id="scope" class="scope">
+        <h2>Not in scope</h2>
+        <p>
+          These are absent from Nebula on purpose and are recorded as such in the pack's own
+          architecture notes. Don't design them without asking first.
+        </p>
+        <ul>
+          <li>Live documents</li>
+          <li>Calendar and meetings</li>
+          <li>Scheduled messages</li>
+          <li>Watch together, host side</li>
+          <li>Drag and drop onto the composer</li>
+          <li>Pasted-image tray</li>
+          <li>Custom server emotes in the composer</li>
+          <li>Per-message translation</li>
+          <li>Dragging channels and users</li>
+          <li>Focused single-stream view</li>
+          <li>Stream annotation overlay</li>
+          <li>First-run setup wizard</li>
+          <li>Friends page</li>
+          <li>My shared files</li>
+          <li>Rich presence panel</li>
+          <li>Saved-server editor</li>
+          <li>Channel recording</li>
+          <li>Mobile layout</li>
+        </ul>
+      </section>
+
+      <footer>
+        Derived by comparing what each pack's client actually loads — an import graph from
+        <code>NebulaClientApp</code> and <code>standard/App</code>, so anything Nebula borrows from
+        Standard is counted as present — then diffing the backend commands, store actions and
+        preference fields each side reaches. Settings navigation, the whole administration console,
+        the user menu, global search, shortcuts and profile styling all came back at parity and are
+        not in this document.
+      </footer>
+
+    </main>
+  </div>
+</div>
+</body>
+</html>
