@@ -40,10 +40,16 @@ the Roaming config directory is still shared with any other running client.
 | State | Private working set | Idle CPU (one core) |
 | --- | --- | --- |
 | Connect screen | ~150 MB | ~0.2 % |
-| Connected, empty channel, voice on | ~200 MB | 1.3-2 % (host: RNNoise + output stream) |
-| After 3000 messages with 150 inline images | ~310-330 MB (renderer 160-210 MB) | ~1.5 % |
-| Same, microphone muted | ~310 MB | ~0.6 % (output stream only) |
+| Connected, empty channel | ~200 MB | 0.2-2 % (see below) |
+| After 3000 messages with 150 inline images | ~305-330 MB (renderer 155-175 MB) | 0.16-0.31 % with the mic muted |
+| Same, microphone open (voice activation, RNNoise) | ~330 MB | ~1.25-2.2 % |
+
+Idle CPU is almost entirely the Rust host's audio threads. Before the gated
+denoiser and the zero-fill output path, the outbound loop cost 109 ms per 10 s
+and the output callback another 109 ms; after, 16 ms and 31 ms. What remains
+with the mic open is the capture thread itself (`rodio-mic-reader` or
+`cpal_wasapi_in`, 16-47 ms per 10 s depending on the device).
 
 The renderer's share grows with the history it holds; the GPU process sits at
-45-80 MB and tracks window size, not content. `--enable-low-end-device-mode`
+40-80 MB and tracks window size, not content. `--enable-low-end-device-mode`
 and the `--force-gpu-mem-*` flags changed nothing measurable.
