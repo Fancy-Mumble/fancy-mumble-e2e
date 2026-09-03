@@ -1,5 +1,5 @@
 import { spawn, spawnSync, type ChildProcess } from "node:child_process";
-import { mkdtempSync, rmSync, existsSync, writeFileSync } from "node:fs";
+import { copyFileSync, mkdirSync, mkdtempSync, rmSync, existsSync, writeFileSync } from "node:fs";
 import net from "node:net";
 import os from "node:os";
 import path from "node:path";
@@ -12,6 +12,48 @@ const thisDir = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(thisDir, "..", "..");
 
 const exe = process.platform === "win32" ? "starling.exe" : "starling";
+
+/** Shared-library suffix Starling's plugin loader scans for. */
+const cdylib =
+  process.platform === "win32" ? ".dll" : process.platform === "darwin" ? ".dylib" : ".so";
+
+/**
+ * The Fancy live-doc plugin cdylib, when one has been built.
+ *
+ * Starling hosts the Fancy plugins rather than implementing them, and since
+ * the C++ fork went EOL the crate lives in Starling's own workspace, so its
+ * build lands in Starling's target directory like any other member. The fork
+ * is still checked second: its `mumble-plugin-api` is the same crate at the
+ * same ABI, so a binary from that tree loads here too, and a checkout that
+ * has only ever built the old one should still get a live-doc server.
+ *
+ * Absent unless somebody built it (`cargo build -p mumble-live-doc`), and that
+ * is the point: a run on a machine that never built it gets the server it
+ * always got, and the client hides its Live Doc entries the way it does
+ * against any server without the plugin.
+ */
+function liveDocPlugin(): string | null {
+  const named = process.env.E2E_LIVE_DOC_PLUGIN;
+  if (named) return existsSync(named) ? named : null;
+  const targets = [
+    path.join(repoRoot, "vendor", "starling", "target"),
+    path.join(repoRoot, "vendor", "server", "3rdparty", "mumble-plugin-host", "target"),
+  ];
+  // Release before debug: if both exist, the release one is the thing somebody
+  // deliberately built to ship.
+  for (const target of targets) {
+    for (const profile of ["release", "debug"]) {
+      const candidate = path.join(target, profile, `${prefix()}mumble_live_doc${cdylib}`);
+      if (existsSync(candidate)) return candidate;
+    }
+  }
+  return null;
+}
+
+/** `lib` on the Unixes, nothing on Windows - how cargo names a cdylib. */
+function prefix(): string {
+  return process.platform === "win32" ? "" : "lib";
+}
 
 /**
  * The Starling binary under test.
@@ -109,8 +151,21 @@ export class StarlingServer {
     // protocol but the right entropy: the SFU logs and degrades to
     // signalling-only if the bind loses the race, it does not fail the run.
     const media = await freePort();
+    // Staged into the run's own directory rather than pointed at cargo's
+    // target: the loader scans a directory for every cdylib in it, and a
+    // target directory is full of unrelated ones.
+    let pluginsDir: string | null = null;
+    let liveDocPort = 0;
+    const builtPlugin = liveDocPlugin();
+    if (builtPlugin) {
+      pluginsDir = path.join(dataDir, "plugins");
+      mkdirSync(pluginsDir, { recursive: true });
+      copyFileSync(builtPlugin, path.join(pluginsDir, path.basename(builtPlugin)));
+      liveDocPort = await freePort();
+    }
+
     const configFile = path.join(dataDir, "starling.toml");
-    writeFileSync(configFile, config(port, http, media, dataDir), "utf8");
+    writeFileSync(configFile, config(port, http, media, dataDir, pluginsDir, liveDocPort), "utf8");
 
     const proc = spawn(STARLING_BIN, ["--all-in-one", "--config", configFile], {
       cwd: dataDir,
@@ -307,7 +362,14 @@ function detectInstancesTable(): string {
   }
 }
 
-function config(port: number, http: number, media: number, dataDir: string): string {
+function config(
+  port: number,
+  http: number,
+  media: number,
+  dataDir: string,
+  pluginsDir: string | null,
+  liveDocPort: number,
+): string {
   const auditLog = path.join(dataDir, "operator-audit.log").replace(/\\/g, "/");
   return `# Written by the e2e harness; overlaid on Starling's built-in defaults.
 [runtime]
@@ -356,6 +418,35 @@ fail_closed = true
 [services.screenshare]
 public_url = "127.0.0.1:${media}"
 options = { media_port = "${media}" }
+${plugins(pluginsDir, liveDocPort, dataDir)}`;
+}
+
+/**
+ * The plugin host's slice of the config, or nothing at all.
+ *
+ * Keys are scoped `plugin.<registered name>.<key>`, and the name is the one
+ * the plugin registers rather than the one its file carries: `fancy-live-doc`,
+ * not `live-doc` and not `mumble_live_doc`. Getting it wrong fails quietly -
+ * the plugin is discovered and reported, then left unloaded for want of an
+ * `enabled` it never saw.
+ *
+ * Persistence is deliberately off. It wants a file-server URL and an admin
+ * token, and without them the plugin says so and runs anyway: documents open
+ * blank and are lost on teardown, which is what a test wants and what a first
+ * look at the feature wants too.
+ */
+function plugins(pluginsDir: string | null, liveDocPort: number, dataDir: string): string {
+  if (!pluginsDir) return "";
+  const state = path.join(dataDir, "live-doc").replace(/\\/g, "/");
+  return `
+# The Fancy plugins Starling hosts, present only when one has been built -
+# see liveDocPlugin() above.
+[services.plugins.options]
+plugins_dir = "${pluginsDir.replace(/\\/g, "/")}"
+"plugin.fancy-live-doc.enabled" = "true"
+"plugin.fancy-live-doc.host" = "127.0.0.1"
+"plugin.fancy-live-doc.port" = "${liveDocPort}"
+"plugin.fancy-live-doc.state_path" = "${state}"
 `;
 }
 
