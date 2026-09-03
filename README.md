@@ -145,6 +145,7 @@ On Windows, grab the matching `msedgedriver` once:
 | `E2E_NATIVE_DRIVER` | _(auto)_ | Explicit WebKitWebDriver/msedgedriver path |
 | `E2E_DRIVER_PORT` | `4445` | Base WebDriver port (instance N → base+N) |
 | `E2E_SERVER_HOST` / `E2E_SERVER_PORT` | `127.0.0.1` / `64738` | Server to connect to |
+| `E2E_UI_DESIGN` | `standard` | Client design pack the suite drives (`?ui=`); the client itself now defaults new profiles to `nebula` |
 | `E2E_SERVER_IMAGE` | `ghcr.io/fancy-mumble/mumble-server:latest` | Server image for the compose fixture |
 | `E2E_CONNECT_TIMEOUT` | `45000` | Connect + bootstrap timeout (ms) |
 

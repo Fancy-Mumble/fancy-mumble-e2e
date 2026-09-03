@@ -41,6 +41,15 @@ export const config = {
   /** Base port for the first tauri-driver instance; instance N uses base+N. */
   driverPort: Number(process.env.E2E_DRIVER_PORT ?? "4445"),
 
+  /**
+   * UI design pack the suite drives, applied as the client's `?ui=` launch
+   * override. That override beats the stored preference, so the page objects
+   * meet the same pack whatever a fresh profile now defaults to - the client
+   * default is Nebula, while these selectors are written against Standard.
+   * Set `E2E_UI_DESIGN=nebula` to run the suite against the new default.
+   */
+  uiDesign: process.env.E2E_UI_DESIGN ?? "standard",
+
   /** Mumble server the client connects to (the Docker fixture). */
   serverHost: process.env.E2E_SERVER_HOST ?? "127.0.0.1",
   serverPort: Number(process.env.E2E_SERVER_PORT ?? "64738"),

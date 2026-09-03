@@ -453,10 +453,16 @@ export class TauriApp {
     // first-run /welcome route. Resolve the root in Node and use WebDriver's
     // get() rather than an in-page location.assign('/') (which the Tauri
     // webview rejects with "'' is not a valid URL").
+    //
+    // The root carries `?ui=`, the client's design-pack override, so the suite
+    // always drives the pack these page objects were written against instead
+    // of whichever one a fresh profile happens to default to.
     const current = await this.driver.getCurrentUrl();
     let root = current;
     try {
-      root = new URL("/", current).href;
+      const url = new URL("/", current);
+      url.searchParams.set("ui", config.uiDesign);
+      root = url.href;
     } catch {
       /* fall back to reloading the current URL */
     }
