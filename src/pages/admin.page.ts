@@ -1,4 +1,4 @@
-import { By, until, type WebDriver } from "selenium-webdriver";
+import { By, Key, until, type WebDriver, type WebElement } from "selenium-webdriver";
 import { TID, byTid } from "../selectors";
 import { config } from "../config";
 import { ensureSidebarOpen, ensureSidebarClosed } from "../util/layout";
@@ -237,6 +237,123 @@ export class AdminPage {
       `ACL channel "${name}" never disappeared from the tree`,
     );
   }
+
+  /**
+   * Switch to the "Server settings" tab, and confirm it took.
+   *
+   * Same confirm-the-click shape as {@link openRolesTab}, and confirmed by the
+   * one thing the pane always has if it has anything: the Save button. The
+   * settings themselves come from the server's own schema, so asserting on any
+   * particular field here would tie the page object to a server version.
+   *
+   * Deliberately **not** confirmed by the tab looking selected. The pane can
+   * open and still be empty - which is the whole failure this exists to catch:
+   * against Starling the screen showed "Server settings aren't available" for
+   * as long as the client had no way to ask for them.
+   */
+  async openServerSettingsTab(): Promise<void> {
+    const onSettings = async () => (await this.d.findElements(this.bySettingsSave())).length > 0;
+    await this.d.wait(
+      async () => {
+        if (await onSettings()) return true;
+        const [tab] = await this.d.findElements(
+          By.xpath("//button[normalize-space(.)='Server settings']"),
+        );
+        if (!tab) return false;
+        try {
+          await tab.click();
+        } catch {
+          return false; // re-render mid-click; the next pass re-finds it
+        }
+        // The snapshot arrives on an event after the query, so the pane opens
+        // on "Loading…" and fills in a moment later.
+        return onSettings();
+      },
+      config.waitTimeout,
+      "the Server settings tab never showed its save button",
+    );
+  }
+
+  /** Whether the pane is telling the user there are no settings to show. */
+  async serverSettingsUnavailable(): Promise<boolean> {
+    const found = await this.d.findElements(
+      By.xpath("//*[contains(text(), \"Server settings aren't available\")]"),
+    );
+    return found.length > 0;
+  }
+
+  /** The labels of the settings the server offered, in the order shown. */
+  async serverSettingLabels(): Promise<string[]> {
+    const fields = await this.d.findElements(By.css("[aria-label]"));
+    const labels = await Promise.all(fields.map(async (field) => field.getAttribute("aria-label")));
+    return labels.filter((label): label is string => Boolean(label));
+  }
+
+  /**
+   * Type `value` into the setting whose label is `label`.
+   *
+   * Two kinds of control answer to a label here. A setting the server calls
+   * markup is edited in a WYSIWYG field, which is a `contenteditable` and not
+   * an input: `clear()` throws on one, so what stands in for it is selecting
+   * what is already there and typing over it.
+   */
+  async setServerSetting(label: string, value: string): Promise<void> {
+    const field = await this.d.wait(until.elementLocated(this.bySettingLabel(label)), 10000);
+    if (await isTextInput(field)) {
+      await field.clear();
+      await field.sendKeys(value);
+      return;
+    }
+    await field.click();
+    await this.d.actions().keyDown(Key.CONTROL).sendKeys("a").keyUp(Key.CONTROL).perform();
+    await field.sendKeys(value);
+  }
+
+  /**
+   * What the setting labelled `label` currently reads as.
+   *
+   * The **text**, not the markup: a rich field holds `<p>hello</p>` for what an
+   * operator typed as "hello", so comparing markup would assert on the editor's
+   * normalisation rather than on the value.
+   */
+  async serverSettingValue(label: string): Promise<string> {
+    const field = await this.d.wait(until.elementLocated(this.bySettingLabel(label)), 10000);
+    if (await isTextInput(field)) return (await field.getAttribute("value")) ?? "";
+    return (await field.getText()).trim();
+  }
+
+  /** Save the settings, and wait for the server to confirm the round trip. */
+  async saveServerSettings(): Promise<void> {
+    const save = await this.d.wait(until.elementLocated(this.bySettingsSave()), 10000);
+    await save.click();
+    // The button disables again once nothing differs from the snapshot the
+    // server sent back, which is the only signal that the save round-tripped
+    // rather than being accepted and dropped.
+    await this.d.wait(
+      async () => {
+        const [button] = await this.d.findElements(this.bySettingsSave());
+        return Boolean(button) && !(await button.isEnabled());
+      },
+      config.waitTimeout,
+      "the server never confirmed the settings save",
+    );
+  }
+
+  /** One setting's control, found by the label the server gave it. */
+  private bySettingLabel(label: string): By {
+    return By.css(`[aria-label="${cssAttrEscape(label)}"]`);
+  }
+
+  /** The settings pane's save button, whose label carries a pending count. */
+  private bySettingsSave(): By {
+    return By.xpath("//button[starts-with(normalize-space(.), 'Save changes')]");
+  }
+}
+
+/** Whether a control carries its value in the `value` attribute. */
+async function isTextInput(field: WebElement): Promise<boolean> {
+  const tag = (await field.getTagName()).toLowerCase();
+  return tag === "input" || tag === "textarea";
 }
 
 function cssAttrEscape(value: string): string {
