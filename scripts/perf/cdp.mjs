@@ -93,10 +93,10 @@ if (cmd === "metrics") {
       if (!size) continue;
       const v = parseInt(size.value, 16);
       // Only top-level and second-level nodes, to keep it readable.
-      if (name.split("/").length <= 2 && v > 1_000_000) rows.push([name, v]);
+      if (name.split("/").length <= (process.env.MEMDUMP_DEPTH ? Number(process.env.MEMDUMP_DEPTH) : 2) && v > (process.env.MEMDUMP_MIN ? Number(process.env.MEMDUMP_MIN) : 1_000_000)) rows.push([name, v]);
     }
     rows.sort((x, y) => y[1] - x[1]);
-    byPid[e.pid] = { name: names[e.pid] ?? "?", resident_MB: totals.resident_set_bytes ? (parseInt(totals.resident_set_bytes, 16) / 1048576).toFixed(1) : "?", private_MB: totals.private_footprint_bytes ? (parseInt(totals.private_footprint_bytes, 16) / 1048576).toFixed(1) : "?", top: rows.slice(0, 18).map(([n, v]) => n + " " + (v / 1048576).toFixed(1) + "MB") };
+    byPid[e.pid] = { name: names[e.pid] ?? "?", resident_MB: totals.resident_set_bytes ? (parseInt(totals.resident_set_bytes, 16) / 1048576).toFixed(1) : "?", private_MB: totals.private_footprint_bytes ? (parseInt(totals.private_footprint_bytes, 16) / 1048576).toFixed(1) : "?", top: rows.slice(0, process.env.MEMDUMP_TOP ? Number(process.env.MEMDUMP_TOP) : 18).map(([n, v]) => n + " " + (v / 1048576).toFixed(1) + "MB") };
   }
   console.log(JSON.stringify({ dumpOk: dump.result?.success, processes: byPid }, null, 1));
 } else if (cmd === "gc") {

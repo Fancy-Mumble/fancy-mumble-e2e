@@ -18,7 +18,8 @@ and a debug host and measures roughly twice as much.
 | `measure.ps1 -RootPid <pid> -Seconds 10 -Label x` | Samples the process tree under `<pid>`: CPU over the window, private working set, working set, commit, threads. |
 | `threads.ps1 -ProcId <pid>` | Per-thread CPU of one process with thread names, to see which loop is awake. |
 | `launch.sh <exe>` | Starts the client with a DevTools port on its WebView2 and its own profile under `.tmp/perf/`, prints the Windows pid. |
-| `cdp.mjs <port> <cmd>` | DevTools Protocol client: `metrics N` (renderer task/layout time, JS heap, DOM nodes), `eval <js>`, `css <text>` / `uncss` (inject a stylesheet live), `shot <png>`, `memdump` (memory-infra allocator breakdown per process). |
+| `cdp.mjs <port> <cmd>` | DevTools Protocol client: `metrics N` (renderer task/layout time, JS heap, DOM nodes), `eval <js>`, `css <text>` / `uncss` (inject a stylesheet live), `shot <png>`, `gc`, `memdump` (memory-infra allocator breakdown per process; `MEMDUMP_DEPTH`, `MEMDUMP_MIN`, `MEMDUMP_TOP` widen it). |
+| `heapsnap.mjs <port> [topN]` | V8 heap snapshot, summarised: self size by node type and by constructor, the biggest retained strings, and `NAME_GREP=<regex>` to total one class of object (e.g. `^blink::`). |
 | `run-starling.mts` | Keeps a harness-configured Starling on 64738 until killed; prints its operator port. |
 | `flood.mts [total] [perSecond] [bots] [channel]` | Bots post a realistic mix of messages - short, long, markdown, links, inline images - into the channel. |
 | `realistic.sh <label>` | The whole scenario: launch, connect to the saved `localhost` server, sample idle, flood 3000 messages, sample idle twice, scroll the history, sample again. |
@@ -53,3 +54,23 @@ with the mic open is the capture thread itself (`rodio-mic-reader` or
 The renderer's share grows with the history it holds; the GPU process sits at
 40-80 MB and tracks window size, not content. `--enable-low-end-device-mode`
 and the `--force-gpu-mem-*` flags changed nothing measurable.
+
+## Where a loaded renderer's memory actually is
+
+From `memdump` on a client holding 3000 messages with 150 inline images:
+
+| Allocator | Size | What it is |
+| --- | --- | --- |
+| `cc/tile_memory` | 55-79 MB | Compositor tiles. Scales with **window area**, not with the conversation. |
+| `blink_gc` | 57 MB | The DOM and its layout/paint objects. Scales with mounted rows. |
+| `v8` | 35-40 MB | The JS heap: the store's message array, React's tree. |
+| `malloc` | 34-36 MB | Everything else Blink allocates outside its GC heap. |
+| `web_cache` | 18 MB | Decoded images (10.8 MB) and script sources (6.4 MB). |
+
+The JS heap itself is small next to those: a snapshot of the loaded page came
+to 48 MB of self sizes, of which strings over 20 KB - the inline images still
+held inline - were only 1.2 MB once the offloader had done its pass.
+
+`content-visibility: auto` on the message rows was measured and **rejected**:
+it moved the total by ~3 MB, inside the noise, because the render window
+already keeps the mounted row count low.
