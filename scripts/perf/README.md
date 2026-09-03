@@ -55,6 +55,21 @@ The renderer's share grows with the history it holds; the GPU process sits at
 40-80 MB and tracks window size, not content. `--enable-low-end-device-mode`
 and the `--force-gpu-mem-*` flags changed nothing measurable.
 
+## The trap: working set is not a stable number
+
+The same client, holding the same 3000 messages, measured **391 MB** thirty
+seconds after a burst of scrolling and **63 MB** forty seconds later with
+nothing touching it. Windows trims a process's working set when it goes
+quiet, and WebView2 trims its own on top of that (`SetMemoryUsageTargetLevel`,
+see `app/webview.rs`).
+
+So a single before/after pair proves nothing: the reading depends mostly on
+how recently the window was active. Run-to-run spread on nominally identical
+configurations here was 302-391 MB. To compare two builds, hold the activity
+pattern identical, take several samples, and treat anything under ~50 MB as
+noise. Counts that do not fluctuate - mounted rows, DOM nodes, files in the
+offload store - are far better evidence that a change did what it claims.
+
 ## Where a loaded renderer's memory actually is
 
 From `memdump` on a client holding 3000 messages with 150 inline images:
