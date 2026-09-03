@@ -1,0 +1,645 @@
+<title>Standard Minus Nebula</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap">
+<style>
+/* Palette transcribed from ui/src/ui/nebula/tokens.ts, so this document,
+   nebula-parity-spec.html and nebula-v3-gap-plan.html read as one set. Light is
+   the bare :root; dark is redefined twice, and only ever at token level. */
+:root{
+--bg:#fdfbf6;--card:#ffffff;--card2:rgba(40,48,80,.05);
+--line:rgba(40,48,80,.09);--line2:rgba(40,48,80,.16);
+--text:#252a3c;--muted:#666e85;--dim:#98a0b4;
+--accent:#4a6fc4;--accent-soft:rgba(74,111,196,.12);--accent-line:rgba(74,111,196,.34);
+--ok:#1ba572;--ok-soft:rgba(27,165,114,.11);
+--bad:#b8544f;--bad-soft:rgba(184,84,79,.11);
+--warn:#9a742f;--warn-soft:rgba(154,116,47,.13);
+--tint:radial-gradient(1100px 520px at 18% -8%,rgba(22,145,220,.10),transparent 58%),radial-gradient(900px 560px at 104% 104%,rgba(110,120,235,.07),transparent 62%);
+--sans:"Geist","Inter",system-ui,-apple-system,"Segoe UI",sans-serif;
+--mono:"Geist Mono",ui-monospace,"Cascadia Mono","Consolas",monospace;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+--bg:#141d33;--card:rgba(120,172,255,.07);--card2:rgba(130,178,255,.10);
+--line:rgba(135,180,255,.11);--line2:rgba(135,180,255,.20);
+--text:#f1f5ff;--muted:#9fb3dd;--dim:#65779f;
+--accent:#7c9fe8;--accent-soft:rgba(124,159,232,.18);--accent-line:rgba(124,159,232,.40);
+--ok:#3cd88e;--ok-soft:rgba(60,216,142,.13);
+--bad:#f57e7e;--bad-soft:rgba(245,126,126,.13);
+--warn:#ecba55;--warn-soft:rgba(236,186,85,.13);
+--tint:radial-gradient(1100px 520px at 18% -8%,rgba(65,180,249,.16),transparent 58%),radial-gradient(900px 560px at 104% 104%,rgba(125,130,255,.12),transparent 62%);
+}}
+:root[data-theme="dark"]{
+--bg:#141d33;--card:rgba(120,172,255,.07);--card2:rgba(130,178,255,.10);
+--line:rgba(135,180,255,.11);--line2:rgba(135,180,255,.20);
+--text:#f1f5ff;--muted:#9fb3dd;--dim:#65779f;
+--accent:#7c9fe8;--accent-soft:rgba(124,159,232,.18);--accent-line:rgba(124,159,232,.40);
+--ok:#3cd88e;--ok-soft:rgba(60,216,142,.13);
+--bad:#f57e7e;--bad-soft:rgba(245,126,126,.13);
+--warn:#ecba55;--warn-soft:rgba(236,186,85,.13);
+--tint:radial-gradient(1100px 520px at 18% -8%,rgba(65,180,249,.16),transparent 58%),radial-gradient(900px 560px at 104% 104%,rgba(125,130,255,.12),transparent 62%);
+}
+
+*{box-sizing:border-box}
+body{margin:0;background:var(--tint),var(--bg);background-attachment:fixed;color:var(--text);
+     font-family:var(--sans);font-size:15px;line-height:1.55;-webkit-font-smoothing:antialiased}
+.wrap{max-width:1080px;margin:0 auto;padding:56px 28px 110px;display:flex;flex-direction:column;gap:46px}
+
+.eyebrow{font-family:var(--mono);font-size:10.5px;font-weight:500;letter-spacing:.16em;
+         text-transform:uppercase;color:var(--dim)}
+h1{margin:12px 0 0;font-size:clamp(30px,4.6vw,46px);font-weight:600;letter-spacing:-.022em;
+   line-height:1.1;text-wrap:balance;max-width:18ch}
+.standfirst{margin:16px 0 0;max-width:64ch;font-size:16px;color:var(--muted)}
+
+.tally{margin-top:28px;display:flex;flex-wrap:wrap;gap:10px}
+.count{display:flex;align-items:baseline;gap:8px;padding:10px 15px;border-radius:12px;
+       background:var(--card);border:1px solid var(--line)}
+.count b{font-family:var(--mono);font-size:19px;font-weight:500;font-variant-numeric:tabular-nums}
+.count span{font-size:12.5px;color:var(--muted)}
+.count.absent b{color:var(--bad)}
+.count.partial b{color:var(--accent)}
+.count.done b{color:var(--ok)}
+
+h2{margin:0;font-size:22px;font-weight:600;letter-spacing:-.014em;text-wrap:balance}
+.zone{display:flex;flex-direction:column;gap:16px;scroll-margin-top:24px}
+.zone>p{margin:0;max-width:64ch;color:var(--muted);font-size:14px}
+.subhead{font-family:var(--mono);font-size:10.5px;font-weight:500;letter-spacing:.14em;
+         text-transform:uppercase;color:var(--dim);margin:10px 0 -6px}
+
+.index{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:8px}
+.index a{display:flex;align-items:baseline;gap:10px;padding:11px 14px;border-radius:11px;
+         border:1px solid var(--line);background:var(--card);color:inherit;text-decoration:none;font-size:13.5px}
+.index a:hover,.index a:focus-visible{border-color:var(--accent-line);background:var(--accent-soft)}
+.index a:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.index .c{margin-left:auto;font-family:var(--mono);font-size:11.5px;
+          font-variant-numeric:tabular-nums;color:var(--muted)}
+
+/* One finding. The chip is the verdict, the mono line is where it was checked -
+   both carry information, neither is ornament. */
+.items{display:flex;flex-direction:column;gap:1px;background:var(--line);
+       border:1px solid var(--line);border-radius:14px;overflow:hidden}
+.item{background:var(--bg);padding:16px 18px;display:flex;flex-direction:column;gap:7px}
+.item .head{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
+.item h3{margin:0;font-size:14.5px;font-weight:600;letter-spacing:-.005em}
+.item p{margin:0;max-width:70ch;font-size:13.5px;color:var(--muted)}
+.item .where{font-family:var(--mono);font-size:11.5px;color:var(--dim);
+             overflow-x:auto;white-space:nowrap;padding-bottom:2px}
+
+.chip{flex:none;font-family:var(--mono);font-size:10px;font-weight:500;letter-spacing:.09em;
+      text-transform:uppercase;padding:3px 8px;border-radius:999px;border:1px solid transparent}
+.chip.absent{color:var(--bad);background:var(--bad-soft);border-color:var(--bad-soft)}
+.chip.partial{color:var(--accent);background:var(--accent-soft);border-color:var(--accent-line)}
+.chip.done{color:var(--ok);background:var(--ok-soft);border-color:var(--ok-soft)}
+.chip.parity{color:var(--muted);background:var(--card2);border-color:var(--line)}
+
+.callout{border:1px solid var(--ok-soft);background:var(--ok-soft);border-radius:14px;
+         padding:22px 24px;display:flex;flex-direction:column;gap:12px}
+.callout h2{font-size:19px}
+.callout p{margin:0;max-width:68ch;font-size:14px;color:var(--text)}
+.callout .where{font-family:var(--mono);font-size:11.5px;color:var(--muted);
+                overflow-x:auto;white-space:nowrap}
+
+.legend{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:1px;
+        background:var(--line);border:1px solid var(--line);border-radius:14px;overflow:hidden}
+.legend>div{background:var(--bg);padding:14px 16px;display:flex;flex-direction:column;gap:6px}
+.legend p{margin:0;font-size:12.5px;color:var(--muted)}
+
+.note{border-top:1px solid var(--line);padding-top:18px;font-size:13px;color:var(--muted);max-width:70ch}
+code{font-family:var(--mono);font-size:.92em}
+a{color:var(--accent)}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+
+<div class="wrap">
+
+<header>
+  <div class="eyebrow">UI packs · audit · 30 August 2026 · second pass</div>
+  <h1>Standard minus Nebula</h1>
+  <p class="standfirst">
+    Everything Standard's interface does that Nebula's does not, read off the working
+    tree rather than off the notes. Re-run after a large uncommitted round of work:
+    seventeen items from the first pass are now built, including the one that mattered
+    most. Fourteen features remain absent.
+  </p>
+
+  <div class="tally">
+    <div class="count absent"><b>14</b><span>features absent outright</span></div>
+    <div class="count partial"><b>8</b><span>smaller gaps still open</span></div>
+    <div class="count done"><b>17</b><span>closed in this round</span></div>
+    <div class="count done"><b>11</b><span>closed before it</span></div>
+  </div>
+</header>
+
+<section class="zone">
+  <h2>How to read this</h2>
+  <div class="legend">
+    <div><span class="chip absent">Absent</span><p>Nebula has no equivalent. Nothing in the pack, nothing reused from Standard.</p></div>
+    <div><span class="chip partial">Partial</span><p>Reachable but incomplete, or reachable only from Standard's side.</p></div>
+    <div><span class="chip done">Closed</span><p>Built since the first pass, or built before it and still listed as missing elsewhere.</p></div>
+    <div><span class="chip parity">Parity</span><p>Checked and level, or ahead. Nothing to do.</p></div>
+  </div>
+  <p>
+    Derived the way the parity spec was: an import graph out of <code>NebulaClientApp</code>
+    and <code>standard/App</code>, so anything Nebula borrows from Standard counts as
+    present, then a diff of the backend commands, store actions, preference fields and
+    <code>core/features/*</code> modules each side reaches. Every item names the file or
+    symbol it was checked against. Nebula's work is uncommitted at
+    <code>develop @ 3761d7b</code>; the numbers describe the working tree.
+  </p>
+</section>
+
+<section class="zone">
+  <h2>Index</h2>
+  <div class="index">
+    <a href="#i18n">Nebula speaks four languages <span class="c">new</span></a>
+    <a href="#features">Features absent outright <span class="c">14</span></a>
+    <a href="#smaller">Smaller gaps <span class="c">8</span></a>
+    <a href="#closed">Closed in this round <span class="c">17</span></a>
+    <a href="#earlier">Closed before it <span class="c">11</span></a>
+    <a href="#parity">Verified at parity <span class="c">8</span></a>
+  </div>
+</section>
+
+<section class="zone" id="i18n">
+  <h2>The headline from this round</h2>
+  <div class="callout">
+    <h2>Nebula's own text is translatable now</h2>
+    <p>
+      The first pass found 23 of Nebula's 94 <code>.tsx</code> files calling
+      <code>useTranslation</code>, with the entire client shell hardcoded English. It is
+      now 80 of 102, behind a Nebula-specific catalogue — eight namespaces, 537 keys,
+      complete in English, German, French and Chinese, with the shared strings moved out
+      to <code>locales/common</code> so the two packs no longer fight over one file.
+    </p>
+    <p>
+      Almost all of the remaining 22 files are layout primitives with no copy in them.
+      Three do hold copy: Profile settings (41 strings), Voice settings (27) and the voice
+      gate (3), plus one stray progress line in Personalize. That is the whole residue.
+    </p>
+    <p class="where">core/locales/nebula/{en,de,fr,zh} · core/i18n/nebula.ts · 537 keys each</p>
+  </div>
+</section>
+
+<section class="zone" id="features">
+  <h2>Features absent outright</h2>
+  <p>
+    All fourteen are recorded in the parity spec's "Not in scope" list as deliberate, except
+    the two marked otherwise. Every one re-verified against the working tree.
+  </p>
+  <div class="items">
+
+    <div class="item">
+      <div class="head"><h3>Calendar and meetings</h3><span class="chip absent">Absent</span></div>
+      <p>Month and week views, the event dialog and detail card, its context menu, date and
+      time inputs, description editor, work-hours popover. Nebula does run
+      <code>useCalendarReminders</code> and does answer <code>fancy://meeting/…</code>, so a
+      reminder can fire and a link can drop you into a room — with nothing anywhere that
+      shows the event it belongs to.</p>
+      <p class="where">standard/components/chat/calendar/ (12 files) · nebula NebulaRuntime.tsx:7-8</p>
+    </div>
+
+    <div class="item">
+      <div class="head"><h3>Join-time onboarding</h3><span class="chip absent">Absent</span></div>
+      <p>Not recorded anywhere. The multi-step wizard a new member sees on first connect to a
+      server with onboarding enabled: default-channel preview, three to five questions, one
+      submit that applies the chosen groups and channels. Nebula ships the administration page
+      that <em>authors</em> those questions and no surface that asks them, so an admin can
+      configure onboarding from Nebula that Nebula's own users never see.</p>
+      <p class="where">standard/components/onboarding/OnboardingModal.tsx · standard/App.tsx:416 · nebula: admin/OnboardingAdmin.tsx only</p>
+    </div>
+
+    <div class="item">
+      <div class="head"><h3>First-run setup wizard</h3><span class="chip absent">Absent</span></div>
+      <p>Theme choice, user mode, and the minimal-mode suggestion for weak hardware. Nebula's
+      own Advanced page has a reset that reloads with the comment "so <code>isFirstRun()</code>
+      re-evaluates and the welcome page shows" — in Nebula nothing shows, and the reset lands
+      on the connect screen with the setup never offered.</p>
+      <p class="where">standard/pages/WelcomePage.tsx · standard/App.tsx:398 · nebula AdvancedSettings.tsx</p>
+    </div>
+
+    <div class="item">
+      <div class="head"><h3>My shared files</h3><span class="chip absent">Absent</span></div>
+      <p>No way to see, or delete, what you have uploaded to the file server. Nebula reuses
+      the admin-side file preview only; the three user-side modules are still unreferenced.</p>
+      <p class="where">standard/components/chat/MySharedFilesPanel.tsx · core/features/fileserver/{fileTypes,previewLoader} · standard/components/fileserver/fileServerMe.ts</p>
+    </div>
+
+    <div class="item">
+      <div class="head"><h3>Rich presence panel</h3><span class="chip absent">Absent</span></div>
+      <p>Nebula carries the Privacy switch that turns rich presence on, and the bridge-state
+      copy that explains what it is doing, but not the panel that shows what anyone is
+      playing.</p>
+      <p class="where">standard/components/chat/presence/RichPresencePanel.tsx · nebula PrivacySettings.tsx</p>
+    </div>
+
+    <div class="item">
+      <div class="head"><h3>Scheduled messages</h3><span class="chip absent">Absent</span></div>
+      <p>No panel, and no header entry to reach one.</p>
+      <p class="where">standard/components/chat/scheduled/ScheduledMessagesPanel.tsx</p>
+    </div>
+
+    <div class="item">
+      <div class="head"><h3>Watch together, host side</h3><span class="chip partial">Partial</span></div>
+      <p>Nebula runs <code>useWatchLifecycle</code> and renders <code>WatchTogetherCard</code>,
+      so it participates in a session correctly — host re-election, participant pruning and
+      all. What it cannot do is start one: no entry in the message menu, and no banner for the
+      session you are in. The message menu was rebuilt this round and did not gain it.</p>
+      <p class="where">core/features/chat/watch/useWatchStart · standard/components/chat/watch/{WatchStartButton,ActiveWatchBanner}.tsx</p>
+    </div>
+
+    <div class="item">
+      <div class="head"><h3>Stream annotation overlay</h3><span class="chip partial">Partial</span></div>
+      <p>Nebula renders the drawing-overlay window when the shell launches it, and never
+      opens it — the three backend commands that drive annotation are called nowhere in the
+      pack.</p>
+      <p class="where">open_drawing_overlay / send_draw_stroke / close_drawing_overlay — standard ScreenShareViewer.tsx:509 · nebula index.tsx (render only)</p>
+    </div>
+
+    <div class="item">
+      <div class="head"><h3>Direct-message popout window</h3><span class="chip partial">Partial</span></div>
+      <p>Not recorded anywhere. Same shape as the overlay above: Nebula renders
+      <code>DmPopoutPage</code> for a window launched with <code>?popout-dm</code>, but nothing
+      in the pack calls <code>open_dm_popout</code>, so no conversation can be popped out.
+      The image popout it sits beside was closed this round; this one was not.</p>
+      <p class="where">standard ChatView.tsx:423 · nebula index.tsx:19,29 (render only)</p>
+    </div>
+
+    <div class="item">
+      <div class="head"><h3>Per-message translation</h3><span class="chip absent">Absent</span></div>
+      <p>Nebula reuses the translation picker overlay for the UI's own languages; translating
+      an individual message is not offered.</p>
+      <p class="where">nebula NebulaRuntime.tsx (TranslationPickerOverlay only)</p>
+    </div>
+
+    <div class="item">
+      <div class="head"><h3>Dragging channels and users</h3><span class="chip absent">Absent</span></div>
+      <p>No channel reordering by drag, and no dragging a person onto a channel to move them.
+      Nebula's only drag-reorder is the server rail. Moving a person is now possible from the
+      new dialog, but not with the pointer.</p>
+      <p class="where">standard/utils/{channelReorderDnd,userMoveDnd}.tsx · invoke("join_channel") called nowhere in Nebula</p>
+    </div>
+
+    <div class="item">
+      <div class="head"><h3>Saved-server editor</h3><span class="chip absent">Absent</span></div>
+      <p>Nebula adds and removes saved servers and reorders the rail; it cannot edit one.</p>
+      <p class="where">standard/components/server/ServerEditSheet.tsx</p>
+    </div>
+
+    <div class="item">
+      <div class="head"><h3>Channel recording</h3><span class="chip absent">Absent</span></div>
+      <p>The expert-mode modal that records inbound audio — start/stop, output directory,
+      filename template — and the channel-menu entry that opens it.</p>
+      <p class="where">standard/components/sidebar/RecordingModal.tsx · channelSidebar.recordAudio</p>
+    </div>
+
+    <div class="item">
+      <div class="head"><h3>Mobile layout</h3><span class="chip absent">Absent</span></div>
+      <p>Call controls, message action sheet, bottom sheet, profile sheet, swipeable card and
+      the swipe-drawer hook. Nebula reads <code>isMobile</code> in exactly one place, to hide
+      a stream popout entry.</p>
+      <p class="where">standard/components/chat/mobile/*, elements/MobileBottomSheet.tsx, elements/SwipeableCard.tsx, hooks/useSwipeDrawer.ts</p>
+    </div>
+
+  </div>
+</section>
+
+<section class="zone" id="smaller">
+  <h2>Smaller gaps</h2>
+  <p>
+    Four of the eight are in the sidebar, which is the one zone this round did not touch.
+  </p>
+  <div class="items">
+
+    <div class="item">
+      <div class="head"><h3>The channel tree does not collapse</h3><span class="chip partial">Partial</span></div>
+      <p>Nebula indents by depth and draws every channel. Standard collapses branches, keeps
+      separate collapsible sections for meeting rooms and private rooms, and remembers both
+      along with which sidebar tab was open.</p>
+      <p class="where">preferences sidebarSections / privateRooms / sidebarActiveTab — read by standard ChannelSidebar.tsx, unread in Nebula</p>
+    </div>
+
+    <div class="item">
+      <div class="head"><h3>The channel-viewer control still does nothing</h3><span class="chip partial">Partial</span></div>
+      <p>Nebula's Personalize page offers Classic / Flat / Modern and writes
+      <code>channelViewerStyle</code>. Only Standard's sidebar reads it. A setting that
+      visibly changes nothing is worse than an absent one, so this wants either the three
+      layouts or the control removed.</p>
+      <p class="where">nebula PersonalizeSettings.tsx:613-614 (only writer) · standard ChannelSidebar.tsx:756,777,798 (only readers)</p>
+    </div>
+
+    <div class="item">
+      <div class="head"><h3>Server order is stored under a second key</h3><span class="chip partial">Partial</span></div>
+      <p>Standard's tab bar persists <code>serverTabOrder</code>; Nebula's rail persists
+      <code>serverRailOrder</code>. Both are the same user answering the same question, so
+      ordering the servers in one design leaves the other in its old order. Everything else in
+      Nebula deliberately writes the records Standard writes.</p>
+      <p class="where">nebula NebulaClientApp.tsx:497,529 · standard ServerTabsBar.tsx:151,184,302</p>
+    </div>
+
+    <div class="item">
+      <div class="head"><h3>No sign that the microphone is busy</h3><span class="chip partial">Partial</span></div>
+      <p>Standard marks the channel row when another application holds the input device, and
+      names it. Nebula has nothing for it.</p>
+      <p class="where">channelSidebar.micInUse / micInUseBy</p>
+    </div>
+
+    <div class="item">
+      <div class="head"><h3>No badge for new pins or new downloads</h3><span class="chip partial">Partial</span></div>
+      <p>Both panels are reachable from the header menu; neither entry says there is something
+      new in it. The header gained the key-trust and history badges this round and not these.</p>
+      <p class="where">nebula ChatHeader.tsx:180-181</p>
+    </div>
+
+    <div class="item">
+      <div class="head"><h3>Upload in flight cannot be cancelled</h3><span class="chip partial">Partial</span></div>
+      <p>Nebula draws the progress line for a staged upload and offers no way to stop it;
+      <code>cancel_upload</code> is called nowhere in the pack.</p>
+      <p class="where">standard ChatView.tsx (cancel_upload) · nebula Composer.tsx (progress only)</p>
+    </div>
+
+    <div class="item">
+      <div class="head"><h3>Changing the name a server rejected</h3><span class="chip partial">Partial</span></div>
+      <p>Standard's password prompt carries a second path: when the server refuses the
+      username, change it and retry on the spot. Nebula's connect overlay offers only the
+      password or the code, so a taken name means backing out to edit the saved server.</p>
+      <p class="where">standard/hooks/usePasswordPrompt.ts handleChangeUsername · nebula ConnectionOverlays.tsx</p>
+    </div>
+
+    <div class="item">
+      <div class="head"><h3>Three settings pages still hold English</h3><span class="chip partial">Partial</span></div>
+      <p>Profile (41 strings), Voice (27) and the voice gate (3), plus one progress line in
+      Personalize. These are the pages the catalogue has not reached yet; the search index
+      already accounts for them, carrying a <code>titleKey</code> for translated pages and a
+      plain English title for these.</p>
+      <p class="where">nebula settings/{ProfileSettings,VoiceSettings,VoiceGate}.tsx · settingsSearchIndex.ts</p>
+    </div>
+
+  </div>
+</section>
+
+<section class="zone" id="closed">
+  <h2>Closed in this round</h2>
+  <p>
+    Every item below was open at the first pass this morning and is built in the working
+    tree now. Nothing here needs designing again.
+  </p>
+  <div class="items">
+
+    <div class="item">
+      <div class="head"><h3>Live documents</h3><span class="chip done">Closed</span></div>
+      <p>The largest single item on the old list. Nebula does not redraw the editor — it docks
+      Standard's, which brings the ribbon, sidebar, export dialog and the whole apparatus
+      behind them, in a region above the conversation with a drag handle and a library beside
+      it. The launch dialog and banner come with it, and the composer's attach menu gained
+      "New document".</p>
+      <p class="where">nebula/components/chat/livedoc/{LiveDocDock.tsx,useNebulaLiveDoc.ts} · NebulaClientApp.tsx:27,98-99,1546 · Composer.tsx onOpenLiveDoc</p>
+    </div>
+
+    <div class="item">
+      <div class="head"><h3>Friends</h3><span class="chip done">Closed</span></div>
+      <p>Not a port of Standard's page but a replacement for Nebula's own Messages column,
+      which listed whoever happened to be on the connected server. It is now the saved,
+      cross-server set from <code>friendsStorage</code>, resolved live across every open
+      connection by certificate hash, and an offline friend can still be opened because that
+      chat is a persisted end-to-end-encrypted channel.</p>
+      <p class="where">nebula/{friends.ts,useFriends.ts} · components/sidebar/{FriendsPanel,FriendList}.tsx · DirectMessageList.tsx deleted</p>
+    </div>
+
+    <div class="item">
+      <div class="head"><h3>Settings search</h3><span class="chip done">Closed</span></div>
+      <p>Built differently on purpose, and the reasoning is worth keeping: Standard's panels
+      self-register at module scope, which works because they are all statically imported.
+      Nebula loads one page per chunk, so self-registration would only index pages you had
+      already visited. The index is stated in one eagerly-loaded module instead, and pages
+      publish their headings as <code>data-settings-anchor</code> so a result can flash the
+      row it points at.</p>
+      <p class="where">nebula/components/settings/{SettingsSearch.tsx,settingsSearchIndex.ts} (459 lines)</p>
+    </div>
+
+    <div class="item">
+      <div class="head"><h3>Channel info panel</h3><span class="chip done">Closed</span></div>
+      <p>573 lines, and it brings <code>update_channel</code> and <code>key_takeover</code>
+      into the pack with it — the channel's own description was previously unreadable from
+      Nebula and uneditable anywhere in it.</p>
+      <p class="where">nebula/components/chat/ChannelInfoPanel.tsx</p>
+    </div>
+
+    <div class="item">
+      <div class="head"><h3>Password prompt for a protected channel</h3><span class="chip done">Closed</span></div>
+      <p>A channel that asks for a password can be entered from Nebula now.</p>
+      <p class="where">nebula/components/sidebar/ChannelPasswordDialog.tsx</p>
+    </div>
+
+    <div class="item">
+      <div class="head"><h3>Move everyone out of a channel</h3><span class="chip done">Closed</span></div>
+      <p>The whole room, from the channel menu, rather than one person at a time from the user
+      menu.</p>
+      <p class="where">nebula/components/sidebar/MoveUsersDialog.tsx</p>
+    </div>
+
+    <div class="item">
+      <div class="head"><h3>Purge channel history</h3><span class="chip done">Closed</span></div>
+      <p>Its own confirm dialog, beside the single-message and selected-run deletes Nebula
+      already had.</p>
+      <p class="where">nebula/components/sidebar/PurgeHistoryDialog.tsx</p>
+    </div>
+
+    <div class="item">
+      <div class="head"><h3>Clicking a mention</h3><span class="chip done">Closed</span></div>
+      <p>A mention in a message that has arrived opens the person. Nebula draws its own popover
+      rather than reusing Standard's.</p>
+      <p class="where">nebula/components/chat/MentionPopover.tsx (205 lines)</p>
+    </div>
+
+    <div class="item">
+      <div class="head"><h3>Who has read this</h3><span class="chip done">Closed</span></div>
+      <p>The reader list on the message menu, from the same store that drives the indicator.</p>
+      <p class="where">nebula MessageMenu.tsx — getReadersForMessage</p>
+    </div>
+
+    <div class="item">
+      <div class="head"><h3>Pop an image out into its own window</h3><span class="chip done">Closed</span></div>
+      <p>On the message menu, behind a new shared helper rather than a second copy of the
+      payload-building.</p>
+      <p class="where">core/features/chat/imagePopout.ts (new) · nebula MessageMenu.tsx — open_image_popout</p>
+    </div>
+
+    <div class="item">
+      <div class="head"><h3>Timestamps honour the clock settings</h3><span class="chip done">Closed</span></div>
+      <p>12/24-hour and "show server time" are read at the top of the client and passed down,
+      re-read on <code>preferences-changed</code> so the conversation behind the settings page
+      updates as you change it. The OS format is asked for once via the backend, because
+      WebView2's <code>Intl</code> probe reports 12-hour on a system set to 24.</p>
+      <p class="where">nebula/useTimeDisplay.ts</p>
+    </div>
+
+    <div class="item">
+      <div class="head"><h3>Compact mode, always-show actions, custom text size</h3><span class="chip done">Closed</span></div>
+      <p>All three read from the same personalization record Standard reads, including the odd
+      part where "large" means whatever <code>fontSizeCustomPx</code> holds — deliberately
+      matched rather than corrected, so the two designs cannot disagree about what a stored
+      preset means.</p>
+      <p class="where">nebula/useChatDisplay.ts</p>
+    </div>
+
+    <div class="item">
+      <div class="head"><h3>Noise suppression, in detail</h3><span class="chip done">Closed</span></div>
+      <p><code>denoiser_params</code> now has a Nebula surface.</p>
+      <p class="where">nebula settings/VoiceSettings.tsx</p>
+    </div>
+
+    <div class="item">
+      <div class="head"><h3>Exclusive microphone access</h3><span class="chip done">Closed</span></div>
+      <p><code>exclusive_input</code> likewise.</p>
+      <p class="where">nebula settings/VoiceSettings.tsx</p>
+    </div>
+
+    <div class="item">
+      <div class="head"><h3>GIF provider key</h3><span class="chip done">Closed</span></div>
+      <p>The Klipy API key field, which is what makes the GIF popover Nebula reuses work on a
+      personal key. Advanced is now level with Standard's on all fifty controls.</p>
+      <p class="where">nebula settings/AdvancedSettings.tsx</p>
+    </div>
+
+    <div class="item">
+      <div class="head"><h3>Quick search has a key binding</h3><span class="chip done">Closed</span></div>
+      <p><code>openQuickSearch</code> is on the shortcuts page and wired into the client.</p>
+      <p class="where">nebula ShortcutsSettings.tsx:55 · NebulaClientApp.tsx:1283</p>
+    </div>
+
+    <div class="item">
+      <div class="head"><h3>Nebula's own text is translatable</h3><span class="chip done">Closed</span></div>
+      <p>Covered in full above: 80 of 102 files, a dedicated catalogue of 537 keys complete in
+      four languages, shared strings split out to <code>locales/common</code>.</p>
+      <p class="where">core/locales/nebula/ · core/i18n/nebula.ts</p>
+    </div>
+
+  </div>
+</section>
+
+<section class="zone" id="earlier">
+  <h2>Closed before this round</h2>
+  <p>
+    The parity spec and the v3 gap plan still list these as open, and three of them sit in the
+    parity spec's <em>"Not in scope"</em> list — which makes that list the least reliable part
+    of it. Kept here so the older documents can be reconciled against this one.
+  </p>
+  <div class="items">
+    <div class="item">
+      <div class="head"><h3>The server rail, whole</h3><span class="chip done">Closed</span></div>
+      <p>Tiles and their states, the unread pip, drag to reorder, the hover card, the pinned
+      panel, and the choice of whether servers live on the rail or the title bar.</p>
+      <p class="where">nebula/components/sidebar/{ServerRail,ServerRailCard,ServerRailPanel}.tsx</p>
+    </div>
+    <div class="item">
+      <div class="head"><h3>Drag and drop onto the composer, and the pasted-image tray</h3><span class="chip done">Closed</span></div>
+      <p>Both listed as out of scope. Nebula listens on the webview's own drag-drop event and
+      handles paste, including the WebKitGTK path where <code>clipboardData</code> arrives
+      empty.</p>
+      <p class="where">nebula NebulaClientApp.tsx (stageFiles) · Composer.tsx:412-433</p>
+    </div>
+    <div class="item">
+      <div class="head"><h3>Focused single-stream view</h3><span class="chip done">Closed</span></div>
+      <p>Out of scope in the spec, but the share stage has a focused feed with its own menu.
+      Redesigned rather than missing.</p>
+      <p class="where">nebula components/chat/share/ScreenShareStage.tsx</p>
+    </div>
+    <div class="item">
+      <div class="head"><h3>Encryption state and key trust</h3><span class="chip done">Closed</span></div>
+      <p>The header badge, and the whole set of persistent-chat overlays behind it — key
+      verification, custodian prompt, key-share warning, persistence and dispute banners —
+      reused entire.</p>
+      <p class="where">nebula chat/KeyTrustBadge.tsx · NebulaClientApp.tsx</p>
+    </div>
+    <div class="item">
+      <div class="head"><h3>Mute this channel, and quick reactions on the message menu</h3><span class="chip done">Closed</span></div>
+      <p>The bell state is drawn both ways in the channel menu; the reaction strip and its
+      more-reactions button are on the message menu.</p>
+      <p class="where">nebula ChannelMenu.tsx · MessageMenu.tsx</p>
+    </div>
+    <div class="item">
+      <div class="head"><h3>Sending and failed message states, pictures in search, location, selecting a run</h3><span class="chip done">Closed</span></div>
+      <p>Four smaller items from the older lists, all present.</p>
+      <p class="where">nebula MessageRow.tsx · GlobalSearch.tsx · user/LocationMap.tsx · NebulaClientApp.tsx (selection)</p>
+    </div>
+  </div>
+</section>
+
+<section class="zone" id="parity">
+  <h2>Verified at parity, or ahead</h2>
+  <p>
+    Checked and found equal or better, so nothing below needs work.
+  </p>
+  <div class="items">
+
+    <div class="item">
+      <div class="head"><h3>Administration</h3><span class="chip parity">Parity</span></div>
+      <p>All fourteen of Standard's tabs, behind the same capability gating, at 10,161 lines
+      against Standard's 8,211 — and Standard's onboarding admin is counted outside that
+      figure. ACL covers rules, groups and users; server settings match control for control.</p>
+      <p class="where">nebula/components/admin/ (14 pages) vs standard/pages/admin/</p>
+    </div>
+
+    <div class="item">
+      <div class="head"><h3>Settings navigation</h3><span class="chip parity">Parity</span></div>
+      <p>Every Standard tab, in Standard's order, hidden by the same conditions — account
+      support, onboarding support, whether the server advertises plugins.</p>
+      <p class="where">nebula SettingsNav.tsx SETTINGS_NAV · standard SettingsPage.tsx</p>
+    </div>
+
+    <div class="item">
+      <div class="head"><h3>End-to-end encryption and key trust</h3><span class="chip parity">Parity</span></div>
+      <p>Reused whole, so there is no second implementation to keep in step.</p>
+      <p class="where">standard/components/security/PersistentChatOverlays.tsx</p>
+    </div>
+
+    <div class="item">
+      <div class="head"><h3>Plugins</h3><span class="chip parity">Parity</span></div>
+      <p>The interaction layer carries the trust prompt, the modal form, the component renderer
+      and plugin toasts; the slash-command menu is reused into the composer.</p>
+      <p class="where">standard/components/plugin/PluginInteractionLayer.tsx · SlashCommandMenu in nebula Composer.tsx</p>
+    </div>
+
+    <div class="item">
+      <div class="head"><h3>Runtime plumbing</h3><span class="chip parity">Parity</span></div>
+      <p>Deep links including <code>fancy://meeting</code>, notification-sound changes,
+      jump-to-user, the watch lifecycle, calendar reminders, translation application, the
+      welcome-message modal.</p>
+      <p class="where">nebula NebulaRuntime.tsx</p>
+    </div>
+
+    <div class="item">
+      <div class="head"><h3>Message menu</h3><span class="chip parity">Parity</span></div>
+      <p>Redrawn this round and now level: quick reactions, more reactions, reply, edit,
+      pin, copy, read-by, image popout, select a run, delete. Only "Watch together" is
+      still missing from it.</p>
+      <p class="where">nebula chat/MessageMenu.tsx vs standard chat/message/MessageContextMenu.tsx</p>
+    </div>
+
+    <div class="item">
+      <div class="head"><h3>Profile</h3><span class="chip parity">Ahead</span></div>
+      <p>Card colours, avatar frame, sticker, nameplate, name style, profile effect and
+      per-field visibility on one page rather than a panel plus four modals. Still the one
+      page carrying the most untranslated copy.</p>
+      <p class="where">nebula settings/ProfileSettings.tsx vs standard/pages/settings/ProfilePanel.tsx</p>
+    </div>
+
+    <div class="item">
+      <div class="head"><h3>User information</h3><span class="chip parity">Ahead</span></div>
+      <p>Nebula polls once a second and keeps 45 readings for live charts; Standard's
+      <code>useUserStats</code> asks once.</p>
+      <p class="where">nebula user/useLiveUserStats.ts</p>
+    </div>
+
+  </div>
+</section>
+
+<p class="note">
+  Scope note: file sharing, screen and camera sharing, reactions, pins, downloads, the user
+  menu, global search, the connect screen and colour themes were checked and are not in this
+  document because they came back level. Nebula also holds things Standard has no answer for —
+  mini mode, the pinned server rail panel, quick connect, the link guard, the cross-server
+  friends resolution, and the one profile card the channel viewer mounts too — which is a
+  different document.
+</p>
+
+</div>
