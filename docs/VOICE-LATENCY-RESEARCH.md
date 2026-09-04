@@ -5,9 +5,21 @@ Facts were verified against the working trees of `vendor/client` (378ea67),
 `vendor/starling` (1448e7c, v0.2.13) and `vendor/server`, plus the `rodio 0.22.2` source
 in the local cargo registry. Line numbers and code descriptions are as of that reading,
 which is what makes the analysis checkable; **most of §4's fix list has since been
-implemented** on `wip/voice-latency` in `vendor/client`, so §1 describes the code as it
-was and §4 says what each item is now. Numbers for the stock Mumble client and for Discord
-are from memory of their public defaults and are marked as such.
+implemented**, so §1 describes the code as it was and §4 says what each item is now.
+Numbers for the stock Mumble client and for Discord are from memory of their public
+defaults and are marked as such.
+
+> **The first implementation of §4 was lost.** It was written on 2026-09-03 on a branch
+> called `wip/voice-latency` and never pushed, while this document — which says it was
+> done — *was*. Pulling on another machine on 2026-09-04 produced a repository whose docs
+> described an adaptive jitter buffer, a 10 ms output buffer and `TCP_NODELAY`, and whose
+> code had none of them: `SpeakerBuffers` was still `HashMap<u32, VecDeque<f32>>`, the PLC
+> helper was still `#[allow(dead_code, reason = "kept for future jitter-buffer
+> integration")]`, and `set_nodelay` appeared nowhere in the workspace. No branch, no
+> stash, no dangling commit, on any machine. **Push the branch before writing the document
+> that says the branch exists.** §4 was reimplemented from this document on 2026-09-04
+> (`bcb5ae4`), which is the one good thing to be said for having written it in this much
+> detail.
 
 ## 0. TL;DR
 
@@ -205,9 +217,10 @@ legacy server's is much higher and the user has raised the client bitrate.
 
 ## 4. What to change, in order of milliseconds saved
 
-**Items 1, 2, 4, 5, 6 and 7 were implemented on 2026-09-03**, on the branch
-`wip/voice-latency` in `vendor/client`; §4.1 records what the jitter buffer does. Items 3
-and 8 are open, and item 3 is now the binding constraint.
+**Items 1, 2, 4, 5, 6 and 7 are implemented** on `wip/voice-latency` in `vendor/client`
+(`bcb5ae4`, 2026-09-04 — see the note at the top about the first attempt); §4.1 records
+what the jitter buffer does. Items 3 and 8 are open, and item 3 is now the binding
+constraint.
 
 Client, receive side, in this order:
 
@@ -267,6 +280,12 @@ being reimplemented per backend.
 The two numbers are `JitterConfig { floor_ms, ceiling_ms }`. Nothing in the UI sets them
 yet; `AudioMixer::set_jitter` retunes every live buffer, so wiring a settings row to it is
 a small piece of work and the obvious next one.
+
+The policy is unit-tested in `mixer.rs` rather than per backend: that playout waits for
+the target and then starts, that a one-word utterance plays on its terminator without
+reaching it, that running dry grows the target and a clean talkspurt relaxes it, that the
+ceiling and floor hold, that `set_jitter` reaches every live speaker, and that one
+speaker still filling up no longer holds up another that is ready.
 
 The fixed cost on the listener therefore goes from **100 ms prime + 50 ms output buffer**
 to **40 ms target + 10 ms output buffer**, and the target is now the only part that grows,
