@@ -218,8 +218,8 @@ legacy server's is much higher and the user has raised the client bitrate.
 ## 4. What to change, in order of milliseconds saved
 
 **Items 1, 2, 4, 5, 6 and 7 are implemented** on `wip/voice-latency` in `vendor/client`
-(`bcb5ae4`, 2026-09-04 — see the note at the top about the first attempt); §4.1 records
-what the jitter buffer does. Items 3 and 8 are open, and item 3 is now the binding
+(`bcb5ae4`, 2026-09-04, with three defects fixed in `9bb2430` after review — see the note
+at the top about the first attempt); §4.1 records what the jitter buffer does. Items 3 and 8 are open, and item 3 is now the binding
 constraint.
 
 Client, receive side, in this order:
@@ -274,8 +274,20 @@ being reimplemented per backend.
 | Playout starts | when the buffer holds its target (default 40 ms, two frames), or when the sender's terminator says the talkspurt is over, so a one-word "yes." still plays |
 | Target grows | +20 ms whenever the buffer runs dry *while the sender is still live*, capped at the ceiling (default 200 ms) |
 | Target relaxes | −10 ms at the end of a talkspurt that had no underrun, floored at 40 ms, so recovery is slower than reaction |
-| Depth shrinks | the shallowest depth over a 2 s window was never needed, so up to 20 ms of it is skipped out, with a 2.5 ms ramp across the seam |
+| Depth shrinks | whatever the output found *above the target* on its emptiest arrival in 2 s of playout was never needed, so up to 20 ms of that excess is skipped out, with a 2.5 ms ramp across the seam |
 | Priming | per speaker, not global: a second speaker starting mid-sentence no longer plays with nothing buffered, and no longer makes everyone wait for the slowest |
+
+A review on 2026-09-04 (`9bb2430`) fixed three defects in the first implementation. The
+shrink measured the depth *after* the drain, and in any steady stream that minimum is
+zero: it skimmed the whole target away every window, so the next late packet underran,
+grew the target and left a hole. Simulated against a client that stalls 30 ms every 5 s,
+that was four underruns and 280 ms of holes in 40 s, against none once the shrink measures
+what the output arrives to find and keeps the target. `audio/android.rs` still mixed the
+old `VecDeque`, so the branch could not build for Android. And dropping a drained
+buffer — which `remove_inactive_speakers` does on every terminator from anybody — threw
+away the target that speaker had learned, restarting the adaptation at the floor after
+every exchange. The shrink window is now counted in drained samples rather than
+wall-clock seconds, which is what makes it testable without sleeping.
 
 The two numbers are `JitterConfig { floor_ms, ceiling_ms }`. Nothing in the UI sets them
 yet; `AudioMixer::set_jitter` retunes every live buffer, so wiring a settings row to it is
@@ -284,8 +296,10 @@ a small piece of work and the obvious next one.
 The policy is unit-tested in `mixer.rs` rather than per backend: that playout waits for
 the target and then starts, that a one-word utterance plays on its terminator without
 reaching it, that running dry grows the target and a clean talkspurt relaxes it, that the
-ceiling and floor hold, that `set_jitter` reaches every live speaker, and that one
-speaker still filling up no longer holds up another that is ready.
+ceiling and floor hold, that `set_jitter` reaches every live speaker, that one speaker
+still filling up no longer holds up another that is ready, that a steady stream is not
+skimmed into its target while genuinely unused depth still is, and that a speaker whose
+buffer was dropped between talkspurts resumes at the target it had learned.
 
 The fixed cost on the listener therefore goes from **100 ms prime + 50 ms output buffer**
 to **40 ms target + 10 ms output buffer**, and the target is now the only part that grows,
