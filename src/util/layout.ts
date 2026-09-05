@@ -263,7 +263,42 @@ export async function clickPossiblyHidden(d: WebDriver, el: WebElement): Promise
     const inTheWay =
       err instanceof error.ElementNotInteractableError ||
       err instanceof error.ElementClickInterceptedError;
-    if (!inTheWay || !(await isNarrow(d))) throw err;
+    if (!inTheWay || !(await isNarrow(d))) {
+      // On a wide window an intercept is a real overlay, and rethrowing is
+      // right - but WebDriver's own message names neither the target nor the
+      // thing over it, which leaves the reader guessing at a menu they cannot
+      // see. Say what is actually at the point.
+      if (inTheWay) throw new Error(`${(err as Error).message}\n${await describeOverlay(d, el)}`);
+      throw err;
+    }
     await d.executeScript("arguments[0].click();", el);
+  }
+}
+
+/** What sits at the centre of `el`, and what the target itself is. */
+async function describeOverlay(d: WebDriver, el: WebElement): Promise<string> {
+  try {
+    return await d.executeScript<string>(
+      `const el = arguments[0];
+       const describe = (n) => {
+         if (!n) return "nothing";
+         const id = n.getAttribute && n.getAttribute("data-testid");
+         return n.tagName.toLowerCase()
+           + (id ? '[data-testid="' + id + '"]' : "")
+           + (n.className && typeof n.className === "string"
+               ? "." + n.className.trim().split(/\s+/).slice(0, 3).join(".")
+               : "");
+       };
+       const r = el.getBoundingClientRect();
+       const at = document.elementFromPoint(
+         Math.round(r.left + r.width / 2), Math.round(r.top + r.height / 2));
+       const chain = [];
+       for (let n = at; n && chain.length < 4; n = n.parentElement) chain.push(describe(n));
+       return "target " + describe(el) + " at " + Math.round(r.left) + "," + Math.round(r.top)
+         + " is covered by: " + chain.join(" < ");`,
+      el,
+    );
+  } catch {
+    return "(could not read what is over it)";
   }
 }
