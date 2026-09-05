@@ -11,6 +11,9 @@ import { TID as CLIENT_TID } from "../vendor/client/crates/mumble-tauri/ui/src/c
 
 export {
   MEMBER_NAME_ATTR,
+  MEMBER_REGISTERED_ATTR,
+  TAB_ID_ATTR,
+  CHANNEL_JOINED_ATTR,
   SERVER_ID_ATTR,
   CALENDAR_EVENT_TITLE_ATTR,
   CALENDAR_VIEW_ATTR,

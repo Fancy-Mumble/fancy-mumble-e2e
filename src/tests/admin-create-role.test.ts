@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { TauriApp } from "../app";
 import { config } from "../config";
 import { setSuperUserPassword } from "../util/server";
+import { featureMissing } from "../ui-flavour";
 
 /**
  * Admin "Roles" tab: creating a new role via the multi-step wizard
@@ -21,7 +22,7 @@ import { setSuperUserPassword } from "../util/server";
  * steps, and only calls the (now-fixed) `save()` when "Create role" is
  * clicked on the final step. Cancel/Back at any point discards the draft.
  */
-describe("admin: creating a role via the Roles wizard", () => {
+describe("admin: creating a role via the Roles wizard", { skip: featureMissing("roleWizard") }, () => {
   let admin: TauriApp;
   // Set by "steps through Display -> Permissions -> Members..." below; reused
   // by the last test so it doesn't depend on a specific draft name (the

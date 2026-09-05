@@ -1,11 +1,25 @@
 import { By, error, until, type WebDriver, type WebElement } from "selenium-webdriver";
-import { byTid, TID } from "../selectors";
+import { byTid, TID, MEMBER_REGISTERED_ATTR } from "../selectors";
 import { xpathLiteral } from "../util/xpath";
 import { delay } from "../util/wait";
 import { setReactInputValue } from "../util/astral";
 import { config } from "../config";
+import { isNebula, menuLabel } from "../ui-flavour";
+import {
+  clickWhenFree,
+  dismissMenus,
+  openMemberPanel,
+  waitDisplayed,
+  waitMenusClosed,
+} from "../util/nebula";
 import { selectTab } from "../util/tabs";
-import { ensureSidebarOpen, ensureSidebarClosed, clickPossiblyHidden } from "../util/layout";
+import {
+  ensureSidebarOpen,
+  ensureSidebarClosed,
+  clickPossiblyHidden,
+  contextClickPossiblyHidden,
+  locateForGesture,
+} from "../util/layout";
 
 /** Self-mute / self-deafen flags as reflected in the UI. */
 export interface VoiceFlags {
@@ -102,6 +116,9 @@ export class ChatPage {
   /** Type into the composer's textarea and click send. */
   async sendMessage(text: string): Promise<void> {
     await ensureSidebarClosed(this.d);
+    // A menu a previous step left open lays a backdrop over the composer, and
+    // the failure then names the composer rather than the menu.
+    if (isNebula) await dismissMenus(this.d);
     // Retried as a whole, because every reference in it can go stale together.
     // The composer re-renders while three clients talk, and a 4 KiB message
     // re-renders it again mid-send: the textarea located a moment ago is
@@ -220,10 +237,23 @@ export class ChatPage {
     await toggle.click();
   }
 
+  /**
+   * One element per message attributed to `sender` - which is not the same
+   * element in the two packs.
+   *
+   * Standard names the sender on the block header's label, so this counts
+   * groups. Nebula draws no author name on your own bubbles at all, so
+   * attribution is read off the message row, which carries it whoever wrote
+   * it. `:not([data-testid])` is what keeps that to one match: Nebula's label
+   * carries the name *as well*, and counting both would report every message
+   * from someone else twice - which is exactly what "delivered exactly once"
+   * asserts on.
+   */
   private senderRow(sender: string): By {
-    return By.css(
-      `[data-testid="${TID.chatMessageSender}"][data-sender-name="${cssAttrEscape(sender)}"]`,
-    );
+    const name = cssAttrEscape(sender);
+    return isNebula
+      ? By.css(`[data-sender-name="${name}"]:not([data-testid])`)
+      : By.css(`[data-testid="${TID.chatMessageSender}"][data-sender-name="${name}"]`);
   }
 
   /** Wait until a rendered message is attributed to `sender`. */
@@ -240,37 +270,59 @@ export class ChatPage {
     return (await this.d.findElements(this.senderRow(sender))).length > 0;
   }
 
-  /** Open the channel menu and create a poll through the shipped UI. */
+  /**
+   * Create a poll through the shipped UI.
+   *
+   * Where the poll composer is opened from is the one pack-specific step:
+   * Standard offers it in the chat header's kebab, Nebula in the composer's
+   * attach menu - the same feature filed under "what this channel can do" in
+   * one and "what I can put in this message" in the other. Everything after it
+   * is addressed by test id and is the same in both.
+   */
   async createPoll(question: string, options: string[], multiple = false): Promise<void> {
     await ensureSidebarClosed(this.d);
-    const menu = await this.d.wait(
-      until.elementLocated(By.css('button[aria-label="Channel options"]')),
-      10000,
-    );
-    await menu.click();
-    // `KebabMenu` sets `key={item.id}` - a React key, which never reaches the
-    // DOM - so `By.id("create-poll")` matched nothing and never could. The
-    // rendered item is a `role="menuitem"` carrying only its label, so that is
-    // what identifies it.
+    // Whatever a previous step left open would take this click instead.
+    if (isNebula) await dismissMenus(this.d);
+    const opener = isNebula ? TID.chatAttachMenu : TID.chatHeaderKebab;
+    const menu = await this.d.wait(until.elementLocated(byTid(opener)), 10000);
+    // Through `clickPossiblyHidden`: the composer's controls sit under whatever
+    // transition a previous popover is still finishing, and a positional click
+    // reports the scrim rather than the button.
+    await clickPossiblyHidden(this.d, menu);
+    // Standard's kebab item carries no test id of its own, only the caption it
+    // is rendered with; Nebula's does. Either finds exactly one item.
+    const entry = isNebula
+      ? byTid(TID.chatCreatePoll)
+      : By.xpath(`//*[@role='menuitem'][normalize-space(.)=${xpathLiteral("Create poll")}]`);
     await this.d
-      .wait(
-        until.elementLocated(
-          By.xpath(`//*[@role='menuitem'][normalize-space(.)=${xpathLiteral("Create poll")}]`),
-        ),
-        5000,
-      )
-      .then((el) => el.click());
-    const dialog = await this.d.wait(until.elementLocated(By.css('[role="dialog"]')), 5000);
-    const inputs = await dialog.findElements(By.css("input"));
+      .wait(until.elementLocated(entry), 5000)
+      .then((el) => clickPossiblyHidden(this.d, el));
+    // Nebula opens the poll composer as a popover *from* that menu, so the two
+    // are on screen together for a transition and the composer's controls sit
+    // under the menu that spawned them.
+    if (isNebula) await waitMenusClosed(this.d);
+
     // DOM-injected like the composer: poll tests assert on hyphenated
     // question/option tokens, and keystrokes mangle "-" under the compositor
     // keymap (see sendMessage).
-    await setReactInputValue(this.d, inputs[0], question);
+    const questionInput = await this.d.wait(
+      until.elementLocated(byTid(TID.pollQuestionInput)),
+      5000,
+    );
+    await setReactInputValue(this.d, questionInput, question);
     for (let i = 0; i < options.length; i++) {
-      await setReactInputValue(this.d, inputs[i + 1], options[i]);
+      // Re-read each time: Nebula grows a fresh empty row as the previous one
+      // is filled, so a list taken up front is one short by the second option.
+      const rows = await this.d.findElements(byTid(TID.pollOptionInput));
+      await setReactInputValue(this.d, rows[i], options[i]);
     }
-    if (multiple) await dialog.findElement(By.css('input[type="checkbox"]')).click();
-    await dialog.findElement(By.xpath(".//button[normalize-space(.)='Create Poll']")).click();
+    if (multiple) {
+      await clickPossiblyHidden(this.d, await this.d.findElement(byTid(TID.pollMultiple)));
+    }
+    await clickPossiblyHidden(this.d, await this.d.findElement(byTid(TID.pollSubmit)));
+    // Nebula posts from a popover behind a scrim; the scrim outlives the click
+    // by a transition, and the next step's click lands on it.
+    if (isNebula) await dismissMenus(this.d);
   }
 
   /** Vote in the first rendered poll containing `question`. */
@@ -300,9 +352,12 @@ export class ChatPage {
 
   /** Right-click a persistent message and choose Pin/Unpin. */
   async togglePin(messageText: string): Promise<void> {
-    const wrapper = await this.d.wait(
-      until.elementLocated(By.xpath(`//*[@data-msg-id][contains(normalize-space(.), ${xpathLiteral(messageText)})]`)),
-      config.waitTimeout,
+    // Through `locateForGesture`: the Actions API does not scroll to its
+    // target, so a message below the fold of the river fails as
+    // MoveTargetOutOfBounds - or, worse, opens no menu at all.
+    const wrapper = await locateForGesture(
+      this.d,
+      By.xpath(`//*[@data-msg-id][contains(normalize-space(.), ${xpathLiteral(messageText)})]`),
     );
     // Hover first: the per-message action bar is revealed on hover, and the
     // context menu is the other way in. Both render a Pin button, and the
@@ -311,26 +366,84 @@ export class ChatPage {
     // (ElementNotInteractableError). `reactToMessage` already had to learn
     // this; click whichever copy is actually displayed.
     await this.d.actions().move({ origin: wrapper }).perform();
-    await this.d.actions().contextClick(wrapper).perform();
-    const selector = By.xpath("//button[normalize-space(.)='Pin' or normalize-space(.)='Unpin']");
-    await this.d.wait(until.elementLocated(selector), 5000);
+    await contextClickPossiblyHidden(this.d, wrapper);
+    // Confirm the menu actually opened, and dispatch the event directly if it
+    // did not. The Actions API aims at the element's centre, which on a wide
+    // river is padding to the side of the bubble - the row still owns the
+    // handler, but whatever is under the pointer can swallow the gesture
+    // first. The synthetic event goes to the row that carries the handler.
+    if ((await this.d.findElements(By.css('[role="menuitem"]'))).length === 0) {
+      await this.d.executeScript(
+        `const r = arguments[0].getBoundingClientRect();
+         arguments[0].dispatchEvent(new MouseEvent("contextmenu", {
+           bubbles: true, cancelable: true, view: window,
+           clientX: Math.round(r.left + 24), clientY: Math.round(r.top + r.height / 2),
+         }));`,
+        wrapper,
+      );
+      await delay(300);
+    }
+    // Either verb, and either pack's wording for it: Nebula's menu names the
+    // destination ("Pin to channel"), Standard's says only "Pin".
+    const selector = By.xpath(
+      `//*[self::button or @role='menuitem']` +
+        `[normalize-space(.)=${xpathLiteral(menuLabel("pinMessage"))}` +
+        ` or normalize-space(.)=${xpathLiteral(menuLabel("unpinMessage"))}]`,
+    );
+    try {
+      await this.d.wait(until.elementLocated(selector), 5000);
+    } catch (err) {
+      // Say what the menu *did* offer. A caption that moved reads exactly like
+      // a menu that never opened, and the two have nothing in common.
+      const offered = await this.menuCaptions();
+      if (isNebula) await dismissMenus(this.d);
+      throw new Error(`${(err as Error).message}\nthe menu offered: ${offered}`);
+    }
     for (const candidate of await this.d.findElements(selector)) {
       if (await candidate.isDisplayed()) {
         await candidate.click();
         return;
       }
     }
+    // Never leave the context menu behind: its backdrop would take every later
+    // click in the file, and the next test would fail naming the composer.
+    if (isNebula) await dismissMenus(this.d);
     throw new Error(`no visible Pin/Unpin button for message "${messageText}"`);
   }
 
-  /** Open the pinned-message panel from the channel menu. */
+  /**
+   * Open the pinned-message panel.
+   *
+   * Standard files it under the channel kebab; Nebula gives pins a button of
+   * their own in the header, so there is no menu to open first.
+   */
   async openPinnedMessages(): Promise<void> {
-    const menu = await this.d.wait(until.elementLocated(By.css('button[aria-label="Channel options"]')), 10000);
+    if (isNebula) {
+      const pins = await this.d.wait(
+        until.elementLocated(By.css('button[aria-label^="Pinned"]')),
+        10000,
+      );
+      await pins.click();
+      return;
+    }
+    const menu = await this.d.wait(until.elementLocated(byTid(TID.chatHeaderKebab)), 10000);
     await menu.click();
     await this.d.wait(
       until.elementLocated(By.xpath("//*[@id='pinned-messages' or normalize-space(.)='Pinned messages']")),
       5000,
     ).then((el) => el.click());
+  }
+
+  /** Every caption currently on screen in a menu, for a failure to quote. */
+  private async menuCaptions(): Promise<string> {
+    const items = await this.d.executeScript<string>(`
+      return [...document.querySelectorAll('[role="menuitem"], [role="menu"] button')]
+        .filter((e) => e.getClientRects().length > 0)
+        .map((e) => (e.textContent || "").trim())
+        .filter(Boolean)
+        .join(" | ");
+    `);
+    return items || "(no menu was open)";
   }
 
   /** Count the currently rendered messages attributed to `sender`. */
@@ -716,7 +829,7 @@ export class ChatPage {
   }
 
   /**
-   * Whether a member currently carries the registered badge.
+   * Whether a member is currently shown as registered.
    *
    * The immediate counterpart to {@link waitForRegistered}: that one proves a
    * registration *arrived*, this one proves one has *not* - which needs an
@@ -725,15 +838,16 @@ export class ChatPage {
    */
   async isRegistered(name: string): Promise<boolean> {
     await this.ensureMembersTab();
-    const found = await this.d.findElements(this.memberRow(name, ' [title="Registered"]'));
+    const found = await this.d.findElements(this.memberRow(name, `[${MEMBER_REGISTERED_ATTR}="true"]`));
     return found.length > 0;
   }
 
   async waitForRegistered(name: string, timeout = 20000): Promise<void> {
     await this.ensureMembersTab();
     await this.d.wait(
-      until.elementLocated(this.memberRow(name, ' [title="Registered"]')),
+      until.elementLocated(this.memberRow(name, `[${MEMBER_REGISTERED_ATTR}="true"]`)),
       timeout,
+      `"${name}" never showed as registered`,
     );
   }
 
@@ -745,12 +859,14 @@ export class ChatPage {
    * still finds rows after switching away.
    */
   private async ensureMembersTab(): Promise<void> {
+    if (isNebula) return openMemberPanel(this.d);
     await this.selectMembersTab();
     await this.d.wait(until.elementLocated(byTid(TID.memberList)), config.waitTimeout);
   }
 
   /** Activate the Members tab without requiring the member list to mount. */
   private async selectMembersTab(): Promise<void> {
+    if (isNebula) return openMemberPanel(this.d);
     // Gate on aria-selected, not on DOM presence of the member list: once
     // mounted the pane stays in the DOM (display:none) while the Channels tab
     // is active, so its rows would be located but not interactable.
@@ -801,6 +917,10 @@ export class ChatPage {
    * uniquely identifies "me" regardless of name collisions.
    */
   async selfVoiceFlags(): Promise<VoiceFlags> {
+    // The roster has to be showing first. Standard keeps it mounted behind a
+    // tab once visited; Nebula unmounts the panel, so without this the self
+    // row is not merely hidden, it is absent.
+    await this.ensureMembersTab();
     const el = await this.d.wait(
       until.elementLocated(By.css(`[data-testid="${TID.memberItem}"][data-clickable="true"]`)),
       10000,
@@ -827,16 +947,34 @@ export class ChatPage {
     }, timeout);
   }
 
-  /** Click the sidebar Disconnect button (returns to the connect page). */
+  /**
+   * End the session with the server (returns to the connect screen).
+   *
+   * Standard puts a Disconnect button in the channel sidebar and acts on the
+   * click. Nebula files it in the self dock's overflow menu and asks first, so
+   * the confirmation is answered here - a caller that wanted to leave has
+   * already decided.
+   */
   async disconnect(): Promise<void> {
     // Another ChannelSidebar control, so it is behind the drawer on a narrow
     // window exactly like the voice toggles.
     await ensureSidebarOpen(this.d);
-    const btn = await this.d.wait(
-      until.elementLocated(By.xpath("//button[contains(normalize-space(.), 'Disconnect')]")),
-      10000,
-    );
+    if (isNebula) {
+      await dismissMenus(this.d);
+      const menu = await waitDisplayed(this.d, byTid(TID.selfDockMenu), config.waitTimeout);
+      await clickWhenFree(menu);
+    }
+    const btn = await this.d.wait(until.elementLocated(byTid(TID.disconnectServer)), 10000);
     await clickPossiblyHidden(this.d, btn);
+    if (!isNebula) return;
+    const confirm = await this.d.wait(
+      until.elementLocated(byTid(TID.disconnectConfirm)),
+      config.waitTimeout,
+      "nebula's leave-server confirmation never appeared",
+    );
+    // The dock menu's backdrop is still fading while this dialog's is fading
+    // in; a click that lands between the two hits the wrong layer.
+    await clickWhenFree(confirm);
   }
 
   /** Wait until the local self row reports the expected muted state. */

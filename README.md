@@ -145,9 +145,44 @@ On Windows, grab the matching `msedgedriver` once:
 | `E2E_NATIVE_DRIVER` | _(auto)_ | Explicit WebKitWebDriver/msedgedriver path |
 | `E2E_DRIVER_PORT` | `4445` | Base WebDriver port (instance N → base+N) |
 | `E2E_SERVER_HOST` / `E2E_SERVER_PORT` | `127.0.0.1` / `64738` | Server to connect to |
-| `E2E_UI_DESIGN` | `standard` | Client design pack the suite drives (`?ui=`); the client itself now defaults new profiles to `nebula` |
+| `E2E_UI_DESIGN` | `standard` | Client design pack the suite drives (`?ui=`) - `standard` or `nebula`. See [Design packs](#design-packs) |
 | `E2E_SERVER_IMAGE` | `ghcr.io/fancy-mumble/mumble-server:latest` | Server image for the compose fixture |
 | `E2E_CONNECT_TIMEOUT` | `45000` | Connect + bootstrap timeout (ms) |
+
+## Design packs
+
+The client ships three UI design packs, and a green run only says something
+about the one it drove. `E2E_UI_DESIGN` picks it, and the harness passes it to
+every client it launches as the `?ui=` launch override, which beats whatever a
+fresh profile would default to:
+
+```bash
+E2E_UI_DESIGN=nebula npm run e2e         # the pack new profiles now get
+npm run e2e                              # standard, still the default here
+```
+
+`standard` and `nebula` are the two the suite drives. `aurora` carries no test
+ids at all, so pointing the suite at it is refused at start-up rather than
+failing later as 40 timed-out waits.
+
+The page objects are shared. Where the two packs are only styled differently
+they need nothing: both carry the same ids from the client's registry
+(`core/testids.ts`). Where they genuinely differ - Nebula has no connect wizard,
+no sidebar tabs, and words its context menus differently - the page objects
+branch on `src/ui-flavour.ts`, and what is pack-specific lives in
+`src/util/nebula.ts` rather than spreading through nine page objects.
+
+Some features exist in one pack and not the other. `featureMissing()` in
+`src/ui-flavour.ts` holds that matrix and returns the same `Gate` shape as the
+server-side preconditions, so a suite for a feature the running pack has not
+built skips with a reason instead of timing out:
+
+```ts
+describe("calendar: ...", { skip: featureMissing("calendar") || pluginMissing("fancy-calendar") }, ...)
+```
+
+Nebula currently ships no calendar, scheduled messages, forums or role wizard.
+When it grows one, add it to `SUPPORTED` in that file and the suites run.
 
 ## How test mode works
 

@@ -1,10 +1,12 @@
 import { By, until, type WebDriver, type WebElement } from "selenium-webdriver";
-import { byTid, TID, MEMBER_NAME_ATTR } from "../selectors";
+import { byTid, TID, MEMBER_NAME_ATTR, CHANNEL_JOINED_ATTR } from "../selectors";
 import { delay } from "../util/wait";
 import { xpathLiteral } from "../util/xpath";
 import { setReactInputValue, setReactSelectValue } from "../util/input";
 import { config } from "../config";
 import { selectTab } from "../util/tabs";
+import { isNebula, menuLabel } from "../ui-flavour";
+import { dismissMenus, goToChat, openMemberPanel } from "../util/nebula";
 import {
   ensureSidebarOpen,
   clickPossiblyHidden,
@@ -42,6 +44,10 @@ export class SidebarPage {
    * ElementNotInteractable). Switching back is idempotent via aria-selected.
    */
   private async ensureChannelsTab(): Promise<void> {
+    // Nebula has no sidebar tabs: the channel column is the chat screen's
+    // left column and the roster is a panel over on the right, so the two
+    // never take turns and there is nothing to select.
+    if (isNebula) return;
     await selectTab(this.d, "Channels");
   }
 
@@ -60,6 +66,7 @@ export class SidebarPage {
    * issued, reported as a missing audit entry.
    */
   private async ensureMembersTab(): Promise<void> {
+    if (isNebula) return openMemberPanel(this.d);
     await selectTab(this.d, "Members");
   }
 
@@ -94,7 +101,7 @@ export class SidebarPage {
    */
   private async channelMenuAction(channelId: number, label: string): Promise<void> {
     await this.ensureChannelsTab();
-    const item = By.xpath(`//button[contains(normalize-space(.), ${xpathLiteral(label)})]`);
+    const item = By.xpath(menuItemXPath(label, "contains"));
     let lastError: unknown;
     for (let attempt = 0; attempt < 4; attempt++) {
       try {
@@ -158,7 +165,7 @@ export class SidebarPage {
       invitees?: readonly string[];
     } = {},
   ): Promise<void> {
-    await this.channelMenuAction(parentId, "Create Sub-channel");
+    await this.channelMenuAction(parentId, menuLabel("createSubChannel"));
 
     const nameInput = await this.d.wait(until.elementLocated(By.css("#ch-ed-name")), 10000);
     await this.d.wait(until.elementIsVisible(nameInput), 5000);
@@ -257,6 +264,7 @@ export class SidebarPage {
    * mounted there). Resolves once the channel sidebar's "Channels" tab exists.
    */
   async goToChannels(): Promise<void> {
+    if (isNebula) return goToChat(this.d);
     const tab = await this.d.wait(
       until.elementLocated(By.css('[role="tab"][aria-selected="true"]')),
       10000,
@@ -309,6 +317,7 @@ export class SidebarPage {
    */
   private async userMenuAction(name: string, label: string): Promise<void> {
     await this.ensureMembersTab();
+    if (isNebula) await dismissMenus(this.d);
     const row = await locateForGesture(
       this.d,
       By.css(`[data-testid="${TID.memberItem}"][${MEMBER_NAME_ATTR}="${cssAttrEscape(name)}"]`),
@@ -316,7 +325,7 @@ export class SidebarPage {
     await contextClickPossiblyHidden(this.d, row);
     await delay(400);
     const item = await this.d.wait(
-      until.elementLocated(By.xpath(`//button[normalize-space(.)=${xpathLiteral(label)}]`)),
+      until.elementLocated(By.xpath(menuItemXPath(label, "exact"))),
       8000,
     );
     await this.d.wait(until.elementIsVisible(item), 5000);
@@ -326,17 +335,17 @@ export class SidebarPage {
 
   /** Server-mute `name` (admin; MuteDeafen on their channel). */
   async muteUser(name: string): Promise<void> {
-    await this.userMenuAction(name, "Mute");
+    await this.userMenuAction(name, menuLabel("muteUser"));
   }
 
   /** Server-deafen `name` (admin; MuteDeafen on their channel). */
   async deafenUser(name: string): Promise<void> {
-    await this.userMenuAction(name, "Deafen");
+    await this.userMenuAction(name, menuLabel("deafenUser"));
   }
 
   /** Grant `name` priority speaker (admin; MuteDeafen on their channel). */
   async setPrioritySpeaker(name: string): Promise<void> {
-    await this.userMenuAction(name, "Priority speaker");
+    await this.userMenuAction(name, menuLabel("prioritySpeaker"));
   }
 
   /**
@@ -364,6 +373,7 @@ export class SidebarPage {
    */
   async registerUser(name: string): Promise<void> {
     await this.ensureMembersTab();
+    if (isNebula) await dismissMenus(this.d);
     const row = await locateForGesture(
       this.d,
       By.css(`[data-testid="${TID.memberItem}"][${MEMBER_NAME_ATTR}="${cssAttrEscape(name)}"]`),
@@ -377,7 +387,7 @@ export class SidebarPage {
         // `_contextMenu_…` - capital M, and XPath's contains is case-sensitive,
         // so the ancestor never matched once the menu stopped being the only
         // thing on screen.
-        By.xpath("//button[normalize-space(.)='Register']"),
+        By.xpath(menuItemXPath(menuLabel("registerUser"), "exact")),
       ),
       8000,
     );
@@ -390,7 +400,8 @@ export class SidebarPage {
     const confirm = await this.d.wait(
       until.elementLocated(
         By.xpath(
-          "//*[contains(@class,'dialog') or @role='dialog']//button[normalize-space(.)='Register']",
+          "//*[contains(@class,'dialog') or @role='dialog']" +
+            "//button[normalize-space(.)='Register']",
         ),
       ),
       8000,
@@ -401,43 +412,42 @@ export class SidebarPage {
   }
 
   /**
-   * The self row's full text, or null when there is no self row.
+   * The channel row the local user is *in*, as opposed to the one they are
+   * looking at. Exactly one row carries `data-joined`, in either pack.
    *
-   * Read with `textContent`, NOT WebDriver's `getText()`: the sidebar clips the
-   * name and channel chip at narrow widths, so `getText()` — which returns only
-   * what is *rendered* — yields just the avatar initial ("S"). Membership was
-   * then never confirmed even though the user had moved, and every caller
-   * failed with "membership not confirmed" against a client that was in the
-   * right channel.
+   * This used to read the sidebar self row's text and look for the channel
+   * chip in it, which tied membership to a roster that Nebula does not keep on
+   * screen - and, before that, to `getText()`, which returns only what is
+   * rendered and yielded the avatar initial on a narrow window. The channel
+   * list is where membership is actually stated, and it is always up.
    */
-  private async selfRowText(): Promise<string | null> {
-    return this.d.executeScript<string | null>(
-      `const row = document.querySelector('[data-testid="' + arguments[0] + '"][data-clickable="true"]');
-       return row ? row.textContent : null;`,
-      TID.memberItem,
+  private byJoinedChannel(name?: string): By {
+    const named = name === undefined ? "" : `[data-channel-name="${cssAttrEscape(name)}"]`;
+    return By.css(`[data-testid="${TID.channelItem}"]${named}[${CHANNEL_JOINED_ATTR}="true"]`);
+  }
+
+  /** Wait until the local user is a MEMBER of `name`. */
+  async waitForMembership(name: string, timeout = 12000): Promise<void> {
+    await this.d.wait(
+      async () => (await this.d.findElements(this.byJoinedChannel(name))).length > 0,
+      timeout,
+      `the local user never became a member of "${name}"`,
     );
   }
 
   /**
-   * Wait until the local user is a MEMBER of `name`. The sidebar self row
-   * (the only member-item with data-clickable=true) carries a channel chip
-   * showing the channel the user is currently in.
-   */
-  async waitForMembership(name: string, timeout = 12000): Promise<void> {
-    await this.d.wait(async () => (await this.selfRowText())?.includes(name) ?? false, timeout);
-  }
-
-  /**
-   * Wait until the local user is still connected (the self row exists) but NO
-   * longer a member of `name`. Used to assert that when a channel is removed
-   * (e.g. expiry), its occupant is moved to the parent rather than disconnected.
+   * Wait until the local user is still connected but NO longer a member of
+   * `name`. Used to assert that when a channel is removed (e.g. expiry), its
+   * occupant is moved to the parent rather than disconnected.
+   *
+   * "Still connected" is the channel tree still having rows: a client that
+   * dropped has no tree, so an emptied one cannot pass for a move.
    */
   async waitForMembershipGone(name: string, timeout = 20000): Promise<void> {
     await this.d.wait(async () => {
-      const text = await this.selfRowText();
-      if (text === null) return false; // self row missing -> disconnected, not "moved"
-      return !text.includes(name);
-    }, timeout);
+      if ((await this.d.findElements(byTid(TID.channelItem))).length === 0) return false;
+      return (await this.d.findElements(this.byJoinedChannel(name))).length === 0;
+    }, timeout, `the local user was still in "${name}"`);
   }
 
   private byChannelMember(name: string): By {
@@ -502,4 +512,19 @@ export class SidebarPage {
 
 function cssAttrEscape(value: string): string {
   return value.replace(/["\\]/g, "\\$&");
+}
+
+/**
+ * An open context menu's item, by caption.
+ *
+ * Standard's menus are `<button>`s, Nebula's are MUI list items carrying
+ * `role="menuitem"`; matching either keeps one locator for both packs rather
+ * than a branch at every call site.
+ */
+function menuItemXPath(label: string, match: "exact" | "contains"): string {
+  const literal = xpathLiteral(label);
+  const test = match === "exact"
+    ? `normalize-space(.)=${literal}`
+    : `contains(normalize-space(.), ${literal})`;
+  return `//*[self::button or @role='menuitem'][${test}]`;
 }

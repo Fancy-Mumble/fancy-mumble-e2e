@@ -4,6 +4,7 @@ import { TauriApp } from "../app";
 import { config } from "../config";
 import { setSuperUserPassword } from "../util/server";
 import { pluginMissing } from "../util/preconditions";
+import { featureMissing } from "../ui-flavour";
 
 /**
  * Desktop-notification flows for `fancy-calendar`. Both are delivered through the
@@ -16,7 +17,7 @@ import { pluginMissing } from "../util/preconditions";
  *     participant gets a "Meeting invitation / You've been invited to ..."
  *     notification (applyCalendarInbound).
  */
-describe("calendar: meeting notifications", { skip: pluginMissing("fancy-calendar") }, () => {
+describe("calendar: meeting notifications", { skip: featureMissing("calendar") || pluginMissing("fancy-calendar") }, () => {
   let admin: TauriApp;
   let bob: TauriApp;
   const sfx = Date.now() % 100000;

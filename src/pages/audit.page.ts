@@ -1,6 +1,6 @@
 import { execFileSync } from "node:child_process";
 import { By, until, type WebDriver } from "selenium-webdriver";
-import { byTid, TID } from "../selectors";
+import { byTid, TID, TAB_ID_ATTR } from "../selectors";
 import { config } from "../config";
 import { isStarling } from "../util/suite-server";
 
@@ -126,8 +126,13 @@ export class AuditPage {
     }
   }
 
+  /**
+   * The navigation entry that opens the audit surface, by page id rather than
+   * by caption - Standard draws a tab strip and Nebula a settings section, and
+   * the id is what the two agree on.
+   */
   private tabButton(): By {
-    return By.xpath("//button[contains(normalize-space(.), 'Audit')]");
+    return By.css(`[${TAB_ID_ATTR}="auditLog"]`);
   }
 
   /**

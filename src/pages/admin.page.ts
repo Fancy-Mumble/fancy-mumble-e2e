@@ -1,7 +1,32 @@
 import { By, Key, until, type WebDriver, type WebElement } from "selenium-webdriver";
-import { TID, byTid } from "../selectors";
+import { TID, byTid, TAB_ID_ATTR } from "../selectors";
 import { config } from "../config";
+import { isNebula } from "../ui-flavour";
+import { clickWhenFree, dismissMenus, goToChat, waitDisplayed } from "../util/nebula";
 import { ensureSidebarOpen, ensureSidebarClosed } from "../util/layout";
+
+/**
+ * The admin surface's page ids, shared by both packs (`ADMIN_PAGES` in
+ * nebula's `components/admin/capabilities.ts`, the `tabs` array in standard's
+ * `pages/admin/index.tsx`). Each is gated on its own permission, so which of
+ * them an account sees varies - what does not vary is that seeing any of them
+ * means the administration navigation is up.
+ */
+const ADMIN_PAGE_IDS = [
+  "users",
+  "roles",
+  "bans",
+  "acl",
+  "emotes",
+  "onboarding",
+  "serverPlugins",
+  "marketplace",
+  "fileServer",
+  "serverSettings",
+  "livery",
+  "welcome",
+  "auditLog",
+] as const;
 
 /**
  * Page object for the admin panel (`/admin`), focused on the "Channels / ACL"
@@ -11,8 +36,15 @@ import { ensureSidebarOpen, ensureSidebarClosed } from "../util/layout";
 export class AdminPage {
   constructor(private readonly d: WebDriver) {}
 
-  /** Open the admin panel via the shield button in the channel sidebar. */
+  /**
+   * Open the administration surface.
+   *
+   * Standard has a shield button beside the self voice controls that opens a
+   * panel of its own; Nebula files administration inside settings, behind the
+   * self dock's overflow menu. Both land on the same navigation.
+   */
   async open(): Promise<void> {
+    if (isNebula) return this.openNebula();
     // The admin button lives in the channel sidebar (main chat view). If we're on
     // another page (e.g. Friends, which swaps in its own sidebar), click the
     // active server tab in the left rail to return to the server view first.
@@ -26,11 +58,62 @@ export class AdminPage {
       await this.d.sleep(400);
     }
     await ensureSidebarOpen(this.d);
-    const btn = await this.d.wait(
-      until.elementLocated(By.css('[aria-label="Admin panel"]')),
-      10000,
-    );
+    const btn = await this.d.wait(until.elementLocated(byTid(TID.adminPanel)), 10000);
     await btn.click();
+  }
+
+  /**
+   * Nebula's route in: administration is a section of the settings screen, and
+   * the only door to it is the self dock's overflow menu. So this has to be on
+   * the chat screen first - the dock is drawn beneath the channel column, and
+   * neither is there while the connect or settings screen is up.
+   */
+  private async openNebula(): Promise<void> {
+    if ((await this.d.findElements(this.byAdminTab())).length > 0) return;
+    await goToChat(this.d);
+    await dismissMenus(this.d);
+    const menu = await waitDisplayed(this.d, byTid(TID.selfDockMenu), config.waitTimeout);
+    await clickWhenFree(menu);
+    const admin = await waitDisplayed(
+      this.d,
+      byTid(TID.adminPanel),
+      config.waitTimeout,
+      "the self dock's menu offered no server administration (not an admin?)",
+    );
+    await clickWhenFree(admin);
+    await this.d.wait(
+      async () => (await this.d.findElements(this.byAdminTab())).length > 0,
+      config.waitTimeout,
+      "the administration navigation never appeared",
+    );
+  }
+
+  /**
+   * Proof that the *administration* navigation is up, not merely a navigation.
+   *
+   * Nebula's admin entries share a column with the ordinary settings pages, so
+   * "some tab exists" is true on the settings screen either way - it has to be
+   * an *admin* page id. Any of them, not one: every entry is gated on its own
+   * permission, so an account that can read the audit log but not administer
+   * sees only "Audit log". Gating on Users cost the audit suite three tests
+   * that way.
+   */
+  private byAdminTab(): By {
+    return By.css(ADMIN_PAGE_IDS.map((id) => `[${TAB_ID_ATTR}="${id}"]`).join(","));
+  }
+
+  /**
+   * The navigation entry that opens admin page `id` ("acl", "roles",
+   * "serverSettings", "auditLog", ...).
+   *
+   * By the page id rather than by its caption: the two packs word these
+   * differently (and shape the navigation differently - Standard has a tab
+   * strip, Nebula a section of the settings column), but they agree on the
+   * ids, which are also the one part that does not move when a caption is
+   * retranslated.
+   */
+  private byTab(id: string): By {
+    return By.css(`[${TAB_ID_ATTR}="${id}"]`);
   }
 
   /**
@@ -48,9 +131,7 @@ export class AdminPage {
     await this.d.wait(
       async () => {
         if (await onAcl()) return true;
-        const [tab] = await this.d.findElements(
-          By.xpath("//button[contains(normalize-space(.), 'Channels / ACL')]"),
-        );
+        const [tab] = await this.d.findElements(this.byTab("acl"));
         if (!tab) return false;
         try {
           await tab.click();
@@ -84,7 +165,7 @@ export class AdminPage {
     await this.d.wait(
       async () => {
         if (await onRoles()) return true;
-        const [tab] = await this.d.findElements(By.xpath("//button[normalize-space(.)='Roles']"));
+        const [tab] = await this.d.findElements(this.byTab("roles"));
         if (!tab) return false;
         try {
           await tab.click();
@@ -185,13 +266,15 @@ export class AdminPage {
   }
 
   /**
-   * Click the top chevron "Go back" button shared by every `TabbedPage`
-   * (Settings, Admin, the role editor, the new-role wizard). Only one such
-   * page is ever on screen at a time, so the aria-label alone is unambiguous.
+   * Leave the admin surface for the conversation.
+   *
+   * Standard's is the chevron every `TabbedPage` carries (Settings, Admin, the
+   * role editor, the wizard); Nebula's is the settings column's back link.
+   * Only one such control is on screen at a time in either pack.
    */
   async clickTopBack(): Promise<void> {
     const btn = await this.d.wait(
-      until.elementLocated(By.css('[aria-label="Go back"]')),
+      until.elementLocated(byTid(TID.adminBack)),
       10000,
     );
     await btn.click();
@@ -256,9 +339,7 @@ export class AdminPage {
     await this.d.wait(
       async () => {
         if (await onSettings()) return true;
-        const [tab] = await this.d.findElements(
-          By.xpath("//button[normalize-space(.)='Server settings']"),
-        );
+        const [tab] = await this.d.findElements(this.byTab("serverSettings"));
         if (!tab) return false;
         try {
           await tab.click();

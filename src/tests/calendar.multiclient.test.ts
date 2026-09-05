@@ -4,6 +4,7 @@ import { TauriApp } from "../app";
 import { config } from "../config";
 import { setSuperUserPassword } from "../util/server";
 import { pluginMissing } from "../util/preconditions";
+import { featureMissing } from "../ui-flavour";
 
 /**
  * Exercises the `fancy-calendar` plugin end-to-end:
@@ -20,7 +21,7 @@ import { pluginMissing } from "../util/preconditions";
  * The organiser is SuperUser (already admin in the harness); only the invitee
  * needs a registered id for the relay to target it.
  */
-describe("calendar: plugin gating + invite sync", { skip: pluginMissing("fancy-calendar") }, () => {
+describe("calendar: plugin gating + invite sync", { skip: featureMissing("calendar") || pluginMissing("fancy-calendar") }, () => {
   let admin: TauriApp;
   let bob: TauriApp;
   const bobName = `e2e-cal-B-${Date.now() % 100000}`;

@@ -2,6 +2,7 @@ import { By, Key, error, until, type WebDriver } from "selenium-webdriver";
 import { byTid, TID, STREAM_SOURCE_TITLE_ATTR, BROADCASTER_NAME_ATTR } from "../selectors";
 import { delay } from "../util/wait";
 import { config } from "../config";
+import { isNebula } from "../ui-flavour";
 import { ensureSidebarClosed, clickPossiblyHidden, locateForGesture } from "../util/layout";
 
 /** Colour class recovered from a sampled checkerboard cell. */
@@ -199,8 +200,9 @@ export class StreamPage {
     // no hit-testable box, and WebDriver refuses the click with
     // ElementNotInteractable ~800 ms into the step - the same failure shape
     // `locateForGesture` was written for on the channel list.
-    await this.d.wait(
-      until.elementLocated(card),
+    await this.waitForSourceCard(
+      card,
+      "windows",
       timeout,
       `screen-share picker never offered a window titled like "${title}"`,
     );
@@ -214,6 +216,32 @@ export class StreamPage {
       10000,
       "source picker did not close after confirming",
     );
+  }
+
+  /**
+   * Wait for a source card, reopening the picker once if it is missing.
+   *
+   * The picker enumerates once, when it opens, and a window that maps a
+   * moment later is never listed however long the wait. On a desktop with
+   * other clients coming and going (parallel suites) that race is common:
+   * the card is absent, and listing again after the failure shows the
+   * window. So a short first wait, then one reopen, then the real wait.
+   */
+  private async waitForSourceCard(
+    card: By,
+    tab: "screens" | "windows" | "devices",
+    timeout: number,
+    missing: string,
+  ): Promise<void> {
+    try {
+      await this.d.wait(until.elementLocated(card), Math.min(timeout, 5000), missing);
+    } catch {
+      await this.closePickerIfOpen();
+      await this.clickToggle(timeout);
+      await this.customPickerAppeared();
+      await this.selectTab(tab);
+      await this.d.wait(until.elementLocated(card), timeout, missing);
+    }
   }
 
   /**
@@ -339,11 +367,8 @@ export class StreamPage {
       css += `[${STREAM_SOURCE_TITLE_ATTR}*="${cssAttrEscape(title)}"]`;
       what += ` titled like "${title}"`;
     }
-    const card = await this.d.wait(
-      until.elementLocated(By.css(css)),
-      config.waitTimeout,
-      `picker never offered ${what}`,
-    );
+    await this.waitForSourceCard(By.css(css), tab, config.waitTimeout, `picker never offered ${what}`);
+    const card = await this.d.findElement(By.css(css));
     const picked = (await card.getAttribute(STREAM_SOURCE_TITLE_ATTR)) ?? "";
     await card.click();
     return picked;
@@ -377,14 +402,7 @@ export class StreamPage {
    * lands ~1s after the panel opens. Leaves the panel open.
    */
   async statsResolutionCount(timeout = 8000): Promise<number> {
-    // The stats toggle lives in the stream control bar; hover the viewport to
-    // reveal the controls, then click it.
-    const statsBtn = await this.d.wait(
-      until.elementLocated(By.css('button[aria-label="Stats for Nerds"], button[aria-label="Hide stats for nerds"]')),
-      timeout,
-      "no Stats-for-Nerds toggle in the stream controls",
-    );
-    await statsBtn.click();
+    await this.openStats(timeout);
     const deadline = Date.now() + timeout;
     let count = 0;
     while (Date.now() < deadline) {
@@ -393,6 +411,42 @@ export class StreamPage {
       await delay(400);
     }
     return count;
+  }
+
+  /**
+   * Show the stats panel.
+   *
+   * Standard keeps the toggle in the stream control bar as a button; Nebula
+   * files it inside the stream config menu, one click further in. Both spell
+   * it "Stats for Nerds" (`chat:screenShare.stats.toggle`), which is what
+   * makes one caption enough for the two shapes.
+   */
+  private async openStats(timeout: number): Promise<void> {
+    if (isNebula) {
+      const menu = await this.d.wait(
+        until.elementLocated(byTid(TID.streamConfigMenu)),
+        timeout,
+        "no stream config menu to open the stats panel from",
+      );
+      await clickPossiblyHidden(this.d, menu);
+      const item = await this.d.wait(
+        until.elementLocated(
+          By.xpath("//*[self::button or @role='menuitem'][contains(normalize-space(.), 'Stats for Nerds')]"),
+        ),
+        timeout,
+        "the stream config menu offered no Stats-for-Nerds entry",
+      );
+      await clickPossiblyHidden(this.d, item);
+      return;
+    }
+    const statsBtn = await this.d.wait(
+      until.elementLocated(
+        By.css('button[aria-label="Stats for Nerds"], button[aria-label="Hide stats for nerds"]'),
+      ),
+      timeout,
+      "no Stats-for-Nerds toggle in the stream controls",
+    );
+    await clickPossiblyHidden(this.d, statsBtn);
   }
 
   /**
@@ -675,31 +729,85 @@ export class StreamPage {
   }
 
   /**
-   * Assert the own-preview stream KEEPS decoding: sample the `<video>`'s
-   * playback position twice, `windowMs` apart, and require it to advance.
-   * Catches a broadcast that dies right after its first frames. (A source
-   * whose *content* is static still advances - this guards pipeline health,
-   * not pixel change.)
+   * Assert the own-preview stream KEEPS delivering: sample what the surface is
+   * showing across `windowMs` and require the picture to change. Catches a
+   * broadcast that dies right after its first frames.
+   *
+   * Sampled repeatedly rather than once at each end. Nebula swaps the stage's
+   * surface element while a share is running, so a two-point measurement can
+   * land its second read on the gap and report a healthy stream as vanished -
+   * which is what it did. A momentary absence is not the failure; never being
+   * there, or never changing, is.
+   *
+   * The source is animated by every caller, so "the picture changed" is the
+   * pipeline-health signal. A static source would need a counter, and no
+   * counter survives both packs (see below).
    */
   async assertOwnPreviewFlowing(windowMs = 3000): Promise<void> {
-    // `<video>` advances currentTime; the native family's `<canvas>` has no
-    // clock, so its painted-frame tally is the equivalent progress signal.
-    // Both answer the same question: is the pipeline still delivering?
     const readProgress = () =>
       this.d.executeScript<number>(
         `const el = document.querySelector(
            '[data-testid="${TID.streamViewerVideo}"][data-own="true"],' +
            '[data-testid="${TID.streamNativeView}"][data-own="true"]');
          if (!el) return -1;
-         return el.tagName === 'VIDEO' ? el.currentTime : (el.__e2eFrames ?? 0);`,
+         // The native family's <canvas> keeps its own tally, incremented from
+         // the patched 2D drawImage below. Left as the canvas signal because
+         // it is the one that works: hashing a decoder canvas reads blank on
+         // some builds, and a probe that reports a healthy stream as dead is
+         // worse than a narrower one.
+         if (el.tagName !== 'VIDEO') return el.__e2eFrames ?? 0;
+         // For a <video>: what the surface is *showing*, not what a counter
+         // says about it.
+         //
+         // The own preview is a loopback of the local capture, so in WebKit
+         // it has no timeline (currentTime stays 0) and nothing decodes it
+         // (totalVideoFrames stays 0) - both counters read "stalled" for a
+         // stream that is arriving perfectly. Hashing the pixels asks the
+         // question the test actually means, and it is the same evidence the
+         // checkerboard suite already trusts.
+         try {
+           const c = document.createElement('canvas');
+           c.width = 32; c.height = 18;
+           const g = c.getContext('2d');
+           g.drawImage(el, 0, 0, c.width, c.height);
+           const d = g.getImageData(0, 0, c.width, c.height).data;
+           let h = 0;
+           for (let i = 0; i < d.length; i += 4) h = (h * 31 + d[i] + d[i + 1] * 7 + d[i + 2] * 13) | 0;
+           return h;
+         } catch (e) {
+           return el.currentTime;
+         }`,
       );
     await this.installFrameCounter();
-    const before = await readProgress();
-    if (before < 0) throw new Error("own stream preview vanished");
-    await delay(windowMs);
-    const after = await readProgress();
-    if (after < 0) throw new Error("own stream preview vanished while playing");
-    if (after <= before) {
+    // Two budgets, because absence and staleness are different answers. The
+    // window is how long a healthy stream gets to show a second picture; the
+    // grace on top of it is for the surface being *missing*, which Nebula does
+    // on purpose - it tears the own loopback down and rebuilds it when the
+    // broadcast goes on the wire, so a 2 s window can contain one sample and
+    // two gaps. Absence stops being acceptable once the grace runs out.
+    const windowEnd = Date.now() + windowMs;
+    const graceEnd = windowEnd + 8000;
+    const seen = new Set<number>();
+    let samples = 0;
+    for (;;) {
+      const value = await readProgress();
+      if (value >= 0) {
+        samples += 1;
+        seen.add(value);
+        if (seen.size > 1) return; // the picture moved
+      }
+      const done = samples >= 2 ? Date.now() > windowEnd : Date.now() > graceEnd;
+      if (done) break;
+      await delay(Math.min(250, Math.max(50, windowMs / 12)));
+    }
+    if (samples === 0) throw new Error("own stream preview vanished");
+    if (samples === 1) {
+      throw new Error(
+        `own stream preview was only on screen for 1 of ${Math.round((graceEnd - windowEnd + windowMs) / 1000)}s ` +
+          `- the surface keeps disappearing\n${await this.describeSurface(true)}`,
+      );
+    }
+    {
       // A bare progress counter says the pipeline stalled and nothing about
       // where. The app logs the capture -> encode -> send stages to its
       // console, so replay them here exactly as `shareWindow` does for a
@@ -708,8 +816,43 @@ export class StreamPage {
       const logs = await this.readCapturedConsole();
       const detail = logs.length > 0 ? `\n--- webview console ---\n${logs.join("\n")}` : "";
       throw new Error(
-        `own stream preview stopped decoding (progress ${before} -> ${after})${detail}`,
+        `own stream preview stopped decoding (${samples} sample(s) over ${windowMs}ms, ` +
+          `all showing the same picture)\n${await this.describeSurface(true)}${detail}`,
       );
+    }
+  }
+
+  /**
+   * What the stream surface is, and what state it is in.
+   *
+   * "0 -> 0" says the picture is not changing and nothing else. A surface that
+   * is paused, has no track, or has been laid out to nothing are three
+   * different faults with three different owners, and they are indistinguishable
+   * from the progress number alone.
+   */
+  private async describeSurface(own: boolean): Promise<string> {
+    try {
+      return await this.d.executeScript<string>(
+        `const el = document.querySelector(arguments[0]);
+         if (!el) return "surface: absent";
+         const r = el.getBoundingClientRect();
+         const cs = getComputedStyle(el);
+         const s = el.srcObject;
+         const tracks = s && s.getVideoTracks ? s.getVideoTracks() : [];
+         return "surface: " + el.tagName.toLowerCase()
+           + " " + Math.round(r.width) + "x" + Math.round(r.height)
+           + " display=" + cs.display + " visibility=" + cs.visibility
+           + " videoSize=" + (el.videoWidth || 0) + "x" + (el.videoHeight || 0)
+           + (el.tagName === "CANVAS"
+             ? " canvasSize=" + el.width + "x" + el.height + " frames=" + (el.__e2eFrames ?? 0)
+             : " readyState=" + el.readyState + " paused=" + el.paused)
+           + " tracks=" + tracks.length
+           + tracks.map((t) => " [" + t.readyState + (t.muted ? " muted" : "") + "]").join("");`,
+        `[data-testid="${TID.streamViewerVideo}"][data-own="${own}"],` +
+          `[data-testid="${TID.streamNativeView}"][data-own="${own}"]`,
+      );
+    } catch {
+      return "surface: (could not be read)";
     }
   }
 
@@ -793,6 +936,14 @@ export class StreamPage {
     const tile = By.css(
       `[data-testid="${TID.streamWatchTile}"][${BROADCASTER_NAME_ATTR}="${cssAttrEscape(name)}"]`,
     );
+    // Nebula has no "X is sharing" banner and no Watch button: a remote feed
+    // puts the stage on screen by itself, so being able to see the broadcast
+    // *is* watching it and there is nothing to click. Its stage surface names
+    // the broadcaster for exactly this.
+    const stage = By.css(
+      `[data-testid="${TID.streamViewerVideo}"][${BROADCASTER_NAME_ATTR}="${cssAttrEscape(name)}"],` +
+        `[data-testid="${TID.streamNativeView}"][${BROADCASTER_NAME_ATTR}="${cssAttrEscape(name)}"]`,
+    );
     const deadline = Date.now() + timeout;
     // Which of the two ways this can run out of time actually happened. "No
     // banner appeared" and "the banner appeared and would not take the click"
@@ -812,9 +963,11 @@ export class StreamPage {
               `banner is present but unusable. Viewport ${await this.layoutNote()} ` +
               `- a wide window here means a real overlay, not the drawer, and ` +
               `\`clickPossiblyHidden\` will have rethrown rather than hide it`
-            : `no "is sharing" banner or watch tile for "${name}" appeared`,
+            : `no "is sharing" banner, watch tile or stage surface for "${name}" appeared`,
         );
       }
+      if (isNebula && (await this.d.findElements(stage)).length > 0) return;
+
       const rows = await this.d.findElements(banner);
       if (rows.length > 0) {
         const watch = await rows[0].findElement(byTid(TID.broadcastWatch));
@@ -968,18 +1121,33 @@ export class StreamPage {
   private async waitVideoReady(own: "true" | "false", timeout: number): Promise<void> {
     const sel = this.surface(own === "true");
     await this.d.wait(until.elementLocated(sel), timeout);
+    await this.waitFirstFrame(sel, timeout, `stream surface data-own="${own}"`);
+  }
+
+  /**
+   * Wait until the located surface has shown a decoded frame.
+   *
+   * A `<video>` reports it through `videoWidth`. A `<canvas>` cannot: it is
+   * 300x150 from the moment it mounts, and Nebula mounts the stage surface
+   * seconds before the decoder's first paint (the "Connecting…" state). Any
+   * width-based check returns on mount, and a flow assertion started right
+   * after it then times out on a stream that has simply not started yet - the
+   * "own stream preview stopped decoding" every Nebula health run reported.
+   * The paint itself is the only honest signal, so the counter is installed
+   * first and the wait is for it to tick. Frames painted before the install
+   * are missed, but the sender never dedups, so the next one is never far.
+   */
+  private async waitFirstFrame(sel: By, timeout: number, what: string): Promise<void> {
+    await this.installFrameCounter();
     await this.d.wait(async () => {
       const els = await this.d.findElements(sel);
       if (els.length === 0) return false;
-      // `videoWidth` on a <video>, `width` on the native family's <canvas>:
-      // both are 0 until the first frame lands, which is the thing being
-      // waited for.
-      const w = await this.d.executeScript<number>(
-        "return arguments[0].videoWidth || arguments[0].width || 0;",
+      return this.d.executeScript<boolean>(
+        `const el = arguments[0];
+         return el.tagName === 'VIDEO' ? el.videoWidth > 0 : (el.__e2eFrames ?? 0) > 0;`,
         els[0],
       );
-      return w > 0;
-    }, timeout, `stream surface data-own="${own}" never received frames`);
+    }, timeout, `${what} never received frames`);
   }
 
   /**
@@ -1006,17 +1174,7 @@ export class StreamPage {
       err.message += `\n--- webview console ---\n${logs.join("\n")}`;
       throw err;
     }
-    await this.d.wait(async () => {
-      const els = await this.d.findElements(sel);
-      if (els.length === 0) return false;
-      // Same testid for both families here, but a `<canvas>` PiP sizes
-      // through `width` rather than `videoWidth`.
-      const w = await this.d.executeScript<number>(
-        "return arguments[0].videoWidth || arguments[0].width || 0;",
-        els[0],
-      );
-      return w > 0;
-    }, timeout, `camera PiP data-own="${own}" never received frames`);
+    await this.waitFirstFrame(sel, timeout, `camera PiP data-own="${own}"`);
   }
 }
 

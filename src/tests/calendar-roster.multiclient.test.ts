@@ -5,6 +5,7 @@ import { config } from "../config";
 import { setSuperUserPassword } from "../util/server";
 import { delay } from "../util/wait";
 import { pluginMissing } from "../util/preconditions";
+import { featureMissing } from "../ui-flavour";
 
 /**
  * Fans the `fancy-calendar` relay out across THREE clients and several invite
@@ -37,7 +38,7 @@ import { pluginMissing } from "../util/preconditions";
  * every same-day occurrence (unlike the month view, which caps at 3 chips/day),
  * so events are asserted there by their unique titles.
  */
-describe("calendar: 3-user meeting constellations", { skip: pluginMissing("fancy-calendar") }, () => {
+describe("calendar: 3-user meeting constellations", { skip: featureMissing("calendar") || pluginMissing("fancy-calendar") }, () => {
   let admin: TauriApp;
   let bob: TauriApp;
   let carol: TauriApp;

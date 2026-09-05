@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it, before, after } from "node:test";
 import { TauriApp } from "../app";
 import { config } from "../config";
+import { featureMissing } from "../ui-flavour";
 
 /**
  * Two real clients exercising scheduled channel messages end-to-end against
@@ -16,7 +17,7 @@ import { config } from "../config";
  * store -> timer -> broadcast path. Total suite runtime is therefore
  * dominated by that single wait.
  */
-describe("multi-client: scheduled messages", () => {
+describe("multi-client: scheduled messages", { skip: featureMissing("scheduledMessages") }, () => {
   let alice: TauriApp;
   let bob: TauriApp;
   const aliceName = `e2e-SchedA-${Date.now() % 100000}`;

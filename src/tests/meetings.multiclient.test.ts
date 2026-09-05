@@ -5,6 +5,7 @@ import { config } from "../config";
 import { setSuperUserPassword } from "../util/server";
 import { bridgeMissing, pluginMissing } from "../util/preconditions";
 import { stepChain } from "../util/steps";
+import { featureMissing } from "../ui-flavour";
 
 /**
  * Scheduled meeting rooms (server-provisioned, end-to-end-encrypted).
@@ -35,7 +36,7 @@ import { stepChain } from "../util/steps";
 // that gates the calendar suites. Roadmap, not a defect.
 describe(
   "meetings: server-provisioned E2E rooms",
-  { skip: bridgeMissing() || pluginMissing("fancy-calendar") },
+  { skip: featureMissing("calendar") || bridgeMissing() || pluginMissing("fancy-calendar") },
   () => {
   let admin: TauriApp;
   let bob: TauriApp;
