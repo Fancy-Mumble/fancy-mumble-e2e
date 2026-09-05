@@ -130,6 +130,30 @@ export function qt6uiMissing(): Gate {
   );
 }
 
+/**
+ * Sharing the desktop's audio needs PipeWire and a sink whose monitor has
+ * something on it, so the suite plays a tone through the machine's speakers.
+ * That is audible to whoever is sitting there, which is why it is opt-in
+ * rather than part of an ordinary run.
+ */
+export function desktopAudioShareUnavailable(): Gate {
+  return once("desktop-audio", () => {
+    if (!process.env.E2E_DESKTOP_AUDIO) {
+      return "desktop-audio sharing is opt-in: set E2E_DESKTOP_AUDIO=1 (it plays " +
+        "a short tone on this machine's default output).";
+    }
+    if (process.platform !== "linux") {
+      return "desktop-audio capture is implemented for Linux/PipeWire so far.";
+    }
+    try {
+      execFileSync("pw-play", ["--help"], { stdio: "ignore", timeout: 8000 });
+      return false;
+    } catch {
+      return "the tone this suite plays needs `pw-play` (PipeWire) on PATH.";
+    }
+  });
+}
+
 /** The checkerboard helper the screen-share fidelity suites capture. */
 export function tkinterMissing(): Gate {
   return once("tkinter", () => {
