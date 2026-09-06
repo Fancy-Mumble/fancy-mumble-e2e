@@ -262,14 +262,24 @@ heuristic. Linux X11 reads `_NET_ACTIVE_WINDOW` and `_NET_WM_STATE_FULLSCREEN` p
 `/proc/<pid>/exe`. Wayland exposes no foreground window to clients, so there the overlay is
 hotkey-driven or "always", and signal 5 (presence) is the only automatic one.
 
+**Implemented** (`probe/linux.rs`): the X11 reading above, plus `_NET_FRAME_EXTENTS` and
+`_GTK_FRAME_EXTENTS` for "has chrome" (X11 has no window styles, and GTK decorates itself),
+`RandR`'s monitor list for the screen to place on, and Wine's rewritten
+`/proc/<pid>/cmdline` mapped through the prefix's `dosdevices` so a Proton game resolves to
+its `steamapps/common` directory instead of to `wine64-preloader`. That reading also serves
+a Wayland session, because games are `XWayland` clients; when a native Wayland window holds
+the focus the probe says so (`ProbeNote::WaylandSurface`) and the settings panel prints it,
+rather than reporting "no game" and looking broken. The installed-game index gained Linux
+Steam roots (native, Flatpak, Snap) and Heroic's Epic and GOG records.
+
 ## 6. Platform matrix
 
 | Platform | Topmost | Click-through | No focus | Capture exclusion | Foreground detection | Verdict |
 | --- | --- | --- | --- | --- | --- | --- |
 | Windows 10/11 | `WS_EX_TOPMOST` via `always_on_top` | `WS_EX_TRANSPARENT\|LAYERED` via `set_ignore_cursor_events` | `WS_EX_NOACTIVATE` via `focusable(false)` | `WDA_EXCLUDEFROMCAPTURE` (exists) | full (section 5) | **primary** |
 | macOS | `NSFloatingWindowLevel` via `always_on_top`; needs `NSWindowCollectionBehaviorFullScreenAuxiliary \| CanJoinAllSpaces` to appear over a fullscreen game's Space; tao only sets `CanJoinAllSpaces` (`visible_on_all_workspaces`), so one `objc2` call in `platform/window/macos.rs` | `setIgnoresMouseEvents` (exists) | `NSPanel`-style non-activating needs the same objc2 hook | `NSWindowSharingNone` (exists) | AppKit APIs, no anti-cheat concern | works, second |
-| Linux X11 / XWayland | `gtk_window_set_keep_above` | GDK input region (exists) | `accept_focus(false)` at creation | not supported (`WindowExtError::Unsupported`) | EWMH atoms | works |
-| Linux Wayland (GNOME, KDE, wlroots) | **not possible through tao** (tauri #3117 / tao #1134); layer-shell would fix it on KDE/wlroots only and tao does not expose it | input region works | works | no | none | hotkey-driven window only; say so in settings |
+| Linux X11 / XWayland | `gtk_window_set_keep_above` | GDK input region (exists) | `accept_focus(false)` at creation | not supported (`WindowExtError::Unsupported`) | EWMH atoms (implemented) | works |
+| Linux Wayland (GNOME, KDE, wlroots) | **not possible through tao** (tauri #3117 / tao #1134); layer-shell would fix it on KDE/wlroots only and tao does not expose it | input region works | works | no | `XWayland` games only, via the X11 probe; native Wayland windows are invisible to it and reported as such | detection works; placement and z-order need the client itself run with `GDK_BACKEND=x11` |
 | SteamOS Game Mode (gamescope) | single `GAMESCOPE_EXTERNAL_OVERLAY` slot, occupied by mangoapp | n/a | n/a | n/a | n/a | not available |
 | Android | n/a | | | | | none |
 

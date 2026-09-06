@@ -50,7 +50,8 @@ below, the plan has been corrected rather than left to rot.
 | M2 policy, ask-once, settings | **Landed** | `watcher.rs`; `GameOverlayPrompt.tsx`; `core/features/overlay/gameOverlay.ts` (8 tests) |
 | M3 PresentMon / Process Monitor measurements | Not started | section 9 |
 | M4 e2e test in this repo | Not started | section 9 |
-| macOS, Linux, Qt port | Not started | out of PoC scope by design |
+| Linux probe (X11 / `XWayland`) | **Landed** | `crates/fancy-gamedetect/src/probe/linux.rs`; Steam and Heroic in `src/index/` |
+| macOS, Qt port | Not started | out of PoC scope by design |
 
 Corrections the build forced:
 
@@ -363,9 +364,11 @@ feature gets a regression test; ASCII-only comments.
 | M3 | Measurements | Process Monitor: no handle to a game beyond limited information; PresentMon: independent flip while hidden, delta recorded while shown; CS2 Trusted Mode stays on with the overlay visible |
 | M4 | e2e test in this repo | `audio-bot` speaks, WebDriver switches to the `game-overlay` handle, the speaker's name and the last message are asserted |
 
-Explicitly not in the PoC: macOS and Linux probes, the Qt port's overlay, lifting the
+Explicitly not in the PoC: the macOS probe, the Qt port's overlay, lifting the
 talking derivation into `mumble-protocol`, Discord's public list, per-game overlay
-positions.
+positions. The Linux probe was out of scope here and landed later, because a
+detector that answers "nothing" on every reading is indistinguishable from a
+broken one - see the research document's platform matrix for what it can see.
 
 ## 9. Risks and open questions
 
