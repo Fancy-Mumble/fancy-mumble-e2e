@@ -151,6 +151,10 @@ export class StarlingServer {
     // protocol but the right entropy: the SFU logs and degrades to
     // signalling-only if the bind loses the race, it does not fail the run.
     const media = await freePort();
+    // Where the files service serves bytes from. Without a listener the
+    // service still signs for uploads and every PUT and GET 404s, so a canon
+    // attachment could be described but never stored.
+    const files = await freePort();
     // Staged into the run's own directory rather than pointed at cargo's
     // target: the loader scans a directory for every cdylib in it, and a
     // target directory is full of unrelated ones.
@@ -165,7 +169,7 @@ export class StarlingServer {
     }
 
     const configFile = path.join(dataDir, "starling.toml");
-    writeFileSync(configFile, config(port, http, media, dataDir, pluginsDir, liveDocPort), "utf8");
+    writeFileSync(configFile, config(port, http, media, files, dataDir, pluginsDir, liveDocPort), "utf8");
 
     const proc = spawn(STARLING_BIN, ["--all-in-one", "--config", configFile], {
       cwd: dataDir,
@@ -366,6 +370,7 @@ function config(
   port: number,
   http: number,
   media: number,
+  files: number,
   dataDir: string,
   pluginsDir: string | null,
   liveDocPort: number,
@@ -418,6 +423,12 @@ fail_closed = true
 [services.screenshare]
 public_url = "127.0.0.1:${media}"
 options = { media_port = "${media}" }
+
+# Canon file sharing. The service ships with no listener, and without one
+# nothing serves the bytes: uploads are signed for and then 404.
+[services.files]
+listen = "127.0.0.1:${files}"
+public_url = "http://127.0.0.1:${files}"
 ${plugins(pluginsDir, liveDocPort, dataDir)}`;
 }
 
