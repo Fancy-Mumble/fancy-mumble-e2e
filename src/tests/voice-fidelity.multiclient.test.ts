@@ -117,7 +117,11 @@ describe("voice fidelity: real speech survives the round trip", { concurrency: 1
     // of audio, and "the correlation was 0.2" is not something anyone can act
     // on without listening to what actually arrived - deleting it turns a
     // diagnosable failure into a mystery.
-    if (dumpDir && passed) {
+    // `E2E_KEEP_DUMPS` keeps it on a pass too: the metric here is an envelope
+    // correlation, which is deaf to anything that leaves the rhythm of speech
+    // intact - ringing, buzz, a modulation artefact. Chasing one of those means
+    // listening to a passing run and comparing it against another build.
+    if (dumpDir && passed && !process.env.E2E_KEEP_DUMPS) {
       rmSync(dumpDir, { recursive: true, force: true });
     } else if (dumpDir) {
       console.log(`voice-fidelity: decoded audio kept for inspection in ${dumpDir}`);
