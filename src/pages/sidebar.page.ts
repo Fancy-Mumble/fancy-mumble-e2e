@@ -82,6 +82,8 @@ export class SidebarPage {
    *
    * Options:
    *  - `pchatProtocol` (e.g. "fancy_v1_full_archive") enables persistent chat.
+   *    "server_managed" is the one mode that is *not* end-to-end encrypted:
+   *    the server holds the key, so a late joiner reads the whole archive.
    *  - `hidden` marks the channel hidden (only users with SeeChannel see it).
    *  - `expiryMode` 1 = absolute, 2 = sliding; with `expirySeconds` the lifetime/
    *    idle window. The dialog edits value + unit, so we set the value in seconds
@@ -235,6 +237,35 @@ export class SidebarPage {
     );
   }
 
+  /**
+   * Change an existing channel's persistence protocol through the editor,
+   * leaving everything else as it is.
+   *
+   * The counterpart of {@link createSubChannel}'s `pchatProtocol`: a channel
+   * that becomes encrypted *while people are sitting in it* is a different code
+   * path from one created that way, and it is the one the mode-change tests
+   * need.
+   */
+  async setChannelPchatProtocol(name: string, protocol: string): Promise<void> {
+    const id = Number(await this.channelIdByName(name));
+    await this.channelMenuAction(id, menuLabel("editChannel"));
+
+    const select = await this.d.wait(until.elementLocated(By.css("#ch-ed-pchat")), 10000);
+    await this.d.wait(until.elementIsVisible(select), 5000);
+    await setReactSelectValue(this.d, select, protocol);
+
+    const saveBtn = await this.d.wait(
+      until.elementLocated(By.xpath("//*[@role='dialog']//button[normalize-space(.)='Save']")),
+      10000,
+    );
+    await this.d.wait(until.elementIsEnabled(saveBtn), 5000);
+    await saveBtn.click();
+    await this.d.wait(
+      async () => (await this.d.findElements(By.css("#ch-ed-name"))).length === 0,
+      10000,
+    );
+  }
+
   /** Whether a channel with the given name is currently in the sidebar (no wait). */
   async hasChannel(name: string): Promise<boolean> {
     return (await this.d.findElements(this.byChannelName(name))).length > 0;
@@ -307,6 +338,26 @@ export class SidebarPage {
       }
     }
     throw new Error(`failed to move into channel "${name}" (membership not confirmed)`);
+  }
+
+  /**
+   * Single-click a channel to SELECT it for viewing, without moving the local
+   * user into it. The counterpart of {@link joinChannel}: Nebula shows the
+   * selected channel's chat and keeps its composer live whether or not the
+   * user is standing in the room, so this is the gesture a "read a room I am
+   * not in" test needs.
+   */
+  async selectChannel(name: string): Promise<void> {
+    await this.ensureChannelsTab();
+    await ensureSidebarOpen(this.d);
+    const el = await locateForGesture(this.d, this.byChannelName(name));
+    await clickPossiblyHidden(this.d, el);
+    if (isNebula) await goToChat(this.d);
+  }
+
+  /** Whether the local user is currently a member of `name`. */
+  async isJoinedChannel(name: string): Promise<boolean> {
+    return (await this.d.findElements(this.byJoinedChannel(name))).length > 0;
   }
 
   /**

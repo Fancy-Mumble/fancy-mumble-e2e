@@ -446,6 +446,108 @@ export class ChatPage {
     return items || "(no menu was open)";
   }
 
+  /**
+   * How many message rows are mounted right now, from any sender.
+   *
+   * Distinct from {@link messageCountFrom}, which counts sender *labels* and so
+   * counts consecutive-sender groups rather than messages. This is the number a
+   * windowing assertion needs: how much DOM the chat is actually carrying.
+   *
+   * The two UI packs disagree about the attribute - Standard emits
+   * `data-msg-id` and Nebula `data-message-id` - so both are counted, and a row
+   * carrying both is counted once.
+   */
+  async renderedMessageCount(): Promise<number> {
+    return await this.d.executeScript<number>(
+      `return new Set(
+         [...document.querySelectorAll("[data-msg-id],[data-message-id]")]
+       ).size;`,
+    );
+  }
+
+  /**
+   * The element that actually scrolls the transcript.
+   *
+   * Found rather than named: neither pack gives the scroller a test id, and its
+   * depth differs between them. The rule is the one the media-scroll probe
+   * arrived at - walk up from a message row to the first ancestor that both
+   * overflows and is allowed to scroll.
+   */
+  private scrollerScript(body: string): string {
+    return `const row = document.querySelector("[data-msg-id],[data-message-id]");
+            if (!row) return null;
+            let el = row.parentElement;
+            while (el) {
+              const oy = getComputedStyle(el).overflowY;
+              if (el.scrollHeight > el.clientHeight + 4 && /auto|scroll/.test(oy)) break;
+              el = el.parentElement;
+            }
+            if (!el) return null;
+            ${body}`;
+  }
+
+  /** Where the transcript is scrolled, or `null` if nothing is scrollable. */
+  async scrollPosition(): Promise<{ top: number; height: number; client: number } | null> {
+    return await this.d.executeScript(
+      this.scrollerScript(
+        `return { top: el.scrollTop, height: el.scrollHeight, client: el.clientHeight };`,
+      ),
+    );
+  }
+
+  /**
+   * Scroll the transcript to `to`, in pixels or by keyword.
+   *
+   * Returns the resulting position so a caller can assert on movement rather
+   * than assume it: a scroller that refuses to move is the failure mode a
+   * paging test is most likely to hit, and a silent no-op looks like a pass.
+   */
+  async scrollMessages(to: number | "top" | "bottom"): Promise<number> {
+    const target =
+      to === "top" ? "0" : to === "bottom" ? "el.scrollHeight" : String(Math.round(to));
+    const top = await this.d.executeScript<number | null>(
+      this.scrollerScript(`el.scrollTop = ${target}; return el.scrollTop;`),
+    );
+    if (top === null) throw new Error("no scrollable transcript was found");
+    return top;
+  }
+
+  /**
+   * Scroll to the top and wait until more history has been mounted.
+   *
+   * The two-step is deliberate. A page arriving above the reader must not move
+   * what they are reading, so the client pays the height difference back into
+   * `scrollTop` in the same frame - which means "did a page arrive" cannot be
+   * answered by watching the scroll position. The row count is what changes.
+   */
+  async loadOlderMessages(timeout = 20000): Promise<number> {
+    const before = await this.renderedMessageCount();
+    await this.scrollMessages("top");
+    let seen = before;
+    await this.d.wait(
+      async () => {
+        seen = await this.renderedMessageCount();
+        return seen > before;
+      },
+      timeout,
+      `expected more than ${before} rows after scrolling to the top`,
+    );
+    return seen;
+  }
+
+  /** Wait until no more than `max` message rows are mounted. */
+  async waitForRenderedAtMost(max: number, timeout = 20000): Promise<void> {
+    let seen = -1;
+    await this.d.wait(
+      async () => {
+        seen = await this.renderedMessageCount();
+        return seen <= max;
+      },
+      timeout,
+      `expected at most ${max} rendered rows, still seeing ${seen}`,
+    );
+  }
+
   /** Count the currently rendered messages attributed to `sender`. */
   async messageCountFrom(sender: string): Promise<number> {
     return (await this.d.findElements(this.senderRow(sender))).length;
@@ -995,6 +1097,26 @@ export class ChatPage {
       if (!inv) { cb('no-invoke'); return; }
       inv('get_voice_state').then((r) => cb(String(r))).catch(() => cb('err'));
     `);
+  }
+
+  /**
+   * Mute (or unmute) the way the tray item and the global shortcut do it -
+   * straight at the backend, without the UI's own action.
+   *
+   * Neither of those can be driven from here: the tray menu is native chrome
+   * WebDriver cannot see, and `Ctrl+Shift+M` is registered with the OS rather
+   * than the page. What both of them run is this one command, so this is the
+   * faithful stand-in - and the path that used to lose the mute, because the
+   * preference was written by the UI action rather than by the state change.
+   */
+  async toggleMuteOutsideTheUi(): Promise<void> {
+    const result = await this.d.executeAsyncScript<string>(`
+      const cb = arguments[arguments.length - 1];
+      const inv = window.__TAURI_INTERNALS__ && window.__TAURI_INTERNALS__.invoke;
+      if (!inv) { cb('no-invoke'); return; }
+      inv('toggle_mute').then(() => cb('ok')).catch((e) => cb('err:' + e));
+    `);
+    if (result !== "ok") throw new Error(`toggle_mute failed: ${result}`);
   }
 
   /** Drive the local user into the backend "muted" voice state (mic off, can hear). */
