@@ -486,6 +486,44 @@ management and receipts, `TextMessage` for reactions and pins, `DeleteMessage`
 for deletes - while still being relayed byte-for-byte, because re-encoding a
 body whose meaning this service does not know is how a relay corrupts things.
 
+## S8. `text` history was ungated, and archived the encrypted channels too - High (fixed 2026-09-09)
+
+Found while implementing bidirectional history paging, not during the original
+audit. It is S1's twin, in the service nobody looked at because it is the *non*
+end-to-end half of chat.
+
+Two halves, and each makes the other worse.
+
+**`TextService::on_history` had no permission check at all.** pchat's `on_fetch`
+was gated on `Enter` by S1; the same handler in `text` went straight from the
+cursor to the query. The channel id comes off the wire, so any connected client
+could page through the stored history of any channel on the server, including
+ones it cannot see.
+
+**And `text` archived every `TextMessage` regardless of the channel's mode.** A
+Fancy client sends a legacy `TextMessage` beside every sealed pchat message, so
+that peers too old to decrypt still see something. `text` never consulted
+`pchat_protocol`, so an end-to-end channel's conversation was written to disk a
+second time in this table. With the default preference that copy is the literal
+string `[Encrypted message]`; with dual path enabled
+(`preferencesStorage.ts`, `enableDualPath`) it is **the real body in clear
+text**.
+
+Together: the plaintext of an end-to-end channel, in an unindexed-by-permission
+table, served to anyone who asked. The encryption was intact and irrelevant.
+
+**Fixed** with `channel_modes` in the runtime
+(`crates/runtime/src/channel_modes.rs`) - the `Roster` shape over
+`Metadata.Watch`, holding each channel's `pchat_protocol`. `text` now refuses to
+archive or serve history for any channel running persistent chat, and
+`on_history` is gated on `Enter`. Serving an empty page rather than refusing
+outright is deliberate: rows written by earlier builds are still on disk, and
+refusing to *write* only protects a database that has always run this build.
+
+The same table is what makes the mislabelled-protocol refusal in `pchat`
+possible, which is the check a server-managed channel's confidentiality claim
+rests on.
+
 ## What this audit did not cover
 
 * **Client-side cryptography** - key derivation, the Signal implementation, SKDM

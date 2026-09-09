@@ -44,8 +44,67 @@ invariant has to survive edits, pins, the dual-path legacy copy, and optimistic 
 
 ## 0.1 Status (2026-09-09)
 
-Nothing is built. This document is the design; every line number below is a citation of what
-exists today, not of new code.
+**Phases 1 and 2 are built and pushed** to `vendor/starling` `main`
+(`00494bc`..`73eb3c9`). Phase 3 is part-built and **deliberately uncommitted**;
+phases 4 to 6 are not started.
+
+| Phase | State | Where |
+|---|---|---|
+| 1, server paging and hygiene | **done** | starling `main` |
+| 2, server-managed at rest | **done** | starling `main` |
+| 3, client protocol and host cache | **part-built, uncommitted** | `vendor/client` working tree |
+| 4, client UI window | not started | |
+| 5, thumbnails | not started | |
+| 6, e2e | not started | |
+
+### What landed on the server
+
+- `Cursor.after_id` is read, so a page walks either way. `PageInfo.next_after_id`
+  is empty on a forward page that caught up, which is how a reader learns it can
+  follow the live tail.
+- `total_stored` is counted on the first page of a thread only, instead of a
+  `COUNT(*)` over the largest table on every page of a scroll-back.
+- A refused fetch answers with `PchatEnvelope.fetch_refused`. It used to return
+  nothing, which a reader cannot tell from the end of the archive. The fetch
+  budget went from 0.5/s to 2/s, since a two-sided window asks at both edges.
+- `starling_runtime::channel_modes` follows `Metadata.Watch` and holds each
+  channel's mode. `pchat` refuses a message whose declared protocol disagrees
+  with its channel; `text` no longer archives or serves the plaintext copy of an
+  end-to-end channel, and its history is gated on `Enter`.
+- `SERVER_MANAGED` works end to end on the server: messages arrive in the clear
+  and are sealed at rest under `<data_dir>/pchat-at-rest.key`, bound by AAD to
+  tenant, channel and both ids. No key means refusing to store, never storing in
+  clear. Migration `0007` adds `at_rest_key_id`.
+
+Verified: 54 pchat tests, 38 text tests, the runtime suite, clippy clean on both
+Windows and Linux, panic audit and proto hygiene clean.
+
+### What is built but not committed, and why
+
+The client half of `SERVER_MANAGED` and the bidirectional fetch plumbing are in
+the `vendor/client` working tree: the fourth enum variant through
+`PchatProtocol` and its wire and proto conversions, identity arms in the crypto
+dispatch, `uses_pchat` / `has_server_history` replacing the by-name Signal
+checks, an `Anchor` on `send_fetch` with `fetch_message_page` beside it, a skip
+of the key ladder for unencrypted modes, the mode in both channel editors and
+four locales, and five unit tests. `mumble-protocol`'s own suite passes.
+
+It is not committed because `vendor/client` carries another session's in-flight
+work on the same files: a Signal sender-key fix in `state/messaging/mod.rs`, a
+records store and canon emotes in `state/mod.rs`, an image context menu across
+several Nebula and Standard components. That tree is currently red on its own
+account (a plugin ABI test, four TypeScript errors, three Nebula tests, none of
+them in files this work touches). Splicing these hunks out of somebody else's
+mid-refactor is how a broken merge gets made, and this repository has the
+precedent written down already: `docs/SECURITY-AUDIT-pchat.md` left the `text`
+roster fix uncommitted for the same reason. It should land when that work does.
+
+### Still to do
+
+The host-side `Thread` cache with its contiguous-range invariant, the
+`get_messages_page` IPC, paged reads of the Signal local cache, the two-sided
+DOM window, thumbnails, and the e2e suites. The remaining client work touches
+the same shared files, so it wants either a quiet tree or a worktree of its own.
 
 Numbers to fill in from Phase 6 once they can be measured:
 
