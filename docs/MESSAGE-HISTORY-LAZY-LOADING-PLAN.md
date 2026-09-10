@@ -76,8 +76,30 @@ phases 4 to 6 are not started.
   tenant, channel and both ids. No key means refusing to store, never storing in
   clear. Migration `0007` adds `at_rest_key_id`.
 
-Verified: 54 pchat tests, 38 text tests, the runtime suite, clippy clean on both
-Windows and Linux, panic audit and proto hygiene clean.
+Verified: 55 pchat tests, 38 text tests, 510 runtime tests, the starling
+integration suite at 66 of 68 (the two are the documented Windows pair, both
+green in isolation), clippy clean on Windows and Linux, panic audit and proto
+hygiene clean.
+
+### One thing the integration suite caught that the unit tests did not
+
+The mode check landed symmetric: a message had to declare exactly its channel's
+configured mode. That broke `an_encrypted_message_reaches_the_other_member_of_its_channel`
+on both platforms, and it was not a test artefact. A channel's mode can change
+while messages sealed under the old one are still in flight, which is the case
+`fancy/pchat.proto` names where it explains why `Protocol` is per message rather
+than per channel. A sitting member who had not yet seen the new mode would have
+had their messages refused, silently from their side.
+
+The rule is now asymmetric, and the asymmetry is the point. Only one claim can
+hurt: a message saying it is server-managed in a channel that is not, because
+that is the one that would have the server keep a readable copy of a
+conversation whose members were told it could not. Every other mode is
+end-to-end and opaque to the server whatever the message claims, so a mislabel
+costs nothing to store and refusing it only loses messages.
+
+Worth recording because the unit tests were green throughout: the property that
+failed was one no single service could see.
 
 ### What is built but not committed, and why
 
