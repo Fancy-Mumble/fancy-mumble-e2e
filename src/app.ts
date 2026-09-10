@@ -6,6 +6,7 @@ import { type WebDriver } from "selenium-webdriver";
 import { config } from "./config";
 import { startTauriDriver, buildWebDriver } from "./driver";
 import { killTree } from "./util/proc";
+import { tauriInvoke } from "./util/tauri";
 import { ConnectPage } from "./pages/connect.page";
 import { ChatPage } from "./pages/chat.page";
 import { SidebarPage } from "./pages/sidebar.page";
@@ -37,6 +38,16 @@ export interface LaunchOptions {
    * FANCY_E2E_VIRTUAL_MIC / FANCY_E2E_AUDIO_STATS_FILE audio hooks.
    */
   extraEnv?: Record<string, string>;
+  /**
+   * Launch against an existing profile instead of a fresh one.
+   *
+   * Everything the client remembers between runs - saved servers, certs,
+   * preferences - lives in this directory, so passing the same one twice is
+   * how a test restarts *the same user* rather than meeting a new one. The
+   * caller owns a directory it named: {@link TauriApp.close} leaves it alone,
+   * and the test deletes it when it is done with it.
+   */
+  dataDir?: string;
 }
 
 /**
@@ -83,6 +94,70 @@ function makeIsolatedEnv(dataDir: string, captureWindowTitle?: string): NodeJS.P
 }
 
 /**
+ * The full environment one client instance is launched with: its isolated
+ * profile, the caller's own overrides, and the two rig-level knobs.
+ */
+function launchEnv(dataDir: string, instance: number, opts: LaunchOptions): NodeJS.ProcessEnv {
+  const env = makeIsolatedEnv(dataDir, opts.captureWindowTitle);
+  Object.assign(env, opts.extraEnv ?? {});
+  // The client's own tracing, the counterpart to `E2E_STARLING_LOG` on the
+  // server side. Off unless asked for, because it is per-frame chatty in the
+  // capture pipeline - but without it the app's account of a media failure
+  // does not exist anywhere: the webview console carries only what the UI
+  // logs, and the Rust half (capture, encode, the WebRTC peer) writes to
+  // stderr. tauri-driver spawns the app, so that stderr lands in
+  // `.tmp/tauri-driver-<port>.log`.
+  //
+  //   E2E_CLIENT_LOG=fancy_screenshare=debug npm run e2e -- <file>
+  if (process.env.E2E_CLIENT_LOG) env.RUST_LOG = process.env.E2E_CLIENT_LOG;
+  // Give each instance its own X display so two client windows never contend
+  // for keyboard focus (WebKitWebDriver key events depend on window focus);
+  // the per-instance Xvfb servers are started by the runner (:99 + instance).
+  //
+  // Only remap when that Xvfb is actually up. Without the check every instance
+  // was pointed at a display that does not exist unless something started it,
+  // and the second and third clients — the multi-client suites — failed to
+  // launch. Where the display is absent (a Wayland desktop, or no Xvfb) the
+  // ambient DISPLAY is kept and the clients share it.
+  if (process.platform !== "win32" && !process.env.E2E_KEEP_DISPLAY) {
+    if (existsSync(`/tmp/.X11-unix/X${99 + instance}`)) env.DISPLAY = ":" + (99 + instance);
+  }
+  return env;
+}
+
+interface PhaseTimer {
+  /** Close the phase that has been running and name it. */
+  lap(name: string): void;
+  /** Print every phase and the total, as one line per launch. */
+  report(instance: number): void;
+}
+
+/**
+ * Time a launch phase by phase.
+ *
+ * The ~16 s boot is the suite's largest fixed cost, so a launch that got slow
+ * has to say which phase pays for it - driver spawn, webview session, first
+ * app boot, the test-mode reload, cert generation, or the wizard render.
+ */
+function phaseTimer(): PhaseTimer {
+  const started = Date.now();
+  const phases: string[] = [];
+  let since = started;
+  return {
+    lap(name: string): void {
+      const now = Date.now();
+      phases.push(`${name}=${now - since}ms`);
+      since = now;
+    },
+    report(instance: number): void {
+      console.error(
+        `[launch:${instance}] ${phases.join(" ")} total=${Date.now() - started}ms`,
+      );
+    },
+  };
+}
+
+/**
  * One launched FancyMumble client: owns a tauri-driver process, the WebDriver
  * session, and its isolated data dir. Exposes page objects for the views the
  * tests drive.
@@ -103,6 +178,8 @@ export class TauriApp {
     readonly driver: WebDriver,
     private readonly proc: ChildProcess,
     private readonly dataDir: string,
+    /** False when the caller named the profile dir and so owns its lifetime. */
+    private readonly ownsDataDir = true,
   ) {
     this.connect = new ConnectPage(driver);
     this.chat = new ChatPage(driver);
@@ -129,15 +206,7 @@ export class TauriApp {
    * is idempotent, so reconnects keep the same identity.
    */
   async ensureDefaultCert(): Promise<void> {
-    const result = await this.driver.executeAsyncScript<string>(`
-      const cb = arguments[arguments.length - 1];
-      const inv = window.__TAURI_INTERNALS__ && window.__TAURI_INTERNALS__.invoke;
-      if (!inv) { cb('no-invoke'); return; }
-      inv('generate_certificate', { label: 'default' }).then(() => cb('ok')).catch((e) => cb('err:' + e));
-    `);
-    if (result !== "ok") {
-      throw new Error(`ensureDefaultCert failed: ${result}`);
-    }
+    await this.invoke("generate_certificate", { label: "default" });
   }
 
   /**
@@ -146,15 +215,7 @@ export class TauriApp {
    * flips the sink that filter feeds.
    */
   async enableTerminalLogging(): Promise<void> {
-    const result = await this.driver.executeAsyncScript<string>(`
-      const cb = arguments[arguments.length - 1];
-      const inv = window.__TAURI_INTERNALS__ && window.__TAURI_INTERNALS__.invoke;
-      if (!inv) { cb('no-invoke'); return; }
-      inv('set_terminal_logging', { enabled: true }).then(() => cb('ok')).catch((e) => cb('err:' + e));
-    `);
-    if (result !== "ok") {
-      throw new Error(`enableTerminalLogging failed: ${result}`);
-    }
+    await this.invoke("set_terminal_logging", { enabled: true });
   }
 
   /**
@@ -170,15 +231,7 @@ export class TauriApp {
    * red media run is gone by the time the failure is printed.
    */
   async enableFileLogging(): Promise<void> {
-    const result = await this.driver.executeAsyncScript<string>(`
-      const cb = arguments[arguments.length - 1];
-      const inv = window.__TAURI_INTERNALS__ && window.__TAURI_INTERNALS__.invoke;
-      if (!inv) { cb('no-invoke'); return; }
-      inv('set_log_to_file', { enabled: true }).then(() => cb('ok')).catch((e) => cb('err:' + e));
-    `);
-    if (result !== "ok") {
-      throw new Error(`enableFileLogging failed: ${result}`);
-    }
+    await this.invoke("set_log_to_file", { enabled: true });
   }
 
   /**
@@ -202,27 +255,9 @@ export class TauriApp {
     }
   }
 
-  /** Invoke a real Tauri command from an E2E test.
-   *
-   * This is deliberately kept as a thin escape hatch for protocol features
-   * that the current UI does not expose with stable controls (for example
-   * FancyWatchSync and the raw drawing command). The command still executes
-   * in the Rust client and traverses the live server connection.
-   */
+  /** Invoke a real Tauri command in this client. See {@link tauriInvoke}. */
   async invoke<T = unknown>(command: string, args?: Record<string, unknown>): Promise<T> {
-    return this.driver.executeAsyncScript<T>(`
-      const cb = arguments[arguments.length - 1];
-      const command = arguments[0];
-      const args = arguments[1];
-      const inv = window.__TAURI_INTERNALS__ && window.__TAURI_INTERNALS__.invoke;
-      if (!inv) { cb({ __e2eError: 'no-invoke' }); return; }
-      inv(command, args || {}).then((value) => cb({ __e2eValue: value }))
-        .catch((error) => cb({ __e2eError: String(error) }));
-    `, command, args ?? {}).then((result) => {
-      const envelope = result as unknown as { __e2eValue?: T; __e2eError?: string };
-      if (envelope.__e2eError) throw new Error(`Tauri command ${command} failed: ${envelope.__e2eError}`);
-      return envelope.__e2eValue as T;
-    });
+    return tauriInvoke<T>(this.driver, command, args);
   }
 
   /**
@@ -325,87 +360,72 @@ export class TauriApp {
     // WebKitWebDriver binds `nativePort`. They must not overlap across instances.
     const port = config.driverPort + instance * 2;
     const nativePort = port + 1;
-    const dataDir = mkdtempSync(path.join(os.tmpdir(), "fancy-e2e-"));
-    const env = makeIsolatedEnv(dataDir, opts.captureWindowTitle);
-    Object.assign(env, opts.extraEnv ?? {});
-    // The client's own tracing, the counterpart to `E2E_STARLING_LOG` on the
-    // server side. Off unless asked for, because it is per-frame chatty in the
-    // capture pipeline - but without it the app's account of a media failure
-    // does not exist anywhere: the webview console carries only what the UI
-    // logs, and the Rust half (capture, encode, the WebRTC peer) writes to
-    // stderr. tauri-driver spawns the app, so that stderr lands in
-    // `.tmp/tauri-driver-<port>.log`.
-    //
-    //   E2E_CLIENT_LOG=fancy_screenshare=debug npm run e2e -- <file>
-    if (process.env.E2E_CLIENT_LOG) env.RUST_LOG = process.env.E2E_CLIENT_LOG;
-    // Give each instance its own X display so two client windows never contend
-    // for keyboard focus (WebKitWebDriver key events depend on window focus);
-    // the per-instance Xvfb servers are started by the runner (:99 + instance).
-    //
-    // Only remap when that Xvfb is actually up. Without the check every instance
-    // was pointed at a display that does not exist unless something started it,
-    // and the second and third clients — the multi-client suites — failed to
-    // launch. Where the display is absent (a Wayland desktop, or no Xvfb) the
-    // ambient DISPLAY is kept and the clients share it.
-    if (process.platform !== "win32" && !process.env.E2E_KEEP_DISPLAY) {
-      if (existsSync(`/tmp/.X11-unix/X${99 + instance}`)) env.DISPLAY = ":" + (99 + instance);
-    }
+    // A caller-named profile is one the test is reusing (a restart); only a
+    // dir this launch made is a dir this launch may delete.
+    const ownsDataDir = !opts.dataDir;
+    const dataDir = opts.dataDir ?? mkdtempSync(path.join(os.tmpdir(), "fancy-e2e-"));
+    const env = launchEnv(dataDir, instance, opts);
 
-    // Phase timings, printed per launch: the ~16 s boot is the suite's largest
-    // fixed cost, and an optimization argument about it needs to name which
-    // phase pays (driver spawn, webview session, first app boot, the test-mode
-    // reload, cert generation, or the wizard render).
-    const t0 = Date.now();
-    const phases: string[] = [];
-    const lap = (name: string, since: number) => {
-      phases.push(`${name}=${Date.now() - since}ms`);
-      return Date.now();
-    };
+    const timer = phaseTimer();
     const proc = await startTauriDriver(port, nativePort, env);
-    let t = lap("driver", t0);
+    timer.lap("driver");
     try {
       const driver = await buildWebDriver(port, config.appBin);
-      t = lap("session", t);
-      const app = new TauriApp(driver, proc, dataDir);
-      await app.waitDomReady();
-      // Asking for client logs implies wanting them written somewhere. The
-      // release build's *terminal* sink is gated behind a runtime toggle
-      // (`terminal_enabled()` is `cfg!(debug_assertions) || <toggle>`), so
-      // `RUST_LOG` alone produces nothing at all and reads as "the app logged
-      // nothing about the failure". Flip the toggle through the same
-      // `__TAURI_INTERNALS__.invoke` every other harness command uses; the
-      // app's stderr lands in `.tmp/tauri-driver-<port>.log`, where tauri-
-      // driver (its parent) writes it.
-      if (process.env.E2E_CLIENT_LOG) {
-        // Both sinks: the stdout one lands in the tauri-driver log when the
-        // driver passes the app's stdout through, and the file one is the
-        // fallback that cannot be swallowed by any intermediary - it lives in
-        // the instance's isolated data dir
-        // (`.local/share/com.fancymumble.app/logs/`), which `E2E_LOG_ARCHIVE`
-        // copies out on close.
-        await app.enableTerminalLogging();
-        await app.enableFileLogging();
-      }
-      t = lap("boot1", t);
-      await app.applyTestMode();
-      t = lap("boot2", t);
-      await app.ensureDefaultCert();
-      t = lap("cert", t);
-      await app.connect.waitReady(config.connectTimeout);
-      lap("wizard", t);
-      console.error(`[launch:${instance}] ${phases.join(" ")} total=${Date.now() - t0}ms`);
+      timer.lap("session");
+      const app = new TauriApp(driver, proc, dataDir, ownsDataDir);
+      await app.bootstrap(timer);
+      timer.report(instance);
       return app;
     } catch (e) {
       // Don't orphan tauri-driver (and its held port) when launch fails - that
       // would cascade into the next suite that reuses the same port.
       killTree(proc.pid);
-      try {
-        rmSync(dataDir, { recursive: true, force: true });
-      } catch {
-        /* best effort */
+      if (ownsDataDir) {
+        try {
+          rmSync(dataDir, { recursive: true, force: true });
+        } catch {
+          /* best effort */
+        }
       }
       throw e;
     }
+  }
+
+  /**
+   * Bring a freshly attached client up to the point where a test can drive it:
+   * page loaded, test mode applied, identity generated, wizard on screen.
+   *
+   * Each step laps {@link timer}, because the ~16 s boot is the suite's largest
+   * fixed cost and an optimization argument about it has to name which phase
+   * pays.
+   */
+  private async bootstrap(timer: PhaseTimer): Promise<void> {
+    await this.waitDomReady();
+    // Asking for client logs implies wanting them written somewhere. The
+    // release build's *terminal* sink is gated behind a runtime toggle
+    // (`terminal_enabled()` is `cfg!(debug_assertions) || <toggle>`), so
+    // `RUST_LOG` alone produces nothing at all and reads as "the app logged
+    // nothing about the failure". Flip the toggle through the same
+    // `__TAURI_INTERNALS__.invoke` every other harness command uses; the
+    // app's stderr lands in `.tmp/tauri-driver-<port>.log`, where tauri-
+    // driver (its parent) writes it.
+    if (process.env.E2E_CLIENT_LOG) {
+      // Both sinks: the stdout one lands in the tauri-driver log when the
+      // driver passes the app's stdout through, and the file one is the
+      // fallback that cannot be swallowed by any intermediary - it lives in
+      // the instance's isolated data dir
+      // (`.local/share/com.fancymumble.app/logs/`), which `E2E_LOG_ARCHIVE`
+      // copies out on close.
+      await this.enableTerminalLogging();
+      await this.enableFileLogging();
+    }
+    timer.lap("boot1");
+    await this.applyTestMode();
+    timer.lap("boot2");
+    await this.ensureDefaultCert();
+    timer.lap("cert");
+    await this.connect.waitReady(config.connectTimeout);
+    timer.lap("wizard");
   }
 
   private async waitDomReady(timeout = 30000): Promise<void> {
@@ -470,7 +490,8 @@ export class TauriApp {
     await this.waitDomReady();
   }
 
-  /** Shut down the session, kill the driver tree, and remove the data dir. */
+  /** Shut down the session, kill the driver tree, and remove the data dir
+   *  (unless the caller named it - see {@link LaunchOptions.dataDir}). */
   async close(): Promise<void> {
     try {
       await this.driver.quit();
@@ -479,6 +500,7 @@ export class TauriApp {
     }
     killTree(this.proc.pid);
     this.archiveLogs();
+    if (!this.ownsDataDir) return;
     try {
       rmSync(this.dataDir, { recursive: true, force: true });
     } catch {

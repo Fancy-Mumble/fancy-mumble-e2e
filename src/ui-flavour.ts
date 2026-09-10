@@ -104,6 +104,7 @@ export function featureMissing(...features: Feature[]): Gate {
  */
 const MENU = {
   createSubChannel: { standard: "Create Sub-channel", nebula: "New channel here" },
+  editChannel: { standard: "Edit Channel", nebula: "Edit channel" },
   muteUser: { standard: "Mute", nebula: "Mute on server" },
   deafenUser: { standard: "Deafen", nebula: "Deafen on server" },
   prioritySpeaker: { standard: "Priority speaker", nebula: "Priority speaker" },
