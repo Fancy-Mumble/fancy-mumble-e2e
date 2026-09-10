@@ -9,6 +9,7 @@
     "typecheck": "tsc --noEmit",
     "e2e": "node --import tsx scripts/e2e.mts",
     "e2e:private": "node --import tsx scripts/e2e.mts --private",
+    "server:android": "node --import tsx scripts/android-server.mts",
     "test:e2e:raw": "node --import tsx --test --test-concurrency=1 \"src/tests/**/*.test.ts\""
   },
   "dependencies": {
