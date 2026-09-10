@@ -142,6 +142,18 @@ The host-side `Thread` cache with its contiguous-range invariant, the
 DOM window, thumbnails, and the e2e suites. The remaining client work touches
 the same shared files, so it wants either a quiet tree or a worktree of its own.
 
+**Interim, 2026-09-10 - the picture path no longer goes through IPC.** Every canon picture
+under 8 MiB used to be fetched whole as base64 over `starling_download_to_base64`, once per
+card mount - and the render window remounts rows on every scroll back up and every settle at
+the bottom (`chatWindowing.ts`), so a channel of screenshots re-downloaded each of them per
+pass, with no cache on either side. Pictures are now served from the same loopback origin
+as audio and video (`useCanonPreview` asks `starling_media_url` for every previewable kind),
+loaded lazily by the `<img>` and kept by the webview's HTTP cache
+(`Cache-Control: immutable` on the origin's answers); the base64 command is gone. Thumbnails
+(Phase 5) still apply - a tile still decodes the full-resolution original - but the
+tens-of-megabytes IPC calls the probe recorded are not there to measure any more; the probe's
+`bytes` column now only sees the URL strings.
+
 Numbers to fill in from Phase 6 once they can be measured:
 
 | Measurement | Today | Target |

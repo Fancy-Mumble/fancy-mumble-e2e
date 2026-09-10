@@ -322,3 +322,102 @@ like, and the tunnel-only `audio-bot` cannot exercise the UDP path
   (`FANCY_E2E_AUDIO_DUMP_DIR`, `mixer.rs:44-70`) on the listener and a click track fed to
   the speaker's input, then cross-correlate. Coarser, but it is the number the user hears
   and the one to track while working through section 4.
+
+## 6. Measured, 2026-09-08
+
+Section 5 asked for numbers. These are the first ones. Client at `9ff3f7e` (dirty tree,
+release build with `custom-protocol,deepfilternet-denoiser`), Starling `da75e85`, both
+clients and the server on one Windows box over loopback.
+
+**§4 is out of date above.** Items 1, 2, 4, 5, 6 and 7 were already done when it was
+written; item 3 — "move inbound decode off the shared event loop", called *the binding
+constraint* — has since been implemented too, as `state/voice_decode.rs`, with a
+`FANCY_VOICE_DECODE_THREAD=0` kill switch and a fallback to the old path. Only item 8
+(send side) is still open.
+
+### 6.1 Mouth to ear
+
+`voice-latency.multiclient.test.ts`, four runs. The figure excludes the output device ring
+(~10 ms as configured) and the DAC.
+
+| Configuration | Median | p95 | Buffer depth reported |
+| --- | --- | --- | --- |
+| Default | 74.6 ms | 75.1 ms | 40 ms |
+| Default, repeat | 71.6 ms | 72.4 ms | 20 ms |
+| `FANCY_VOICE_DECODE_THREAD=0` | 70.5 ms | 71.4 ms | 30 ms |
+| `FANCY_MIX_CHUNK_MS=5` | 68.8 ms | 69.5 ms | 50 ms |
+
+So **roughly 70-75 ms**, against the 200-250 ms §1 derived for the code before this work.
+The distribution is remarkably tight — p95 sits within a millisecond of the median in every
+run — which is loopback with no competing traffic, not a claim about a real network.
+
+Two things this says that reading could not:
+
+* **The decoder thread makes no measurable difference here.** 70.5 ms without it against
+  71.6 and 74.6 with it: inside the 6 ms spread of the runs. That is not evidence against
+  it — it removes contention for the event loop, and an idle loopback rig has none to
+  remove. It does mean the case for item 3 remains unmeasured, and that measuring it needs
+  the client doing something else at the time (the tokio-starvation incident was UI
+  navigation).
+* **The 5 ms mix chunk really is faster**, by about 3-6 ms, which matches the ~7.5 ms the
+  revert commit claimed. The reason not to take it was never the latency.
+
+### 6.2 The ring: three detectors, none of which works
+
+The 5 ms chunk was reverted for an audible metallic ring that the whole suite passed.
+Building an oracle for that was attempted three times. **All three failed**, each refuted
+by its own control, and the failures are worth recording because each looked convincing
+first.
+
+1. **Sidebands on the latency rig's carrier.** A gain repeating at the chunk rate puts
+   sidebands at `440 ± rate`. Measured 6.7 dB over floor at 20 ms against 31.2 dB at 5 ms —
+   apparently decisive. It was not: the control frequencies were placed at multiples of the
+   *modulation* rate, so the 20 ms run measured its floor at 320-610 Hz (mid speech band,
+   where the denoiser and Opus leave energy) and the 5 ms run at 960-1130 Hz (quiet). The
+   floors differed by 22 dB for that reason alone. With the floor probed symmetrically the
+   two recordings are **identical to within 1-2 dB at every frequency from 60 Hz to
+   1.2 kHz**. The defect is not in those recordings at all — the continuous carrier that
+   holds the noise gate open also holds the jitter buffer full, so the resume ramp never
+   runs.
+2. **Envelope modulation on the speech fixture.** Speech has the onsets the carrier lacks.
+   Measured 17.2 dB at 200 Hz on the 5 ms build — and 17.6 dB on the 20 ms build, at the
+   same probe. The 200 Hz is the talker: this fixture's glottal rate is near 100 Hz and
+   rectifying doubles it. **The source fixture, which has never been near a mix chunk,
+   reads 15.0 dB on that metric.**
+3. **Sidebands on a gated tone** (`scripts/make-gated-tone.mts`): bursts with silence
+   between them, so the buffer drains and ramps repeatedly, on a carrier with no
+   periodicity of its own. The fixture itself is clean — sidebands *below* its noise floor,
+   0.00% swing. Through the client, probed at the same frequency:
+
+   | Build | at 50 Hz | at 200 Hz | swing at 200 Hz |
+   | --- | --- | --- | --- |
+   | 20 ms (current) | -0.9 dB | 12.4 dB | 1.17% |
+   | 5 ms (reverted) | 1.0 dB | 12.9 dB | 1.37% |
+
+   Half a decibel apart. The 200 Hz component is in **both** builds because 200 Hz is the
+   underrun back-off period (`UNDERRUN_BACKOFF_SAMPLES` = 240 samples = 5 ms), which the
+   chunk size does not change. An assertion probing only at the build's own chunk rate
+   passes 20 ms and fails 5 ms while measuring nothing but which frequency it was aimed at.
+
+**The common cause is almost certainly that this rig has no jitter.** The ring needs the
+buffer to keep running dry, and on loopback it does not run dry at all — `voice-latency`
+reports it sitting at its floor for whole runs. Reproducing the fault needs induced jitter
+or loss, which the harness cannot do yet. That is the gap to close before the jitter floor
+is lowered, because lowering it is precisely what makes the buffer underrun.
+
+What survives from the attempt: `src/util/audio-modulation.ts` (the detector, whose
+arithmetic is validated against known modulation in `src/tests/audio-modulation.test.ts`),
+the gated-tone fixture, and `voice-ring.multiclient.test.ts` — which now asserts only that
+playout carries no *gross* periodic gain swing (both builds sit near 1%, it fails over 5%)
+and says plainly in its own header that it does not detect the 5 ms regression.
+
+### 6.3 What else was checked
+
+* `mumble-protocol` unit tests: 337 pass, including the 20 that cover the jitter buffer's
+  policy.
+* `mumble-tauri` audio unit tests: 58 pass, 10 skipped for want of audio hardware.
+* `voice-fidelity`: envelope correlation 0.813 against a floor of 0.55, longest dropout
+  over speech 20 ms against a limit of 200.
+* `voice-state-sync`: all five pass, including the reconnect mute-restore that the 5 ms
+  chunk broke — the one existing test that did notice that change.
+* `voice-state`: both pass.
