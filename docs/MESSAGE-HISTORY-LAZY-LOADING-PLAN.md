@@ -42,119 +42,56 @@ Six phases, each shippable alone. Phase 1 is server-only and improves the curren
 no client change. The riskiest single item is decision 2: the host's contiguous-range
 invariant has to survive edits, pins, the dual-path legacy copy, and optimistic sends.
 
-## 0.1 Status (2026-09-09)
+## 0.1 Status (2026-09-10)
 
-**Phases 1 and 2 are built and pushed** to `vendor/starling` `main`
-(`00494bc`..`6a21e2c`, CI green on both platforms). Phase 3's protocol layer is on a client branch,
-unpushed; its host cache and phases 4 to 6 are not started.
+All six phases are built. The server work is on `vendor/starling` `main`; the
+client work is on the branch `wip/history-lazy-loading` in `vendor/client`,
+pushed, off `develop`.
 
-| Phase | State | Where |
-|---|---|---|
-| 1, server paging and hygiene | **done** | starling `main` |
-| 2, server-managed at rest | **done** | starling `main` |
-| 3, client protocol and host cache | **protocol layer done**, host cache not started | client branch `wip/server-managed-channels` |
-| 4, client UI window | not started | |
-| 5, thumbnails | not started | |
-| 6, e2e | not started | |
+| Phase | State |
+|---|---|
+| 1, server paging and hygiene | **done**, CI green |
+| 2, server-managed at rest | **done**, CI green |
+| 3, client host cache | **done** |
+| 4, two-sided render window | **done**, both packs |
+| 5, thumbnails | **done**, server and client |
+| 6, e2e | **written, never executed** |
 
-### What landed on the server
+### What it does now
 
-- `Cursor.after_id` is read, so a page walks either way. `PageInfo.next_after_id`
-  is empty on a forward page that caught up, which is how a reader learns it can
-  follow the live tail.
-- `total_stored` is counted on the first page of a thread only, instead of a
-  `COUNT(*)` over the largest table on every page of a scroll-back.
-- A refused fetch answers with `PchatEnvelope.fetch_refused`. It used to return
-  nothing, which a reader cannot tell from the end of the archive. The fetch
-  budget went from 0.5/s to 2/s, since a two-sided window asks at both edges.
-- `starling_runtime::channel_modes` follows `Metadata.Watch` and holds each
-  channel's mode. `pchat` refuses a message claiming the server-managed mode in a
-  channel that is not configured for it, and only that; `text` no longer
-  archives or serves the plaintext copy of an end-to-end channel, and its
-  history is gated on `Enter`.
-- `SERVER_MANAGED` works end to end on the server: messages arrive in the clear
-  and are sealed at rest under `<data_dir>/pchat-at-rest.key`, bound by AAD to
-  tenant, channel and both ids. No key means refusing to store, never storing in
-  clear. Migration `0007` adds `at_rest_key_id`.
+A thread in the host is a **contiguous range** with known edges rather than
+whatever happened to arrive. Pages join at an edge in the order the server sent
+them and are never re-sorted, so one sender's skewed clock can no longer put a
+message permanently in the wrong place. An arrival is refused while the tail is
+missing instead of being appended after a row it does not follow, and the cap's
+own head-drop is recorded rather than silent.
 
-Verified: 55 pchat tests, 38 text tests, 510 runtime tests, the starling
-integration suite (the two reds are the documented Windows pair, both green in
-isolation), clippy clean on Windows and Linux, panic audit and proto hygiene
-clean.
+The UI asks for a window through `get_messages_page` instead of receiving the
+whole thread on every event, and both packs mount a range with two edges,
+releasing whichever one the reader is moving away from. A reader who has left
+the tail is told an arrival happened rather than being scrolled to it.
 
-Two of those integration tests are new and make the claims a unit test cannot
-make about a real deployment. `a_late_joiner_reads_a_server_managed_channels_whole_archive`
-connects a second client *after* the message was sent and reads it, which is the
-reason the mode exists. `a_server_managed_message_is_not_on_disk_in_the_clear`
-walks every file the deployment wrote and asserts the plaintext is in none of
-them.
+`SERVER_MANAGED` channels work end to end: not encrypted, sealed at rest under a
+server key, readable by a late joiner with no key exchange at all.
 
-### One thing the integration suite caught that the unit tests did not
+Pictures travel as thumbnails. The sender always makes one, because on an
+end-to-end channel the server never sees the bytes; the server also derives one
+for any picture it can already read, so an older client still gets a preview.
+The full image is fetched when the lightbox opens.
 
-The mode check landed symmetric: a message had to declare exactly its channel's
-configured mode. That broke `an_encrypted_message_reaches_the_other_member_of_its_channel`
-on both platforms, and it was not a test artefact. A channel's mode can change
-while messages sealed under the old one are still in flight, which is the case
-`fancy/pchat.proto` names where it explains why `Protocol` is per message rather
-than per channel. A sitting member who had not yet seen the new mode would have
-had their messages refused, silently from their side.
+### What is not proven
 
-The rule is now asymmetric, and the asymmetry is the point. Only one claim can
-hurt: a message saying it is server-managed in a channel that is not, because
-that is the one that would have the server keep a readable copy of a
-conversation whose members were told it could not. Every other mode is
-end-to-end and opaque to the server whatever the message claims, so a mislabel
-costs nothing to store and refusing it only loses messages.
+The e2e suite in `src/tests/history-paging.multiclient.test.ts` has never been
+run: it needs a freshly built client and the binary was locked. Its assertions
+are claims about the design, not measurements. The numbers below are still
+blank for the same reason.
 
-Worth recording because the unit tests were green throughout: the property that
-failed was one no single service could see.
-
-### The client half, and where it lives
-
-Phase 3's protocol layer is committed to the local branch
-**`wip/server-managed-channels`** in `vendor/client` (`fcbe1a7`, 22 files): the
-fourth `PchatProtocol` variant with its wire and proto conversions, identity
-arms in the crypto dispatch, `uses_pchat` and `has_server_history` replacing two
-by-name Signal checks, an `Anchor` on `send_fetch` so a fetch can walk forward,
-a skip of the key ladder for unencrypted modes, the mode in both channel editors
-and four locales, and five unit tests.
-
-It is **not pushed**, and it is branched off `wip/voice-latency-2` rather than
-`develop`, because that branch's two tip commits are another session's and are
-unpushed. Rebase before publishing.
-
-Why a branch and not the working tree: `vendor/client` carries that session's
-in-flight work *in the same files* — a Signal sender-key fix in
-`state/messaging/mod.rs`, a records store and canon emotes in `state/mod.rs`, an
-image context menu across several components — and that tree is red on its own
-account. Committing there would have swept their half-finished work into this
-change. The branch was built in a throwaway worktree off their committed tip,
-with each of the four overlapping edits re-applied by hand rather than copied,
-so it contains this work and nothing of theirs. The same edits also remain in
-the primary working tree, which is where `mumble-tauri` was compiled: the
-worktree could not build it, because `audiopus_sys` wants a native Opus
-toolchain that a fresh target directory has no cached build of.
-
-### Still to do
-
-The host-side `Thread` cache with its contiguous-range invariant, the
-`get_messages_page` IPC, paged reads of the Signal local cache, the two-sided
-DOM window, thumbnails, and the e2e suites. The remaining client work touches
-the same shared files, so it wants either a quiet tree or a worktree of its own.
-
-**Interim, 2026-09-10 - the picture path no longer goes through IPC.** Every canon picture
-under 8 MiB used to be fetched whole as base64 over `starling_download_to_base64`, once per
-card mount - and the render window remounts rows on every scroll back up and every settle at
-the bottom (`chatWindowing.ts`), so a channel of screenshots re-downloaded each of them per
-pass, with no cache on either side. Pictures are now served from the same loopback origin
-as audio and video (`useCanonPreview` asks `starling_media_url` for every previewable kind),
-loaded lazily by the `<img>` and kept by the webview's HTTP cache
-(`Cache-Control: immutable` on the origin's answers); the base64 command is gone. Thumbnails
-(Phase 5) still apply - a tile still decodes the full-resolution original - but the
-tens-of-megabytes IPC calls the probe recorded are not there to measure any more; the probe's
-`bytes` column now only sees the URL strings.
-
-Numbers to fill in from Phase 6 once they can be measured:
+Two smaller things worth knowing. `NebulaApp.test.tsx` fails about one run in
+two under full-suite load and passes 43/43 alone; it did so before any of this
+work. And `starling`'s Windows CI job failed twice during this work on tests
+unrelated to it — an auth-token test and a live-WebSocket test, both with
+startup-race signatures — while Linux passed; the local full suite showed only
+the one permanently-failing description test.
 
 | Measurement | Today | Target |
 |---|---|---|
