@@ -24,6 +24,6 @@ export async function settleSignalKeys(
   members: readonly TauriApp[],
   settleMs = 1000,
 ): Promise<void> {
-  await Promise.all(members.map((member) => member.chat.waitForE2EBadge()));
+  await Promise.all(members.map((member) => member.chat.header.waitForE2EBadge()));
   await delay(settleMs);
 }

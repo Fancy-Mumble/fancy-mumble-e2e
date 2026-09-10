@@ -84,6 +84,25 @@ const STARLING_BIN = process.env.E2E_STARLING_BIN ??
 const STARLING_PORT = Number(process.env.E2E_STARLING_PORT ?? "64738");
 
 /**
+ * The interface the server binds, and the address it tells clients about.
+ *
+ * Loopback for the suite, which is the whole of the reasoning above: every
+ * client the suite drives runs on this machine. Overridable because a client
+ * that is *not* on this machine cannot reach a loopback listener at all - an
+ * Android emulator reaches the host through `10.0.2.2`, and a phone on the LAN
+ * through the host's LAN address, and neither of those routes to `127.0.0.1`.
+ * `scripts/android-server.mts` sets both to serve exactly that case.
+ *
+ * They are two knobs rather than one because binding and advertising are
+ * different questions. `0.0.0.0` is the right thing to bind for "reachable
+ * from anywhere" and a meaningless thing to *say*: the screen-share and files
+ * services put their address into SDP answers and download URLs, and a device
+ * told to fetch from `0.0.0.0` fetches from itself.
+ */
+const BIND_HOST = process.env.E2E_STARLING_BIND ?? "127.0.0.1";
+const ADVERTISE_HOST = process.env.E2E_STARLING_ADVERTISE ?? BIND_HOST;
+
+/**
  * A running Starling server, on a port nobody else is using.
  *
  * The murmur fixture is a Docker container shared by the whole suite; Starling
@@ -382,24 +401,24 @@ all_in_one = true
 data_dir = "${dataDir.replace(/\\/g, "/")}"
 
 [gateway]
-listen_tcp = "127.0.0.1:${port}"
+listen_tcp = "${BIND_HOST}:${port}"
 
 [services.voice]
-udp_listen = "127.0.0.1:${port}"
+udp_listen = "${BIND_HOST}:${port}"
 
 [[${instancesTable()}]]
 id = 1
 port = ${port}
 
 [services.web]
-listen = "127.0.0.1:${http}"
+listen = "${BIND_HOST}:${http}"
 
 # The only administrative surface Starling has, and how the suite sets the
 # SuperUser password. Ships disabled, which is right for a deployment and
 # wrong here.
 [services.operator-api]
 enabled = true
-listen = "127.0.0.1:${http + 1}"
+listen = "${BIND_HOST}:${http + 1}"
 tier = "optional"
 
 [services.operator-api.auth]
@@ -421,14 +440,14 @@ fail_closed = true
 # measures. One port for both keys: media_port is what the SFU binds,
 # public_url is what goes into SDP answers, and they are the same socket.
 [services.screenshare]
-public_url = "127.0.0.1:${media}"
+public_url = "${ADVERTISE_HOST}:${media}"
 options = { media_port = "${media}" }
 
 # Canon file sharing. The service ships with no listener, and without one
 # nothing serves the bytes: uploads are signed for and then 404.
 [services.files]
-listen = "127.0.0.1:${files}"
-public_url = "http://127.0.0.1:${files}"
+listen = "${BIND_HOST}:${files}"
+public_url = "http://${ADVERTISE_HOST}:${files}"
 ${plugins(pluginsDir, liveDocPort, dataDir)}`;
 }
 
@@ -455,7 +474,7 @@ function plugins(pluginsDir: string | null, liveDocPort: number, dataDir: string
 [services.plugins.options]
 plugins_dir = "${pluginsDir.replace(/\\/g, "/")}"
 "plugin.fancy-live-doc.enabled" = "true"
-"plugin.fancy-live-doc.host" = "127.0.0.1"
+"plugin.fancy-live-doc.host" = "${BIND_HOST}"
 "plugin.fancy-live-doc.port" = "${liveDocPort}"
 "plugin.fancy-live-doc.state_path" = "${state}"
 `;
