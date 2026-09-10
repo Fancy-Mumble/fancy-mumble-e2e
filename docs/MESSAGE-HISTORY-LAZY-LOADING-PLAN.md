@@ -78,9 +78,16 @@ phases 4 to 6 are not started.
   clear. Migration `0007` adds `at_rest_key_id`.
 
 Verified: 55 pchat tests, 38 text tests, 510 runtime tests, the starling
-integration suite at 66 of 68 (the two are the documented Windows pair, both
-green in isolation), clippy clean on Windows and Linux, panic audit and proto
-hygiene clean.
+integration suite (the two reds are the documented Windows pair, both green in
+isolation), clippy clean on Windows and Linux, panic audit and proto hygiene
+clean.
+
+Two of those integration tests are new and make the claims a unit test cannot
+make about a real deployment. `a_late_joiner_reads_a_server_managed_channels_whole_archive`
+connects a second client *after* the message was sent and reads it, which is the
+reason the mode exists. `a_server_managed_message_is_not_on_disk_in_the_clear`
+walks every file the deployment wrote and asserts the plaintext is in none of
+them.
 
 ### One thing the integration suite caught that the unit tests did not
 
