@@ -45,14 +45,14 @@ invariant has to survive edits, pins, the dual-path legacy copy, and optimistic 
 ## 0.1 Status (2026-09-09)
 
 **Phases 1 and 2 are built and pushed** to `vendor/starling` `main`
-(`00494bc`..`ff38db6`). Phase 3 is part-built and **deliberately uncommitted**;
-phases 4 to 6 are not started.
+(`00494bc`..`ff38db6`). Phase 3's protocol layer is on a client branch,
+unpushed; its host cache and phases 4 to 6 are not started.
 
 | Phase | State | Where |
 |---|---|---|
 | 1, server paging and hygiene | **done** | starling `main` |
 | 2, server-managed at rest | **done** | starling `main` |
-| 3, client protocol and host cache | **part-built, uncommitted** | `vendor/client` working tree |
+| 3, client protocol and host cache | **protocol layer done**, host cache not started | client branch `wip/server-managed-channels` |
 | 4, client UI window | not started | |
 | 5, thumbnails | not started | |
 | 6, e2e | not started | |
@@ -109,25 +109,31 @@ costs nothing to store and refusing it only loses messages.
 Worth recording because the unit tests were green throughout: the property that
 failed was one no single service could see.
 
-### What is built but not committed, and why
+### The client half, and where it lives
 
-The client half of `SERVER_MANAGED` and the bidirectional fetch plumbing are in
-the `vendor/client` working tree: the fourth enum variant through
-`PchatProtocol` and its wire and proto conversions, identity arms in the crypto
-dispatch, `uses_pchat` / `has_server_history` replacing the by-name Signal
-checks, an `Anchor` on `send_fetch` with `fetch_message_page` beside it, a skip
-of the key ladder for unencrypted modes, the mode in both channel editors and
-four locales, and five unit tests. `mumble-protocol`'s own suite passes.
+Phase 3's protocol layer is committed to the local branch
+**`wip/server-managed-channels`** in `vendor/client` (`fcbe1a7`, 22 files): the
+fourth `PchatProtocol` variant with its wire and proto conversions, identity
+arms in the crypto dispatch, `uses_pchat` and `has_server_history` replacing two
+by-name Signal checks, an `Anchor` on `send_fetch` so a fetch can walk forward,
+a skip of the key ladder for unencrypted modes, the mode in both channel editors
+and four locales, and five unit tests.
 
-It is not committed because `vendor/client` carries another session's in-flight
-work on the same files: a Signal sender-key fix in `state/messaging/mod.rs`, a
-records store and canon emotes in `state/mod.rs`, an image context menu across
-several Nebula and Standard components. That tree is currently red on its own
-account (a plugin ABI test, four TypeScript errors, three Nebula tests, none of
-them in files this work touches). Splicing these hunks out of somebody else's
-mid-refactor is how a broken merge gets made, and this repository has the
-precedent written down already: `docs/SECURITY-AUDIT-pchat.md` left the `text`
-roster fix uncommitted for the same reason. It should land when that work does.
+It is **not pushed**, and it is branched off `wip/voice-latency-2` rather than
+`develop`, because that branch's two tip commits are another session's and are
+unpushed. Rebase before publishing.
+
+Why a branch and not the working tree: `vendor/client` carries that session's
+in-flight work *in the same files* — a Signal sender-key fix in
+`state/messaging/mod.rs`, a records store and canon emotes in `state/mod.rs`, an
+image context menu across several components — and that tree is red on its own
+account. Committing there would have swept their half-finished work into this
+change. The branch was built in a throwaway worktree off their committed tip,
+with each of the four overlapping edits re-applied by hand rather than copied,
+so it contains this work and nothing of theirs. The same edits also remain in
+the primary working tree, which is where `mumble-tauri` was compiled: the
+worktree could not build it, because `audiopus_sys` wants a native Opus
+toolchain that a fresh target directory has no cached build of.
 
 ### Still to do
 
