@@ -45,7 +45,7 @@ invariant has to survive edits, pins, the dual-path legacy copy, and optimistic 
 ## 0.1 Status (2026-09-09)
 
 **Phases 1 and 2 are built and pushed** to `vendor/starling` `main`
-(`00494bc`..`ff38db6`). Phase 3's protocol layer is on a client branch,
+(`00494bc`..`6a21e2c`, CI green on both platforms). Phase 3's protocol layer is on a client branch,
 unpushed; its host cache and phases 4 to 6 are not started.
 
 | Phase | State | Where |
