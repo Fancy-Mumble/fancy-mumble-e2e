@@ -2,6 +2,7 @@ import { By, Key, until, type WebDriver, type WebElement } from "selenium-webdri
 import { byTid, TID, CALENDAR_EVENT_TITLE_ATTR } from "../selectors";
 import { xpathLiteral } from "../util/xpath";
 import { config } from "../config";
+import { cssAttrEscape } from "../util/css";
 
 /**
  * Page object for the calendar split-view (the `fancy-calendar` plugin UI):
@@ -251,8 +252,4 @@ export class CalendarPage {
       return url ?? "";
     }, timeout, "invite link never arrived");
   }
-}
-
-function cssAttrEscape(value: string): string {
-  return value.replace(/["\\]/g, "\\$&");
 }

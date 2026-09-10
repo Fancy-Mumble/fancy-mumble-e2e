@@ -1,6 +1,7 @@
 import { By, until, type WebDriver } from "selenium-webdriver";
 import { TID } from "../selectors";
 import { config } from "../config";
+import { cssAttrEscape } from "../util/css";
 
 /**
  * Page object for the Friends page (`/friends`, FriendsPage.tsx). A friend's
@@ -75,8 +76,4 @@ export class FriendsPage {
       `friend "${name}" never showed as offline on the Friends page`,
     );
   }
-}
-
-function cssAttrEscape(value: string): string {
-  return value.replace(/["\\]/g, "\\$&");
 }

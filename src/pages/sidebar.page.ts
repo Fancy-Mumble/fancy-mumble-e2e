@@ -14,6 +14,7 @@ import {
   doubleClickPossiblyHidden,
   contextClickPossiblyHidden,
 } from "../util/layout";
+import { cssAttrEscape } from "../util/css";
 
 /**
  * Page object for the channel sidebar (ChannelSidebar.tsx + the flat
@@ -559,10 +560,6 @@ export class SidebarPage {
       `private room "${displayName}" never appeared in the Private rooms viewer`,
     );
   }
-}
-
-function cssAttrEscape(value: string): string {
-  return value.replace(/["\\]/g, "\\$&");
 }
 
 /**

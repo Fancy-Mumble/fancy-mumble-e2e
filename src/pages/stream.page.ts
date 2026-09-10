@@ -4,6 +4,7 @@ import { delay } from "../util/wait";
 import { config } from "../config";
 import { isNebula } from "../ui-flavour";
 import { ensureSidebarClosed, clickPossiblyHidden, locateForGesture } from "../util/layout";
+import { cssAttrEscape } from "../util/css";
 
 /** Colour class recovered from a sampled checkerboard cell. */
 export type CellClass = "green" | "purple" | "other";
@@ -1176,10 +1177,6 @@ export class StreamPage {
     }
     await this.waitFirstFrame(sel, timeout, `camera PiP data-own="${own}"`);
   }
-}
-
-function cssAttrEscape(value: string): string {
-  return value.replace(/["\\]/g, "\\$&");
 }
 
 /**

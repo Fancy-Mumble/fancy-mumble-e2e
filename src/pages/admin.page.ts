@@ -4,6 +4,7 @@ import { config } from "../config";
 import { isNebula } from "../ui-flavour";
 import { clickWhenFree, dismissMenus, goToChat, waitDisplayed } from "../util/nebula";
 import { ensureSidebarOpen, ensureSidebarClosed } from "../util/layout";
+import { cssAttrEscape } from "../util/css";
 
 /**
  * The admin surface's page ids, shared by both packs (`ADMIN_PAGES` in
@@ -435,8 +436,4 @@ export class AdminPage {
 async function isTextInput(field: WebElement): Promise<boolean> {
   const tag = (await field.getTagName()).toLowerCase();
   return tag === "input" || tag === "textarea";
-}
-
-function cssAttrEscape(value: string): string {
-  return value.replace(/["\\]/g, "\\$&");
 }
