@@ -29,12 +29,12 @@ describe("link preview: server-generated embed for a posted URL", () => {
   });
 
   it("renders a preview embed for a posted public URL", async () => {
-    await app.chat.sendMessage("look at this https://example.com");
-    await app.chat.waitForText("https://example.com"); // message delivered
+    await app.chat.composer.send("look at this https://example.com");
+    await app.chat.messages.waitForText("https://example.com"); // message delivered
 
     // The plugin fetches the page; its <title> is "Example Domain", which only
     // appears via the rendered preview card (the inline link shows the URL text,
     // not the title) - so this asserts the full request -> fetch -> embed path.
-    await app.chat.waitForText("Example Domain", 30000);
+    await app.chat.messages.waitForText("Example Domain", 30000);
   });
 });

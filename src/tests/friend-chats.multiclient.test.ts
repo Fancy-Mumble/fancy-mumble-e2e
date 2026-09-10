@@ -50,29 +50,29 @@ describe("friend chats: E2E persisted channels for registered users", { skip: pl
 
   it("upgrades a DM between two registered users to an E2E persisted channel", async () => {
     // admin (SuperUser, registered) needs bob registered too for an E2E channel.
-    await admin.chat.waitForMember(bobName);
+    await admin.chat.roster.waitForMember(bobName);
     await admin.sidebar.registerUser(bobName);
-    await admin.chat.waitForRegistered(bobName);
+    await admin.chat.roster.waitForRegistered(bobName);
 
     // Opening the DM triggers the fancy-friends plugin to provision (and admit
     // both to) the detached signal_v1 channel; the client switches into it.
     await admin.chat.openDirectMessage(bobName);
-    await admin.chat.waitForE2EBadge();
+    await admin.chat.header.waitForE2EBadge();
 
     // Add bob as a friend now (while we're in the main view + he's online) so a
     // later subtest can open his chat from the Friends page after he goes offline.
-    await admin.chat.addFriend(bobName);
+    await admin.chat.roster.addFriend(bobName);
   });
 
   it("keeps a DM with an unregistered user as a classic (non-E2E) chat", async () => {
     // The guest is never registered, so no channel can be provisioned; the chat
     // stays a classic direct message - no E2E badge.
-    await admin.chat.waitForMember(guestName);
+    await admin.chat.roster.waitForMember(guestName);
     await admin.chat.openDirectMessage(guestName);
     // Settle so any (incorrect) upgrade would have landed, then assert no badge.
     await delay(2500);
     assert.equal(
-      await admin.chat.hasE2EBadge(),
+      await admin.chat.header.hasE2EBadge(),
       false,
       "a DM with an unregistered user must stay a classic (non-E2E) chat",
     );
@@ -86,10 +86,10 @@ describe("friend chats: E2E persisted channels for registered users", { skip: pl
     await admin.friends.clickFriend("SuperUser");
     // The embedded chat shows the self channel - the E2E badge confirms it is an
     // end-to-end-encrypted persisted channel (not a classic note store).
-    await admin.chat.waitForE2EBadge();
+    await admin.chat.header.waitForE2EBadge();
     // The self-chat is labelled with our own name (it behaves like any friend),
     // not a special "Notepad" header.
-    const title = await admin.chat.headerTitle();
+    const title = await admin.chat.header.title();
     assert.ok(
       title.includes("SuperUser") && !/notepad/i.test(title),
       `self-chat header should show the own name, got "${title}"`,
@@ -107,8 +107,8 @@ describe("friend chats: E2E persisted channels for registered users", { skip: pl
     // channel - and write to it; the server holds the messages for bob until he
     // reconnects (when the history is replayed to him).
     await admin.friends.clickFriend(bobName);
-    await admin.chat.waitForE2EBadge();
-    await admin.chat.sendMessage("hi while you were away");
-    await admin.chat.waitForMessageFrom("SuperUser");
+    await admin.chat.header.waitForE2EBadge();
+    await admin.chat.composer.send("hi while you were away");
+    await admin.chat.messages.waitForFrom("SuperUser");
   });
 });

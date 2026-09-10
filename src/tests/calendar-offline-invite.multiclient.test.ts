@@ -60,13 +60,13 @@ describe("calendar: invite an offline registered user", { skip: featureMissing("
   it("resolves the offline invitee from the registered-user directory and delivers on reconnect", async () => {
     // Register Bob so he has a stable, persistent user_id (the member-item rows
     // with a context menu live in the Members tab, which waitForMember opens).
-    await admin.chat.waitForMember(bobName);
+    await admin.chat.roster.waitForMember(bobName);
     await admin.sidebar.registerUser(bobName);
     // Registration is keyed by Bob's live session - wait until the server has
     // committed it and broadcast his user_id (the "Registered" badge) BEFORE he
     // disconnects, otherwise the registration would be lost and he'd never make
     // it into the directory.
-    await admin.chat.waitForRegistered(bobName);
+    await admin.chat.roster.waitForRegistered(bobName);
 
     // Bob goes offline. Wait for his client to return to the connect screen and
     // give the server a moment to drop his session, so when we invite him below

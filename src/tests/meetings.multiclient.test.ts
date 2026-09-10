@@ -66,9 +66,9 @@ describe(
 
   step("provisions a hidden E2E room on first join and keeps __meetings out of the tree", async () => {
     // Register Bob so the relay can address the meeting to a stable user_id.
-    await admin.chat.waitForMember(bobName);
+    await admin.chat.roster.waitForMember(bobName);
     await admin.sidebar.registerUser(bobName);
-    await admin.chat.waitForRegistered(bobName);
+    await admin.chat.roster.waitForRegistered(bobName);
 
     // Admin (organiser) schedules a meeting and invites Bob.
     await admin.calendar.open();

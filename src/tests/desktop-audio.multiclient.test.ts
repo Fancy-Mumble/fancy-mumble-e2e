@@ -38,8 +38,8 @@ describe("multi-client: shared desktop audio", { skip: desktopAudioShareUnavaila
     await bob.connect.connect(config.serverHost, bobName, { port: config.serverPort });
     await alice.chat.waitLoaded(config.connectTimeout);
     await bob.chat.waitLoaded(config.connectTimeout);
-    await alice.chat.waitForMember(bobName);
-    await bob.chat.waitForMember(aliceName);
+    await alice.chat.roster.waitForMember(bobName);
+    await bob.chat.roster.waitForMember(aliceName);
     await alice.enableFileLogging();
   });
 

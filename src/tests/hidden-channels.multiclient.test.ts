@@ -135,12 +135,12 @@ describe("channels: hidden, expiring + meeting rooms", () => {
 
   step("makes a meeting room joinable to invitees (no password), hidden from others", async () => {
     // Register bob so the SeeChannel ACL can target his user_id.
-    await admin.chat.waitForMember(bobName);
+    await admin.chat.roster.waitForMember(bobName);
     await admin.sidebar.registerUser(bobName);
-    await admin.chat.waitForRegistered(bobName);
+    await admin.chat.roster.waitForRegistered(bobName);
 
     // Carol initially sees bob in the lobby (root).
-    await carol.chat.waitForMember(bobName);
+    await carol.chat.roster.waitForMember(bobName);
 
     // Admin creates a hidden room inviting bob (not carol).
     await admin.sidebar.createSubChannel(0, roomName, { invitees: [bobName] });
@@ -171,7 +171,7 @@ describe("channels: hidden, expiring + meeting rooms", () => {
 
     // Presence reveal: carol (no SeeChannel for the room) still sees bob ONLINE
     // in the roster - he did not vanish/disconnect...
-    await carol.chat.waitForMember(bobName);
+    await carol.chat.roster.waitForMember(bobName);
     // ...but he is never shown *under a channel* she can see (he is parked in the
     // sentinel channel), and the room itself stays hidden from her.
     assert.equal(
@@ -195,7 +195,7 @@ describe("channels: hidden, expiring + meeting rooms", () => {
     // The server re-announces bob in full to carol, so he reappears in her tree
     // under the public room (moving out of the sentinel channel).
     await carol.sidebar.waitForChannelViewMember(bobName);
-    await admin.chat.waitForMember(bobName);
+    await admin.chat.roster.waitForMember(bobName);
   });
 
   step("attributes a hidden-channel user's message to that user, not the Server", async () => {
@@ -218,11 +218,11 @@ describe("channels: hidden, expiring + meeting rooms", () => {
     // ahead of the message, so the `actor` resolves on carol's client:
     //  - bob is resolvable and appears in carol's roster (lets her open the DM)
     await carol.chat.openDirectMessage(bobName);
-    await carol.chat.waitForText(dmBody);
+    await carol.chat.messages.waitForText(dmBody);
     //  - the delivered message is attributed to bob, never to the Server.
-    await carol.chat.waitForMessageFrom(bobName);
+    await carol.chat.messages.waitForFrom(bobName);
     assert.equal(
-      await carol.chat.hasMessageFrom("Server"),
+      await carol.chat.messages.hasFrom("Server"),
       false,
       "a hidden-channel user's message must be shown as from that user, not the Server",
     );
@@ -232,8 +232,8 @@ describe("channels: hidden, expiring + meeting rooms", () => {
     // Bring bob back into a channel carol can see so she can pick him, then add
     // him as a friend (keyed by his TLS cert hash - he was registered earlier).
     await bob.sidebar.joinChannel(publicName);
-    await carol.chat.waitForMember(bobName);
-    await carol.chat.addFriend(bobName);
+    await carol.chat.roster.waitForMember(bobName);
+    await carol.chat.roster.addFriend(bobName);
 
     // Bob moves into the hidden room carol cannot see; she can no longer place
     // him in the channel tree.

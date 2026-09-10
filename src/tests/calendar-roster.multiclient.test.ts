@@ -77,8 +77,8 @@ describe("calendar: 3-user meeting constellations", { skip: featureMissing("cale
 
   it("relays every meeting to exactly its organiser + invitees", async () => {
     // Register the two guests so the relay can target them by user_id.
-    await admin.chat.waitForMember(bobName);
-    await admin.chat.waitForMember(carolName);
+    await admin.chat.roster.waitForMember(bobName);
+    await admin.chat.roster.waitForMember(carolName);
     await admin.sidebar.registerUser(bobName);
     await admin.sidebar.registerUser(carolName);
 

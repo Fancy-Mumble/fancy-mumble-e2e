@@ -27,7 +27,7 @@ describe("smoke: connect + chat", () => {
 
   it("sends a text message that renders in the chat", async () => {
     const token = `e2e-msg-${Date.now()}`;
-    await app.chat.sendMessage(token);
-    await app.chat.waitForText(token);
+    await app.chat.composer.send(token);
+    await app.chat.messages.waitForText(token);
   });
 });

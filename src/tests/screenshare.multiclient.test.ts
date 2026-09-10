@@ -69,8 +69,8 @@ describe("multi-client: screen sharing (checkerboard pixel fidelity)", { skip: t
 
     // Both in the same (root) channel and able to see each other before sharing.
     await Promise.all([
-      alice.chat.waitForMember(bobName),
-      bob.chat.waitForMember(aliceName),
+      alice.chat.roster.waitForMember(bobName),
+      bob.chat.roster.waitForMember(aliceName),
     ]);
   });
 

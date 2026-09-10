@@ -25,8 +25,8 @@ describe("Fancy control-plane fan-out", () => {
       bob.chat.waitLoaded(config.connectTimeout),
     ]);
     await Promise.all([
-      alice.chat.waitForMember(bobName),
-      bob.chat.waitForMember(aliceName),
+      alice.chat.roster.waitForMember(bobName),
+      bob.chat.roster.waitForMember(aliceName),
     ]);
   });
 
@@ -35,17 +35,17 @@ describe("Fancy control-plane fan-out", () => {
   });
 
   it("relays typing indicators with the correct actor and channel", async () => {
-    await alice.chat.typeMessage(`typing-${Date.now()}`);
-    await bob.chat.waitForText(`${aliceName} is typing`, 10000);
+    await alice.chat.composer.type(`typing-${Date.now()}`);
+    await bob.chat.messages.waitForText(`${aliceName} is typing`, 10000);
   });
 
   it("creates and delivers a poll through FancyPoll", async () => {
     const question = `control-poll-${Date.now()}`;
-    await alice.chat.createPoll(question, ["first", "second"], true);
-    await bob.chat.waitForText(question, 15000);
-    await bob.chat.waitForText("first", 15000);
-    await bob.chat.waitForText("second", 15000);
-    await bob.chat.votePoll(question, "first");
-    await alice.chat.waitForText("1 vote", 15000);
+    await alice.chat.poll.create(question, ["first", "second"], true);
+    await bob.chat.messages.waitForText(question, 15000);
+    await bob.chat.messages.waitForText("first", 15000);
+    await bob.chat.messages.waitForText("second", 15000);
+    await bob.chat.poll.vote(question, "first");
+    await alice.chat.messages.waitForText("1 vote", 15000);
   });
 });

@@ -70,8 +70,8 @@ describe(
     await alice.chat.waitLoaded(config.connectTimeout);
     await bob.chat.waitLoaded(config.connectTimeout);
 
-    await alice.chat.waitForMember(bobName);
-    await bob.chat.waitForMember(aliceName);
+    await alice.chat.roster.waitForMember(bobName);
+    await bob.chat.roster.waitForMember(aliceName);
 
     await alice.stream.shareScreen();
     await bob.stream.watchByName(aliceName);

@@ -30,12 +30,12 @@ describe("reactions: cross-client", () => {
 
   it("a reaction Alice adds appears on Bob's copy of the message", async () => {
     const token = `e2e-react-${Date.now()}`;
-    await alice.chat.sendMessage(token);
-    await alice.chat.waitForText(token);
-    await bob.chat.waitForText(token);
+    await alice.chat.composer.send(token);
+    await alice.chat.messages.waitForText(token);
+    await bob.chat.messages.waitForText(token);
 
-    await alice.chat.reactToMessage(token, LIKE);
-    await alice.chat.waitForReaction(LIKE);
-    await bob.chat.waitForReaction(LIKE);
+    await alice.chat.actions.react(token, LIKE);
+    await alice.chat.actions.waitForReaction(LIKE);
+    await bob.chat.actions.waitForReaction(LIKE);
   });
 });

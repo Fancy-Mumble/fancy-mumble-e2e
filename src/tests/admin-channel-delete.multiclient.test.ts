@@ -52,7 +52,7 @@ describe(
     for (let attempt = 1; ; attempt++) {
       await admin.friends.clickFriend("SuperUser");
       try {
-        await admin.chat.waitForE2EBadge(6000);
+        await admin.chat.header.waitForE2EBadge(6000);
         break;
       } catch (e) {
         if (attempt >= 4) throw e;

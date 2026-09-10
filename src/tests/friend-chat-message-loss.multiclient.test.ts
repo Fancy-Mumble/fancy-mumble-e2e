@@ -50,29 +50,29 @@ describe("friend chat (friends list) 1:1: no pchat message loss", { skip: plugin
   it("delivers every message exchanged through the Friends list to both sides", async () => {
     // bob must be registered for an E2E friend channel; both add each other so
     // each can open the chat from their own Friends list.
-    await admin.chat.waitForMember(bobName);
+    await admin.chat.roster.waitForMember(bobName);
     await admin.sidebar.registerUser(bobName);
-    await admin.chat.waitForRegistered(bobName);
-    await admin.chat.addFriend(bobName);
-    await bob.chat.waitForMember("SuperUser");
-    await bob.chat.addFriend("SuperUser");
+    await admin.chat.roster.waitForRegistered(bobName);
+    await admin.chat.roster.addFriend(bobName);
+    await bob.chat.roster.waitForMember("SuperUser");
+    await bob.chat.roster.addFriend("SuperUser");
 
     // Both open the 1:1 friend chat from the Friends list (peek, not join).
     await admin.friends.open();
     await admin.friends.clickFriend(bobName);
-    await admin.chat.waitForE2EBadge();
+    await admin.chat.header.waitForE2EBadge();
     await bob.friends.open();
     await bob.friends.clickFriend("SuperUser");
-    await bob.chat.waitForE2EBadge();
+    await bob.chat.header.waitForE2EBadge();
 
     // Bidirectional exchange: each message must reach the other side. A drop in
     // the peek/verify gap surfaces here as a wait timeout.
     for (let i = 0; i < ROUNDS; i++) {
-      await admin.chat.sendMessage(fromAdmin(i));
-      await bob.chat.waitForText(fromAdmin(i));
+      await admin.chat.composer.send(fromAdmin(i));
+      await bob.chat.messages.waitForText(fromAdmin(i));
 
-      await bob.chat.sendMessage(fromBob(i));
-      await admin.chat.waitForText(fromBob(i));
+      await bob.chat.composer.send(fromBob(i));
+      await admin.chat.messages.waitForText(fromBob(i));
     }
 
     // Re-open admin's chat (leave to the channel view, back to Friends, reselect):
@@ -80,13 +80,13 @@ describe("friend chat (friends list) 1:1: no pchat message loss", { skip: plugin
     await admin.sidebar.goToChannels();
     await admin.friends.open();
     await admin.friends.clickFriend(bobName);
-    await admin.chat.waitForE2EBadge();
+    await admin.chat.header.waitForE2EBadge();
 
     // The whole exchange must still be present on BOTH sides (nothing lost).
     for (let i = 0; i < ROUNDS; i++) {
       for (const app of [admin, bob]) {
-        await app.chat.waitForText(fromAdmin(i));
-        await app.chat.waitForText(fromBob(i));
+        await app.chat.messages.waitForText(fromAdmin(i));
+        await app.chat.messages.waitForText(fromBob(i));
       }
     }
   });

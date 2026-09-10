@@ -61,7 +61,7 @@ describe("calendar: plugin gating + invite sync", { skip: featureMissing("calend
   it("relays a scheduled meeting from the organiser to the invited participant", async () => {
     // The `member-item` rows (with a context menu) live in the Members tab;
     // waitForMember switches to it and waits for the peer to be present.
-    await admin.chat.waitForMember(bobName);
+    await admin.chat.roster.waitForMember(bobName);
     // The relay routes by registered user_id, so register the invitee first.
     //
     // Regression guard for the mid-session registration bug: a server-side

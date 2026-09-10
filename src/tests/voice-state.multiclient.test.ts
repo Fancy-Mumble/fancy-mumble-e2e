@@ -32,7 +32,7 @@ describe("multi-client: voice UI state", () => {
     ]);
 
     // Make sure both are in the channel and can see each other before toggling.
-    await bob.chat.waitForMember(aliceName);
+    await bob.chat.roster.waitForMember(aliceName);
   });
 
   after(async () => {
@@ -40,12 +40,12 @@ describe("multi-client: voice UI state", () => {
   });
 
   it("reflects Alice's self-mute on Bob's user list", async () => {
-    await alice.chat.selfMute();
-    await bob.chat.waitForMemberMuted(aliceName);
+    await alice.chat.voice.selfMute();
+    await bob.chat.roster.waitForMemberMuted(aliceName);
   });
 
   it("reflects Alice's self-deafen on Bob's user list", async () => {
-    await alice.chat.selfDeafen();
-    await bob.chat.waitForMemberDeaf(aliceName);
+    await alice.chat.voice.selfDeafen();
+    await bob.chat.roster.waitForMemberDeaf(aliceName);
   });
 });

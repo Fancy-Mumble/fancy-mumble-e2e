@@ -90,25 +90,25 @@ describe("user manager: sign up, confirm, set a picture, and be seen", { skip },
     // Reaching the chat view at all means the password the backend set on the
     // Mumble account matched the one the client sent. A wrong password is a
     // rejected connection, not a degraded one.
-    await observer.chat.waitForMember(account.username);
+    await observer.chat.roster.waitForMember(account.username);
   });
 
   it("shows the website account as registered", async () => {
     // The badge is the observable half of `mumble/create`: it means Starling
     // holds a real account for this name, not that the website does.
-    await observer.chat.waitForRegistered(account.username);
+    await observer.chat.roster.waitForRegistered(account.username);
   });
 
   it("shows the picture that was uploaded on the website", async () => {
     // The observer never uploaded anything and has no local copy - the image
     // can only have come down the wire, fetched by the hash in `UserState`.
-    await observer.chat.waitForAvatar(account.username);
+    await observer.chat.roster.waitForAvatar(account.username);
   });
 
   it("shows the picture to its owner too", async () => {
     // A texture broadcast to others but not to its owner is a real asymmetry,
     // and it is invisible from the observer's side alone.
-    await member.chat.waitForAvatar(account.username);
+    await member.chat.roster.waitForAvatar(account.username);
   });
 
   it("keeps the picture across a reconnect", async () => {
@@ -122,10 +122,10 @@ describe("user manager: sign up, confirm, set a picture, and be seen", { skip },
     });
     await member.chat.waitLoaded(config.connectTimeout);
 
-    await observer.chat.waitForMember(account.username);
-    await observer.chat.waitForAvatar(account.username);
+    await observer.chat.roster.waitForMember(account.username);
+    await observer.chat.roster.waitForAvatar(account.username);
     assert.equal(
-      await observer.chat.isRegistered(account.username),
+      await observer.chat.roster.isRegistered(account.username),
       true,
       "the account must still be registered after reconnecting",
     );

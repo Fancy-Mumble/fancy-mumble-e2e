@@ -38,19 +38,19 @@ describe("multi-client: presence + messaging", () => {
   });
 
   it("each client sees the other join the channel", async () => {
-    await alice.chat.waitForMember(bobName);
-    await bob.chat.waitForMember(aliceName);
+    await alice.chat.roster.waitForMember(bobName);
+    await bob.chat.roster.waitForMember(aliceName);
   });
 
   it("delivers a channel message from Alice to Bob", async () => {
     const token = `e2e-a2b-${Date.now()}`;
-    await alice.chat.sendMessage(token);
-    await bob.chat.waitForText(token);
+    await alice.chat.composer.send(token);
+    await bob.chat.messages.waitForText(token);
   });
 
   it("delivers a reply from Bob to Alice", async () => {
     const token = `e2e-b2a-${Date.now()}`;
-    await bob.chat.sendMessage(token);
-    await alice.chat.waitForText(token);
+    await bob.chat.composer.send(token);
+    await alice.chat.messages.waitForText(token);
   });
 });

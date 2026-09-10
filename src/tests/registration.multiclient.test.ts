@@ -72,8 +72,8 @@ describe("registration: register a user, confirm it, and use the account", () =>
     // element polls), and WebKitWebDriver resets the connection under
     // concurrent commands on one session (ECONNRESET, 3/3 reproducible).
     // Parallelism across DIFFERENT sessions is fine; within one it is not.
-    await admin.chat.waitForMember(bobName);
-    await admin.chat.waitForMember(carolName);
+    await admin.chat.roster.waitForMember(bobName);
+    await admin.chat.roster.waitForMember(carolName);
 
     // A channel of this suite's own, with everyone in it.
     //
@@ -110,13 +110,13 @@ describe("registration: register a user, confirm it, and use the account", () =>
     // than assumed, or the test would pass against a server that marks
     // everybody registered.
     assert.equal(
-      await admin.chat.isRegistered(bobName),
+      await admin.chat.roster.isRegistered(bobName),
       false,
       "a guest must not already carry the registered badge",
     );
 
     await admin.sidebar.registerUser(bobName);
-    await admin.chat.waitForRegistered(bobName);
+    await admin.chat.roster.waitForRegistered(bobName);
   });
 
   it("registers only the user it was asked about", async () => {
@@ -125,7 +125,7 @@ describe("registration: register a user, confirm it, and use the account", () =>
     // be first in the list, which the assertion above cannot see.
     await delay(1000);
     assert.equal(
-      await admin.chat.isRegistered(carolName),
+      await admin.chat.roster.isRegistered(carolName),
       false,
       "registering bob must not register carol",
     );
@@ -145,8 +145,8 @@ describe("registration: register a user, confirm it, and use the account", () =>
     // sweep proving unsafe.
     await bob.sidebar.joinChannel(room);
 
-    await admin.chat.waitForMember(bobName);
-    await admin.chat.waitForRegistered(bobName);
+    await admin.chat.roster.waitForMember(bobName);
+    await admin.chat.roster.waitForRegistered(bobName);
   });
 
   it("lets the registered user act as themselves", async () => {
@@ -154,20 +154,20 @@ describe("registration: register a user, confirm it, and use the account", () =>
     // message from the reconnected user must still arrive attributed to the
     // name the registration is keyed to.
     const token = `e2e-reg-msg-${sfx}`;
-    await bob.chat.sendMessage(token);
-    await admin.chat.waitForText(token);
-    await admin.chat.waitForMessageFrom(bobName);
+    await bob.chat.composer.send(token);
+    await admin.chat.messages.waitForText(token);
+    await admin.chat.messages.waitForFrom(bobName);
   });
 
   it("refuses to register a user when the caller lacks the permission", async () => {
     // carol is a guest and holds no `Register`, so the client must not offer it
     // — and if it ever does, the server must refuse. Either way the outcome is
     // the same and is what this asserts: carol cannot mint an account.
-    await carol.chat.waitForMember(carolName);
+    await carol.chat.roster.waitForMember(carolName);
     await carol.sidebar.registerUser(carolName).catch(() => undefined);
     await delay(2000);
     assert.equal(
-      await admin.chat.isRegistered(carolName),
+      await admin.chat.roster.isRegistered(carolName),
       false,
       "a guest without Register must not be able to register anyone, including themselves",
     );

@@ -57,21 +57,21 @@ describe("friend chat 1:1: file upload while peeking", { skip: "blocked: client 
 
   it("uploads a file into the peeked friend chat (no channel-mismatch 403)", async () => {
     // bob must be registered for the E2E friend channel to be provisioned.
-    await admin.chat.waitForMember(bobName);
+    await admin.chat.roster.waitForMember(bobName);
     await admin.sidebar.registerUser(bobName);
-    await admin.chat.waitForRegistered(bobName);
+    await admin.chat.roster.waitForRegistered(bobName);
 
     // Open the friend chat (peek - admin stays in root, the friend room is only
     // selected, never joined).
     await admin.chat.openDirectMessage(bobName);
-    await admin.chat.waitForE2EBadge();
+    await admin.chat.header.waitForE2EBadge();
 
     // Upload a file into the peeked chat. With the bug this 403s ("channel
     // mismatch: you can only upload from the channel you are in") and no file
     // card ever appears; the fix gates on channel access so the upload lands.
-    await admin.chat.uploadFileViaAttach(FIXTURE);
-    await admin.chat.waitForText(FIXTURE_NAME, 30000);
+    await admin.chat.composer.attachFile(FIXTURE);
+    await admin.chat.messages.waitForText(FIXTURE_NAME, 30000);
     await bob.chat.openDirectMessage("SuperUser");
-    await bob.chat.waitForText(FIXTURE_NAME, 30000);
+    await bob.chat.messages.waitForText(FIXTURE_NAME, 30000);
   });
 });

@@ -63,9 +63,9 @@ describe("security: registered-name impersonation is rejected", () => {
   it("rejects an anonymous client using a registered user's name", async () => {
     // 1. Register the victim (SuperUser right-click -> Register). This stores
     //    her certificate hash against a new user id, with no password set.
-    await admin.chat.waitForMember(victimName);
+    await admin.chat.roster.waitForMember(victimName);
     await admin.sidebar.registerUser(victimName);
-    await admin.chat.waitForRegistered(victimName);
+    await admin.chat.roster.waitForRegistered(victimName);
 
     // 2. Take the victim OFFLINE. With no online holder of the name, a
     //    rejection can only come from the auth check (WrongUserPW), not from

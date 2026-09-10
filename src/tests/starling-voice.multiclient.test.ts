@@ -195,14 +195,14 @@ describe("Starling carries voice", { concurrency: 1, skip }, () => {
       bob.chat.waitLoaded(config.connectTimeout),
     ]);
     await Promise.all([
-      alice.chat.waitForMember(bobName),
-      bob.chat.waitForMember(aliceName),
+      alice.chat.roster.waitForMember(bobName),
+      bob.chat.roster.waitForMember(aliceName),
     ]);
 
     // Fresh profiles start with voice inactive; the first tap of the mute
     // control brings the pipelines up. Alice needs outbound, Bob inbound.
-    await alice.chat.tapMute();
-    await bob.chat.tapMute();
+    await alice.chat.voice.tapMute();
+    await bob.chat.voice.tapMute();
   });
 
   after(async () => {
@@ -300,8 +300,8 @@ describe("Starling carries voice", { concurrency: 1, skip }, () => {
     // is `active`: two more taps would mute her and immediately unmute her
     // again, and this test would then assert that an unmuted speaker had gone
     // quiet. It failed exactly that way, blaming the packet path.
-    await alice.chat.tapMute();
-    await bob.chat.waitForMemberMuted(aliceName);
+    await alice.chat.voice.tapMute();
+    await bob.chat.roster.waitForMemberMuted(aliceName);
 
     // Let anything already in flight land, then measure a clean window.
     await delay(1_500);

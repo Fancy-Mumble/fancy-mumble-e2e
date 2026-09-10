@@ -212,13 +212,13 @@ describe("voice latency: mouth to ear", { concurrency: 1, skip }, () => {
       alice.chat.waitLoaded(config.connectTimeout),
       bob.chat.waitLoaded(config.connectTimeout),
     ]);
-    await alice.chat.waitForMember(bobName);
-    await bob.chat.waitForMember(aliceName);
+    await alice.chat.roster.waitForMember(bobName);
+    await bob.chat.roster.waitForMember(aliceName);
 
     // Deaf and muted on a fresh profile, so neither pipeline exists yet: the
     // first tap brings Alice's outbound and Bob's inbound up.
-    await alice.chat.tapMute();
-    await bob.chat.tapMute();
+    await alice.chat.voice.tapMute();
+    await bob.chat.voice.tapMute();
   });
 
   after(async () => {

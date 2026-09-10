@@ -55,7 +55,7 @@ describe("qt6ui: disconnect leaves no ghost session on the server", { skip: qt6u
     // Qt client joins; both clients land in the root channel.
     await qt.connect(config.serverHost, config.serverPort, qtName);
     await qt.waitForStatus("connected");
-    await observer.chat.waitForMember(qtName);
+    await observer.chat.roster.waitForMember(qtName);
 
     // Disconnect through the UI's code path. The client-side status flips
     // to "disconnected" immediately (it always did - the bug was that the
@@ -67,11 +67,11 @@ describe("qt6ui: disconnect leaves no ghost session on the server", { skip: qt6u
     // A graceful disconnect closes the TCP connection, so the server emits
     // UserRemove right away - 15 s is generous. With the bug, the leaked
     // ping loop kept the session alive indefinitely and this times out.
-    await observer.chat.waitForMemberGone(qtName, 15000);
+    await observer.chat.roster.waitForMemberGone(qtName, 15000);
 
     // The session must STAY gone (guard against a flappy remove/re-add,
     // e.g. an unwanted auto-reconnect after teardown).
     await delay(3000);
-    await observer.chat.waitForMemberGone(qtName, 1000);
+    await observer.chat.roster.waitForMemberGone(qtName, 1000);
   });
 });

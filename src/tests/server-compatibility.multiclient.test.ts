@@ -46,11 +46,11 @@ describe("server compatibility: control-path boundaries", () => {
     // this suite's flake had the same shape). Cross-session stays parallel.
     await Promise.all([
       (async () => {
-        await alice.chat.waitForMember(bobName);
-        await alice.chat.waitForMember(carolName);
+        await alice.chat.roster.waitForMember(bobName);
+        await alice.chat.roster.waitForMember(carolName);
       })(),
-      bob.chat.waitForMember(aliceName),
-      carol.chat.waitForMember(aliceName),
+      bob.chat.roster.waitForMember(aliceName),
+      carol.chat.roster.waitForMember(aliceName),
     ]);
   });
 
@@ -62,11 +62,11 @@ describe("server compatibility: control-path boundaries", () => {
     const messages = Array.from({ length: 8 }, (_, i) => `e2e-fanout-${suffix}-${i}`);
 
     for (const message of messages) {
-      await alice.chat.sendMessage(message);
+      await alice.chat.composer.send(message);
       await Promise.all([
-        alice.chat.waitForText(message),
-        bob.chat.waitForText(message),
-        carol.chat.waitForText(message),
+        alice.chat.messages.waitForText(message),
+        bob.chat.messages.waitForText(message),
+        carol.chat.messages.waitForText(message),
       ]);
     }
 
@@ -77,8 +77,8 @@ describe("server compatibility: control-path boundaries", () => {
     // label and counting them measured grouping rather than fan-out.
     for (const message of messages) {
       await Promise.all([
-        bob.chat.waitForExactlyOnce(message),
-        carol.chat.waitForExactlyOnce(message),
+        bob.chat.messages.waitForExactlyOnce(message),
+        carol.chat.messages.waitForExactlyOnce(message),
       ]);
     }
   });
@@ -93,11 +93,11 @@ describe("server compatibility: control-path boundaries", () => {
 
     for (const message of corpus) {
       const marker = message.slice(0, Math.min(message.length, 48));
-      await alice.chat.sendMessage(message);
+      await alice.chat.composer.send(message);
       await Promise.all([
-        alice.chat.waitForText(marker),
-        bob.chat.waitForText(marker),
-        carol.chat.waitForText(marker),
+        alice.chat.messages.waitForText(marker),
+        bob.chat.messages.waitForText(marker),
+        carol.chat.messages.waitForText(marker),
       ]);
     }
   });
@@ -106,36 +106,36 @@ describe("server compatibility: control-path boundaries", () => {
     await bob.chat.disconnect();
     await bob.connect.waitReady(config.connectTimeout);
 
-    await alice.chat.waitForMemberGone(bobName);
+    await alice.chat.roster.waitForMemberGone(bobName);
     await bob.connect.connect(config.serverHost, bobName, { port: config.serverPort });
     await bob.chat.waitLoaded();
-    await alice.chat.waitForMember(bobName);
-    await bob.chat.waitForMember(aliceName);
+    await alice.chat.roster.waitForMember(bobName);
+    await bob.chat.roster.waitForMember(aliceName);
 
     const beforeReconnect = `e2e-reconnect-before-${suffix}`;
-    await alice.chat.sendMessage(beforeReconnect);
+    await alice.chat.composer.send(beforeReconnect);
     await Promise.all([
-      alice.chat.waitForText(beforeReconnect),
-      carol.chat.waitForText(beforeReconnect),
-      bob.chat.waitForText(beforeReconnect),
+      alice.chat.messages.waitForText(beforeReconnect),
+      carol.chat.messages.waitForText(beforeReconnect),
+      bob.chat.messages.waitForText(beforeReconnect),
     ]);
 
     // Exercise the opposite direction after the reconnect as well. This
     // catches servers that restore presence but fail to restore the session's
     // outbound message path.
     const afterReconnect = `e2e-reconnect-after-${suffix}`;
-    await bob.chat.sendMessage(afterReconnect);
+    await bob.chat.composer.send(afterReconnect);
     await Promise.all([
-      alice.chat.waitForText(afterReconnect),
-      carol.chat.waitForText(afterReconnect),
-      bob.chat.waitForText(afterReconnect),
+      alice.chat.messages.waitForText(afterReconnect),
+      carol.chat.messages.waitForText(afterReconnect),
+      bob.chat.messages.waitForText(afterReconnect),
     ]);
 
     // Give delayed UserRemove/UserState events time to settle; the assertions
     // above must not pass because a stale row was retained indefinitely.
     await delay(300);
     assert.equal(
-      await alice.chat.messageCountFrom(bobName),
+      await alice.chat.messages.countFrom(bobName),
       1,
       "reconnected sender's message was duplicated or delivered out-of-band",
     );

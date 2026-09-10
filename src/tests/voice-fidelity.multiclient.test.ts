@@ -95,15 +95,15 @@ describe("voice fidelity: real speech survives the round trip", { concurrency: 1
       alice.chat.waitLoaded(config.connectTimeout),
       bob.chat.waitLoaded(config.connectTimeout),
     ]);
-    await alice.chat.waitForMember(bobName);
-    await bob.chat.waitForMember(aliceName);
+    await alice.chat.roster.waitForMember(bobName);
+    await bob.chat.roster.waitForMember(aliceName);
 
     // A fresh profile connects deaf and muted on purpose
     // (`state/connection.rs:434`), so neither pipeline exists yet: Alice would
     // send nothing and Bob would decode nothing. The first tap of the mute
     // control brings them up - Alice needs outbound, Bob inbound.
-    await alice.chat.tapMute();
-    await bob.chat.tapMute();
+    await alice.chat.voice.tapMute();
+    await bob.chat.voice.tapMute();
 
     // Both stay in the root channel, as the other voice suites do. Anyone else
     // on the fixture server would land in Bob's dump as their own file, and the

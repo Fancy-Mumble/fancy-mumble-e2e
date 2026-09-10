@@ -49,7 +49,7 @@ describe("pchat cross-client: a second identity reads the archive", () => {
     await bob.sidebar.waitForChannel(channelName);
     await alice.sidebar.joinChannel(channelName);
     await bob.sidebar.joinChannel(channelName);
-    await alice.chat.waitForMember(bobName);
+    await alice.chat.roster.waitForMember(bobName);
   });
 
   after(async () => {
@@ -59,7 +59,7 @@ describe("pchat cross-client: a second identity reads the archive", () => {
   it("shares the archive key on consent, and the peer decrypts what follows", async () => {
     // Alice is the only holder: Bob joined a channel he did not create, so he
     // must be given the key rather than inventing one.
-    const approved = await alice.chat.approveKeyShares();
+    const approved = await alice.chat.keyShares.approveAll();
     assert.ok(
       approved > 0,
       "the key holder was never asked to share the archive key - the joiner " +
@@ -68,15 +68,15 @@ describe("pchat cross-client: a second identity reads the archive", () => {
     );
 
     const token = `pchat-x-${Date.now()}`;
-    await alice.chat.sendMessage(token);
-    await alice.chat.waitForText(token);
-    await bob.chat.waitForText(token);
+    await alice.chat.composer.send(token);
+    await alice.chat.messages.waitForText(token);
+    await bob.chat.messages.waitForText(token);
   });
 
   it("carries messages both ways once the key is shared", async () => {
     const fromBob = `pchat-x-bob-${Date.now()}`;
-    await bob.chat.sendMessage(fromBob);
-    await bob.chat.waitForText(fromBob);
-    await alice.chat.waitForText(fromBob);
+    await bob.chat.composer.send(fromBob);
+    await bob.chat.messages.waitForText(fromBob);
+    await alice.chat.messages.waitForText(fromBob);
   });
 });

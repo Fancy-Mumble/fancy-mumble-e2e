@@ -50,7 +50,7 @@ describe("friend chat: opening your self-notepad keeps you in the channel list",
     // __dm: self-notepad channel (the E2E badge confirms the upgrade landed).
     await admin.friends.open();
     await admin.friends.clickFriend("SuperUser");
-    await admin.chat.waitForE2EBadge();
+    await admin.chat.header.waitForE2EBadge();
 
     // Back on the channel view, we must NOT have vanished: a user sitting in
     // their __dm: room is re-attributed to root for the tree. This times out

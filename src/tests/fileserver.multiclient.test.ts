@@ -65,10 +65,10 @@ describe("file-server: upload via composer is delivered to other clients", { ski
   });
 
   it("uploads a file that appears as a file card for both the uploader and a peer", async () => {
-    await admin.chat.uploadFileViaAttach(FIXTURE);
+    await admin.chat.composer.attachFile(FIXTURE);
     // The uploader sees the resulting file card.
-    await admin.chat.waitForText(FIXTURE_NAME, 30000);
+    await admin.chat.messages.waitForText(FIXTURE_NAME, 30000);
     // The peer receives the file message over the channel (uploaded via :64739).
-    await bob.chat.waitForText(FIXTURE_NAME, 30000);
+    await bob.chat.messages.waitForText(FIXTURE_NAME, 30000);
   });
 });

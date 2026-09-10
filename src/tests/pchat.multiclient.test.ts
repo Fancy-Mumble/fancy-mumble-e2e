@@ -39,8 +39,8 @@ describe("persistent chat: history replay in a pchat channel", () => {
     await admin.sidebar.joinChannel(channelName);
 
     const token = `e2e-pchat-msg-${Date.now()}`;
-    await admin.chat.sendMessage(token);
-    await admin.chat.waitForText(token);
+    await admin.chat.composer.send(token);
+    await admin.chat.messages.waitForText(token);
 
     await admin.chat.disconnect();
     await admin.connect.waitReady(config.connectTimeout);
@@ -54,6 +54,6 @@ describe("persistent chat: history replay in a pchat channel", () => {
     // be replayed from the server's persisted history.
     await admin.sidebar.waitForChannel(channelName);
     await admin.sidebar.joinChannel(channelName);
-    await admin.chat.waitForText(token, 20000);
+    await admin.chat.messages.waitForText(token, 20000);
   });
 });

@@ -43,8 +43,8 @@ describe("multi-client: channel forums", { skip: "blocked: forums are not merged
     await bob.chat.waitLoaded(config.connectTimeout);
     // The fixture server ships plugins; answer the trust prompt before it
     // click-intercepts the header kebab.
-    await alice.chat.allowServerPlugins();
-    await bob.chat.allowServerPlugins();
+    await alice.chat.prompts.allowPlugins();
+    await bob.chat.prompts.allowPlugins();
   });
 
   after(async () => {

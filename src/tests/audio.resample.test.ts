@@ -119,8 +119,8 @@ for (const rate of RATES) {
         bob.chat.waitLoaded(config.connectTimeout),
       ]);
       await Promise.all([
-        alice.chat.waitForMember(bobName),
-        bob.chat.waitForMember(aliceName),
+        alice.chat.roster.waitForMember(bobName),
+        bob.chat.roster.waitForMember(aliceName),
       ]);
 
       // Fresh profiles start with voice INACTIVE; the first tap of the
@@ -128,8 +128,8 @@ for (const rate of RATES) {
       // Alice needs outbound (the virtual mic starts talking on its own);
       // Bob needs inbound so his mixer decodes the tone for the Goertzel
       // assertion.
-      await alice.chat.tapMute();
-      await bob.chat.tapMute();
+      await alice.chat.voice.tapMute();
+      await bob.chat.voice.tapMute();
     });
 
     after(async () => {

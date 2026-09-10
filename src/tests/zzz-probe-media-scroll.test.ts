@@ -252,8 +252,8 @@ describe("probe: media-heavy chat scroll", { concurrency: 1 }, () => {
     console.log(`PROBE sent in ${Date.now() - tSend} ms`);
     // A raw send_message never refreshes the sender's own view (the store's
     // action refetches after each send); one composer send pulls it all in.
-    await app.chat.sendMessage("probe-done");
-    await app.chat.waitForText("probe-done", 30_000);
+    await app.chat.composer.send("probe-done");
+    await app.chat.messages.waitForText("probe-done", 30_000);
     const expectRows = Math.min(100, bodies.length);
     let rows = 0;
     await app.driver.wait(async () => {

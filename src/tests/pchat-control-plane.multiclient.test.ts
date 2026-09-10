@@ -29,13 +29,13 @@ describe("persistent chat control messages", () => {
     await bob.sidebar.waitForChannel(channelName);
     await alice.sidebar.joinChannel(channelName);
     await bob.sidebar.joinChannel(channelName);
-    await alice.chat.waitForMember(bobName);
+    await alice.chat.roster.waitForMember(bobName);
 
     // Alice created the channel, so she holds the archive key and Bob does
     // not. Sharing it is gated behind her explicit consent
     // (KeyShareWarningDialog), so without this Bob decrypts nothing and every
     // assertion about what he can see fails as if delivery were broken.
-    await alice.chat.approveKeyShares();
+    await alice.chat.keyShares.approveAll();
   });
 
   after(async () => {
@@ -44,18 +44,18 @@ describe("persistent chat control messages", () => {
 
   it("pins and unpins a persisted message and exposes it in the pin panel", async () => {
     const token = `pinned-control-${Date.now()}`;
-    await alice.chat.sendMessage(token);
-    await alice.chat.waitForText(token);
-    await alice.chat.togglePin(token);
-    await alice.chat.openPinnedMessages();
-    await alice.chat.waitForText(token);
-    await alice.chat.togglePin(token);
+    await alice.chat.composer.send(token);
+    await alice.chat.messages.waitForText(token);
+    await alice.chat.actions.togglePin(token);
+    await alice.chat.pinned.open();
+    await alice.chat.messages.waitForText(token);
+    await alice.chat.actions.togglePin(token);
   });
 
   it("delivers a read watermark back to the message author", async () => {
     const token = `receipt-control-${Date.now()}`;
-    await alice.chat.sendMessage(token);
-    await bob.chat.waitForText(token);
-    await alice.chat.waitForReadReceipt(token, "Read");
+    await alice.chat.composer.send(token);
+    await bob.chat.messages.waitForText(token);
+    await alice.chat.messages.waitForReadReceipt(token, "Read");
   });
 });

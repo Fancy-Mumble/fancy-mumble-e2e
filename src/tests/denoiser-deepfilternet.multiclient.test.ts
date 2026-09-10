@@ -162,14 +162,14 @@ describe("DeepFilterNet noise suppression", { concurrency: 1 }, () => {
       bob.chat.waitLoaded(config.connectTimeout),
     ]);
     await Promise.all([
-      alice.chat.waitForMember(bobName),
-      bob.chat.waitForMember(aliceName),
+      alice.chat.roster.waitForMember(bobName),
+      bob.chat.roster.waitForMember(aliceName),
     ]);
 
     // Fresh profiles start with voice inactive; the first tap brings the
     // pipelines up. Alice needs outbound, Bob inbound.
-    await alice.chat.tapMute();
-    await bob.chat.tapMute();
+    await alice.chat.voice.tapMute();
+    await bob.chat.voice.tapMute();
   });
 
   after(async () => {

@@ -33,7 +33,7 @@ describe("voice-state sync: mute/unmute combinations + reconnect", () => {
       bob.connect.connect(config.serverHost, bobName, { port: config.serverPort }),
     ]);
     await Promise.all([alice.chat.waitLoaded(), bob.chat.waitLoaded()]);
-    await bob.chat.waitForMember(aliceName);
+    await bob.chat.roster.waitForMember(aliceName);
   });
 
   after(async () => {
@@ -50,8 +50,8 @@ describe("voice-state sync: mute/unmute combinations + reconnect", () => {
     let peer: VoiceFlags = { muted: false, deaf: false };
     const start = Date.now();
     while (Date.now() - start < 6000) {
-      local = await alice.chat.selfVoiceFlags();
-      peer = await bob.chat.peerVoiceFlags(aliceName);
+      local = await alice.chat.roster.selfVoiceFlags();
+      peer = await bob.chat.roster.peerVoiceFlags(aliceName);
       if (local.muted === peer.muted && local.deaf === peer.deaf) return;
       await delay(400);
     }
@@ -67,20 +67,20 @@ describe("voice-state sync: mute/unmute combinations + reconnect", () => {
   });
 
   it("mute/unmute cycle stays in sync once voice is active", async () => {
-    await alice.chat.tapMute(); // inactive -> active (enable voice)
+    await alice.chat.voice.tapMute(); // inactive -> active (enable voice)
     await assertConsistent("active");
-    await alice.chat.tapMute(); // active -> muted
+    await alice.chat.voice.tapMute(); // active -> muted
     await assertConsistent("muted");
-    await alice.chat.tapMute(); // muted -> active
+    await alice.chat.voice.tapMute(); // muted -> active
     await assertConsistent("unmuted");
-    await alice.chat.tapMute(); // active -> muted
+    await alice.chat.voice.tapMute(); // active -> muted
     await assertConsistent("re-muted");
   });
 
   it("deafen/undeafen stays in sync", async () => {
-    await alice.chat.tapDeafen(); // -> deafened (implies muted)
+    await alice.chat.voice.tapDeafen(); // -> deafened (implies muted)
     await assertConsistent("deafened");
-    await alice.chat.tapDeafen(); // -> undeafened
+    await alice.chat.voice.tapDeafen(); // -> undeafened
     await assertConsistent("undeafened");
   });
 
@@ -92,7 +92,7 @@ describe("voice-state sync: mute/unmute combinations + reconnect", () => {
   it("reliably restores a saved MUTED state across repeated reconnects", async () => {
     const iterations = Number(process.env.E2E_RECONNECT_ITERS ?? "5");
     for (let i = 1; i <= iterations; i++) {
-      await alice.chat.ensureMuted();
+      await alice.chat.voice.ensureMuted();
       await assertConsistent(`muted before reconnect #${i}`);
 
       await alice.chat.disconnect();
@@ -103,8 +103,8 @@ describe("voice-state sync: mute/unmute combinations + reconnect", () => {
       // Poll for the restore to land (SetSelfMute round-trips back as a
       // UserState). A fresh reconnect starts unmuted, so waiting for muted=true
       // cannot pass on a connect-time transient.
-      await alice.chat.waitSelfMuted(true, 20000).catch(() => undefined);
-      const local = await alice.chat.selfVoiceFlags();
+      await alice.chat.voice.waitSelfMuted(true, 20000).catch(() => undefined);
+      const local = await alice.chat.roster.selfVoiceFlags();
       assert.equal(
         local.muted,
         true,
@@ -115,7 +115,7 @@ describe("voice-state sync: mute/unmute combinations + reconnect", () => {
   });
 
   it("reconnect restores a saved UNMUTED state, in sync", async () => {
-    await alice.chat.ensureUnmuted();
+    await alice.chat.voice.ensureUnmuted();
     await assertConsistent("unmuted before reconnect");
 
     await alice.chat.disconnect();
@@ -123,8 +123,8 @@ describe("voice-state sync: mute/unmute combinations + reconnect", () => {
     await alice.connect.connect(config.serverHost, aliceName, { port: config.serverPort });
     await alice.chat.waitLoaded();
 
-    await alice.chat.waitSelfMuted(false, 20000).catch(() => undefined);
-    const local = await alice.chat.selfVoiceFlags();
+    await alice.chat.voice.waitSelfMuted(false, 20000).catch(() => undefined);
+    const local = await alice.chat.roster.selfVoiceFlags();
     assert.equal(local.muted, false, "saved UNMUTED state should be restored after reconnect");
     await assertConsistent("after reconnect (saved unmuted)");
   });

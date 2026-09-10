@@ -105,19 +105,19 @@ describe("signal pchat: full E2E decryption across members", { skip: bridgeMissi
     // admin and bob both joined BEFORE carol; the late-joiner fix means carol
     // still receives their sender keys and can decrypt them.
     const fromAdmin = `sig-admin-${Date.now()}`;
-    await admin.chat.sendMessage(fromAdmin);
-    await bob.chat.waitForText(fromAdmin, 25000);
-    await carol.chat.waitForText(fromAdmin, 25000);
+    await admin.chat.composer.send(fromAdmin);
+    await bob.chat.messages.waitForText(fromAdmin, 25000);
+    await carol.chat.messages.waitForText(fromAdmin, 25000);
 
     const fromBob = `sig-bob-${Date.now()}`;
-    await bob.chat.sendMessage(fromBob);
-    await admin.chat.waitForText(fromBob, 25000);
-    await carol.chat.waitForText(fromBob, 25000);
+    await bob.chat.composer.send(fromBob);
+    await admin.chat.messages.waitForText(fromBob, 25000);
+    await carol.chat.messages.waitForText(fromBob, 25000);
 
     const fromCarol = `sig-carol-${Date.now()}`;
-    await carol.chat.sendMessage(fromCarol);
-    await admin.chat.waitForText(fromCarol, 25000);
-    await bob.chat.waitForText(fromCarol, 25000);
+    await carol.chat.composer.send(fromCarol);
+    await admin.chat.messages.waitForText(fromCarol, 25000);
+    await bob.chat.messages.waitForText(fromCarol, 25000);
   });
 
   it("a member resumes encrypted messaging after reconnecting and re-joining", async () => {
@@ -130,13 +130,13 @@ describe("signal pchat: full E2E decryption across members", { skip: bridgeMissi
     await settleSignalKeys([admin, bob]);
 
     const afterRejoin = `sig-bob-rejoin-${Date.now()}`;
-    await bob.chat.sendMessage(afterRejoin);
-    await admin.chat.waitForText(afterRejoin, 25000);
-    await carol.chat.waitForText(afterRejoin, 25000);
+    await bob.chat.composer.send(afterRejoin);
+    await admin.chat.messages.waitForText(afterRejoin, 25000);
+    await carol.chat.messages.waitForText(afterRejoin, 25000);
 
     const toRejoined = `sig-admin-after-${Date.now()}`;
-    await admin.chat.sendMessage(toRejoined);
-    await bob.chat.waitForText(toRejoined, 25000);
+    await admin.chat.composer.send(toRejoined);
+    await bob.chat.messages.waitForText(toRejoined, 25000);
   });
 });
 
@@ -152,8 +152,8 @@ describe("signal pchat: forward secrecy for late joiners", { skip: bridgeMissing
     await admin.sidebar.createSubChannel(0, channelName, { pchatProtocol: "signal_v1" });
     await admin.sidebar.joinChannel(channelName);
     // Sent while admin is alone - BEFORE any late joiner is present.
-    await admin.chat.sendMessage(preToken);
-    await admin.chat.waitForText(preToken);
+    await admin.chat.composer.send(preToken);
+    await admin.chat.messages.waitForText(preToken);
   });
 
   after(async () => {
@@ -170,7 +170,7 @@ describe("signal pchat: forward secrecy for late joiners", { skip: bridgeMissing
     // pre-join message, so it must never appear for her (forward secrecy) - the
     // SKDM fix delivers keys, never past ciphertext.
     assert.equal(
-      await carol.chat.hasText(preToken),
+      await carol.chat.messages.hasText(preToken),
       false,
       "late joiner must NOT see pre-join E2E history (no server storage + forward secrecy)",
     );
@@ -178,8 +178,8 @@ describe("signal pchat: forward secrecy for late joiners", { skip: bridgeMissing
     // But a message admin (an earlier member) sends AFTER carol joins must be
     // decryptable by her - this is the late-joiner SKDM fix.
     const postToken = `fs-post-${Date.now()}`;
-    await admin.chat.sendMessage(postToken);
-    await carol.chat.waitForText(postToken, 25000);
+    await admin.chat.composer.send(postToken);
+    await carol.chat.messages.waitForText(postToken, 25000);
   });
 });
 
@@ -201,11 +201,11 @@ describe("signal pchat: bridge smoke", { skip: bridgeMissing() }, () => {
   it("loads the signal bridge and shows the E2E banner, and round-trips an own message", async () => {
     // The Signal Protocol banner only renders once the channel is recognised as
     // signal_v1 and the bridge is available.
-    await admin.chat.waitForText("encrypted using the Signal Protocol", 20000);
+    await admin.chat.messages.waitForText("encrypted using the Signal Protocol", 20000);
 
     // A self-sent message must encrypt then decrypt locally (bridge round-trip).
     const token = `sig-smoke-${Date.now()}`;
-    await admin.chat.sendMessage(token);
-    await admin.chat.waitForText(token, 15000);
+    await admin.chat.composer.send(token);
+    await admin.chat.messages.waitForText(token, 15000);
   });
 });
