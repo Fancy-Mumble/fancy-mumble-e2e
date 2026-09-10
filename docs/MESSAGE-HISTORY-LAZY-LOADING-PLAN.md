@@ -45,7 +45,7 @@ invariant has to survive edits, pins, the dual-path legacy copy, and optimistic 
 ## 0.1 Status (2026-09-09)
 
 **Phases 1 and 2 are built and pushed** to `vendor/starling` `main`
-(`00494bc`..`73eb3c9`). Phase 3 is part-built and **deliberately uncommitted**;
+(`00494bc`..`ff38db6`). Phase 3 is part-built and **deliberately uncommitted**;
 phases 4 to 6 are not started.
 
 | Phase | State | Where |
@@ -68,9 +68,10 @@ phases 4 to 6 are not started.
   nothing, which a reader cannot tell from the end of the archive. The fetch
   budget went from 0.5/s to 2/s, since a two-sided window asks at both edges.
 - `starling_runtime::channel_modes` follows `Metadata.Watch` and holds each
-  channel's mode. `pchat` refuses a message whose declared protocol disagrees
-  with its channel; `text` no longer archives or serves the plaintext copy of an
-  end-to-end channel, and its history is gated on `Enter`.
+  channel's mode. `pchat` refuses a message claiming the server-managed mode in a
+  channel that is not configured for it, and only that; `text` no longer
+  archives or serves the plaintext copy of an end-to-end channel, and its
+  history is gated on `Enter`.
 - `SERVER_MANAGED` works end to end on the server: messages arrive in the clear
   and are sealed at rest under `<data_dir>/pchat-at-rest.key`, bound by AAD to
   tenant, channel and both ids. No key means refusing to store, never storing in
