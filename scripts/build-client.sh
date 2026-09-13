@@ -54,6 +54,20 @@ if [[ -z "${CROS_LIBVA_H_PATH:-}" ]] && command -v pkg-config >/dev/null; then
     fi
 fi
 
+# `cargo tauri build`'s beforeBuildCommand is `npm run build` - it installs
+# nothing, so on a fresh checkout the frontend build fails as a wall of
+# "Cannot find module 'react'" rather than as a missing `npm ci`.
+UI="$CLIENT/crates/mumble-tauri/ui"
+if [[ ! -d "$UI/node_modules" ]]; then
+    echo "==> frontend dependencies"
+    (cd "$UI" && npm ci --no-audit --no-fund)
+fi
+# npm >= 11 does not run install scripts unless the package allows them, and
+# esbuild's is what unpacks the platform binary vite builds with.
+if [[ -f "$UI/node_modules/esbuild/install.js" && ! -x "$UI/node_modules/@esbuild/linux-x64/bin/esbuild" ]]; then
+    (cd "$UI" && node node_modules/esbuild/install.js)
+fi
+
 echo "==> signal-bridge (cdylib, separate crate)"
 (cd "$CLIENT/crates/signal-bridge" && cargo build --release)
 mkdir -p "$PROFILE_DIR"
@@ -77,7 +91,11 @@ fi
 echo "==> client (with deepfilternet-denoiser)"
 (
     cd "$CLIENT/crates/mumble-tauri"
-    export SKIP_QT6UI=$(( want_qt6ui ? 0 : 1 ))
+    # Always 1: mumble-tauri's build.rs treats *any* value as "skip" (it tests
+    # `env::var(..).is_err()`), so `SKIP_QT6UI=0` never built it - and its
+    # qt6ui path probes for a Qt MinGW kit and a windows-gnu toolchain, so on
+    # Linux it could not have. qt6ui is built below instead, like the bridge.
+    export SKIP_QT6UI=1
     if [[ -n "${E2E_BUILD_NO_CLI:-}" ]]; then
         # No Tauri CLI: no watcher, and no frontend build either - this reuses
         # whatever is in ui/dist, so only take this path when the bundle is
@@ -87,6 +105,14 @@ echo "==> client (with deepfilternet-denoiser)"
         cargo tauri build --no-bundle -- --features deepfilternet-denoiser
     fi
 )
+
+if (( want_qt6ui )); then
+    # A separate, workspace-excluded crate (GNU toolchain + Qt kit), so the
+    # workspace build never reaches it. Debug: that is where config.ts looks,
+    # and the suite only drives it, never measures it.
+    echo "==> qt6ui (workspace-excluded crate)"
+    (cd "$CLIENT/crates/qt6ui" && cargo build)
+fi
 
 # The bridge must sit next to the binary: the loader searches the exe's own
 # directory first (see load_signal_bridge in state/pchat/signal_bridge.rs).

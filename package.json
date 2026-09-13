@@ -19,5 +19,8 @@
     "@types/selenium-webdriver": "^4.1.28",
     "tsx": "^4.19.2",
     "typescript": "^5.6.0"
+  },
+  "allowScripts": {
+    "esbuild@0.28.1": true
   }
 }
