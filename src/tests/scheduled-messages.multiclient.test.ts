@@ -70,10 +70,12 @@ describe("multi-client: scheduled messages", { skip: featureMissing("scheduledMe
     // Effective lead time is 30-90 s (minute truncation); allow for delivery
     // timer granularity on top.
     await bob.chat.messages.waitForText(text, 150000);
-    await alice.chat.messages.waitForText(text, 15000);
 
     // After delivery the message must leave the pending list on a re-fetch.
+    // Only then is the sender's own transcript checked: a lookup for the text
+    // anywhere on the page is satisfied by the pending row itself.
     await alice.scheduled.refresh();
     await alice.scheduled.waitForPendingGone(text, 15000);
+    await alice.chat.messages.waitForText(text, 15000);
   });
 });

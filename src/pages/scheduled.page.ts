@@ -1,4 +1,4 @@
-import { By, until, type WebDriver } from "selenium-webdriver";
+import { By, error, until, type WebDriver } from "selenium-webdriver";
 import { byTid, TID, KEBAB_ITEM_ATTR } from "../selectors";
 import { xpathLiteral } from "../util/xpath";
 import { setReactInputValue } from "../util/astral";
@@ -115,10 +115,33 @@ export class ScheduledPage {
     return (await this.d.findElements(byTid(TID.scheduledItem))).length;
   }
 
-  /** Cancel the pending row containing `text` and wait for it to disappear. */
+  /**
+   * Cancel the pending row containing `text` and wait for it to disappear.
+   *
+   * Re-located on every attempt: the list re-renders when the schedule's own
+   * ack refreshes it, which can land between finding the row and clicking its
+   * button and leaves WebKitWebDriver holding a stale node.
+   */
   async cancel(text: string): Promise<void> {
-    const row = await this.d.wait(until.elementLocated(this.pendingItem(text)), 10000);
-    await row.findElement(byTid(TID.scheduledItemCancel)).then((b) => b.click());
+    const button = By.xpath(
+      `//*[@data-testid="${TID.scheduledItem}"][contains(normalize-space(string(.)), ${xpathLiteral(text)})]` +
+        `//*[@data-testid="${TID.scheduledItemCancel}"]`,
+    );
+    await this.d.wait(
+      async () => {
+        try {
+          const found = await this.d.findElements(button);
+          if (found.length === 0) return false;
+          await found[0].click();
+          return true;
+        } catch (e) {
+          if (e instanceof error.StaleElementReferenceError) return false;
+          throw e;
+        }
+      },
+      10000,
+      `no cancel button for scheduled message "${text}"`,
+    );
     await this.waitForPendingGone(text);
   }
 

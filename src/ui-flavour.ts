@@ -44,8 +44,8 @@ export const isNebula = uiFlavour === "nebula";
 /**
  * Features a design pack either has or does not have.
  *
- * These are *client* gaps, not harness ones: nebula ships no calendar, no
- * scheduled-message panel, no forum and no role wizard, so the suites that
+ * These are *client* gaps, not harness ones: nebula ships no forum and no
+ * role wizard, so the suites that
  * drive them have nothing to drive. Gating them here makes that a one-line
  * skip with a reason rather than 20 timed-out waits, and the matrix is the
  * one place to look when a pack grows a feature.
@@ -63,7 +63,10 @@ const SUPPORTED: Record<UiFlavour, ReadonlySet<Feature>> = {
   // Verified 2026-09-05 against the pinned client: `ui/nebula` has no
   // component mentioning any of these, and none of their test ids appear in
   // its markup.
-  nebula: new Set<Feature>(),
+  // Scheduled messages added 2026-09-13 (ScheduledMessagesDialog, same test ids).
+  // Calendar added 2026-09-13 (CalendarDialog, same test ids; its entry is a
+  // kebab item rather than a header button - see CalendarPage).
+  nebula: new Set<Feature>(["scheduledMessages", "calendar"]),
 };
 
 /** Whether the running pack ships `feature`. */

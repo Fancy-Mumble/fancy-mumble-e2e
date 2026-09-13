@@ -1,8 +1,13 @@
 import { By, Key, until, type WebDriver, type WebElement } from "selenium-webdriver";
-import { byTid, TID, CALENDAR_EVENT_TITLE_ATTR } from "../selectors";
+import { byTid, TID, CALENDAR_EVENT_TITLE_ATTR, KEBAB_ITEM_ATTR } from "../selectors";
 import { xpathLiteral } from "../util/xpath";
 import { config } from "../config";
 import { cssAttrEscape } from "../util/css";
+import { isNebula } from "../ui-flavour";
+import { dismissMenus } from "../util/nebula";
+
+/** Nebula keeps the calendar in the chat header's kebab menu, not on a button. */
+const NEBULA_CALENDAR_ITEM = By.css(`[data-testid="${TID.kebabMenuItem}"][${KEBAB_ITEM_ATTR}="calendar"]`);
 
 /**
  * Page object for the calendar split-view (the `fancy-calendar` plugin UI):
@@ -19,6 +24,7 @@ export class CalendarPage {
    * client gating) - the core thing the gating test asserts.
    */
   async headerButtonPresent(timeout = config.waitTimeout): Promise<boolean> {
+    if (isNebula) return this.nebulaMenuOffersCalendar(timeout);
     try {
       await this.d.wait(until.elementLocated(byTid(TID.calendarHeaderButton)), timeout);
       return true;
@@ -27,11 +33,43 @@ export class CalendarPage {
     }
   }
 
-  /** Open the calendar split-view via the header button. */
+  /**
+   * Nebula's entry exists only while the kebab menu is open, and the
+   * plugin-info that gates it can land after the chat view does - so the menu
+   * is opened, looked in and closed again until it shows or time runs out.
+   */
+  private async nebulaMenuOffersCalendar(timeout: number): Promise<boolean> {
+    const deadline = Date.now() + timeout;
+    do {
+      const kebab = await this.d.wait(
+        until.elementLocated(byTid(TID.chatHeaderKebab)),
+        Math.max(1000, deadline - Date.now()),
+      );
+      await kebab.click();
+      const found = await this.d
+        .wait(until.elementLocated(NEBULA_CALENDAR_ITEM), 1500)
+        .then(() => true, () => false);
+      await dismissMenus(this.d);
+      if (found) return true;
+    } while (Date.now() < deadline);
+    return false;
+  }
+
+  /** Open the calendar: Standard's header button, or Nebula's kebab entry. */
   async open(): Promise<void> {
-    const btn = await this.d.wait(until.elementLocated(byTid(TID.calendarHeaderButton)), config.waitTimeout);
-    await this.d.wait(until.elementIsVisible(btn), 5000);
-    await btn.click();
+    if (isNebula) {
+      // Nebula's calendar is a modal over the header, so a second open finds
+      // it already up - and could not reach the kebab behind it anyway.
+      if ((await this.d.findElements(byTid(TID.calendarPanel))).length > 0) return;
+      const kebab = await this.d.wait(until.elementLocated(byTid(TID.chatHeaderKebab)), config.waitTimeout);
+      await kebab.click();
+      const item = await this.d.wait(until.elementLocated(NEBULA_CALENDAR_ITEM), config.waitTimeout);
+      await item.click();
+    } else {
+      const btn = await this.d.wait(until.elementLocated(byTid(TID.calendarHeaderButton)), config.waitTimeout);
+      await this.d.wait(until.elementIsVisible(btn), 5000);
+      await btn.click();
+    }
     await this.d.wait(until.elementLocated(byTid(TID.calendarPanel)), config.waitTimeout);
   }
 
@@ -160,8 +198,11 @@ export class CalendarPage {
     // user list updates, so type + wait also covers registration propagation.
     // Scoped to the invitee's name so the (empty) description editor's markup
     // can never match.
+    // Standard's suggestions are buttons in list items; Nebula's picker makes
+    // the list item itself the option.
     const suggestion = By.xpath(
-      `//*[@data-testid="${TID.calendarDialog}"]//ul//li//button` +
+      `//*[@data-testid="${TID.calendarDialog}"]//ul//li` +
+        (isNebula ? `[@role="option"]` : `//button`) +
         `[contains(normalize-space(.), ${xpathLiteral(inviteeName)})]`,
     );
     const sugg = await this.d.wait(

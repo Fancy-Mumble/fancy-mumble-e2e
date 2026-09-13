@@ -188,13 +188,14 @@ a{color:var(--accent)}
   <div class="items">
 
     <div class="item">
-      <div class="head"><h3>Calendar and meetings</h3><span class="chip absent">Absent</span></div>
-      <p>Month and week views, the event dialog and detail card, its context menu, date and
-      time inputs, description editor, work-hours popover. Nebula does run
-      <code>useCalendarReminders</code> and does answer <code>fancy://meeting/…</code>, so a
-      reminder can fire and a link can drop you into a room — with nothing anywhere that
-      shows the event it belongs to.</p>
-      <p class="where">standard/components/chat/calendar/ (12 files) · nebula NebulaRuntime.tsx:7-8</p>
+      <div class="head"><h3>Calendar and meetings</h3><span class="chip done">Closed</span></div>
+      <p>Day, work-week, week and month grids with drag and resize, the detail card with
+      RSVP, join and invite link, the context menu, the meeting form and work hours - from
+      the chat kebab where the server runs <code>fancy-calendar</code>. A reminder or a
+      followed <code>fancy://meeting/…</code> link now raises a notice naming the meeting,
+      and a meeting room's kebab opens its card. Drag math, typed dates and the form's
+      save logic moved to <code>core</code>, so both packs share them.</p>
+      <p class="where">nebula components/calendar/ · core features/chat/calendar/{timeGrid,calendarInputs,eventDraft}</p>
     </div>
 
     <div class="item">

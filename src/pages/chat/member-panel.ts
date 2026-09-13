@@ -172,6 +172,23 @@ export class MemberRoster {
   }
 
   /**
+   * Wait until the named member's row says how their voice reaches us. Both
+   * packs stamp `data-voice-context` on the row while that member is talking
+   * to us as a whisper or a shout.
+   */
+  async waitForMemberVoiceContext(
+    name: string,
+    context: "whisper" | "shout",
+    timeout = 20000,
+  ): Promise<void> {
+    await this.ensureVisible();
+    await this.d.wait(
+      until.elementLocated(this.row(name, `[data-voice-context="${context}"]`)),
+      timeout,
+    );
+  }
+
+  /**
    * Read the local user's own voice flags from the sidebar self row. That row
    * is the only `member-item` carrying `data-clickable="true"` (isSelf), so it
    * uniquely identifies "me" regardless of name collisions.
