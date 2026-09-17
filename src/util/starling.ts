@@ -114,8 +114,12 @@ const ADVERTISE_HOST = process.env.E2E_STARLING_ADVERTISE ?? BIND_HOST;
 export class StarlingServer {
   private constructor(
     readonly port: number,
-    private readonly proc: ChildProcess,
+    /** Replaced by {@link restart}, so not readonly. */
+    private proc: ChildProcess,
     private readonly dataDir: string,
+    /** The TOML {@link restart} respawns against, so the server that comes
+     *  back is configured exactly like the one that went away. */
+    private readonly configFile: string,
     private readonly output: string[],
     /**
      * Where its operator API listens.
@@ -190,43 +194,57 @@ export class StarlingServer {
     const configFile = path.join(dataDir, "starling.toml");
     writeFileSync(configFile, config(port, http, media, files, dataDir, pluginsDir, liveDocPort), "utf8");
 
-    const proc = spawn(STARLING_BIN, ["--all-in-one", "--config", configFile], {
-      cwd: dataDir,
-      env: {
-        ...process.env,
-        // Voice at debug, because the line naming the negotiated cipher is a
-        // `tracing::debug!` — at plain `info` it does not exist, and the test
-        // that asserts on it fails describing a cipher choice that was in fact
-        // correct. Everything else stays at info; voice logs nothing per packet.
-        RUST_LOG: process.env.E2E_STARLING_LOG ?? "info,starling_voice=debug",
-        // Both of Starling's log emitters colour by default, and neither asks
-        // whether stderr is a terminal - `docker logs` is not one either. Here
-        // stderr is a pipe into `output`, which tests regex for `conn=N` and
-        // the like; escape codes around the `=` would break every one of them,
-        // and .tmp/starling.log is easier to read without them.
-        NO_COLOR: "1",
-        // The operator API's bearer token, which its config names by
-        // environment variable rather than holding in plaintext. Without it
-        // the API refuses every request, and the suite's SuperUser setup —
-        // which eleven files depend on in `before` — fails against a server
-        // that is otherwise perfectly healthy.
-        STARLING_ADMIN_TOKEN: process.env.E2E_OPERATOR_TOKEN ?? "e2e-token",
-      },
-      stdio: ["ignore", "pipe", "pipe"],
-      detached: process.platform !== "win32",
-    });
-    proc.stdout?.on("data", (chunk) => output.push(String(chunk)));
-    proc.stderr?.on("data", (chunk) => output.push(String(chunk)));
+    const proc = spawnStarling(configFile, dataDir, output);
 
-    const server = new StarlingServer(port, proc, dataDir, output, http + 1);
+    const server = new StarlingServer(port, proc, dataDir, configFile, output, http + 1);
     await server.waitUntilListening();
     await server.waitUntilSuperuserProvisioned();
     return server;
   }
 
+  /**
+   * Restart the server on its own data directory, and wait until it accepts
+   * again.
+   *
+   * The difference from {@link stop} followed by {@link start} is the whole
+   * point: the data directory survives, so this is the *same* server coming
+   * back rather than a new one wearing its port. What that asks is which state
+   * was only ever in memory - a channel, the persistence mode set on it, the
+   * messages stored under it, and the at-rest key without which those rows
+   * cannot be read back at all.
+   *
+   * {@link waitUntilSuperuserProvisioned} is deliberately not repeated: it
+   * waits for "superuser account created", which a server whose account
+   * already exists never logs again, so waiting would spend the whole timeout
+   * to learn nothing. That the account survives is part of what a restart is
+   * being asked about, not a precondition of asking.
+   */
+  async restart(): Promise<void> {
+    killTree(this.proc.pid);
+    await released(this.port);
+    // Marks the seam in `.tmp/starling.log`, so a log read after the fact
+    // says which process wrote which half.
+    this.output.push("--- e2e: restarting Starling on the same data directory ---\n");
+    this.proc = spawnStarling(this.configFile, this.dataDir, this.output);
+    await this.waitUntilListening();
+  }
+
   /** Everything the server has written to stdout and stderr so far. */
   get log(): string {
     return this.output.join("");
+  }
+
+  /**
+   * Where this instance's operator API answers.
+   *
+   * The runner exports the shared server's as `E2E_OPERATOR_API_URL`, which is
+   * what `config.operatorApiUrl` reads - but that is fixed at import, so a test
+   * holding its *own* server has to pass this to the helpers that administer
+   * one (see `setSuperUserPassword`). Without it a private-server test silently
+   * administers the shared server, or nothing at all.
+   */
+  get operatorApiUrl(): string {
+    return `http://${BIND_HOST}:${this.operatorPort}`;
   }
 
   /**
@@ -308,6 +326,46 @@ export class StarlingServer {
       await delay(150);
     }
   }
+}
+
+/**
+ * Spawn a Starling against an already-written config, piping both its streams
+ * into `output`.
+ *
+ * Free-standing because {@link StarlingServer.start} and
+ * {@link StarlingServer.restart} must produce processes that differ in nothing
+ * but when they were started - a restart configured even slightly differently
+ * would answer a question nobody asked.
+ */
+function spawnStarling(configFile: string, dataDir: string, output: string[]): ChildProcess {
+  const proc = spawn(STARLING_BIN, ["--all-in-one", "--config", configFile], {
+    cwd: dataDir,
+    env: {
+      ...process.env,
+      // Voice at debug, because the line naming the negotiated cipher is a
+      // `tracing::debug!` at plain `info` does not exist, and the test that
+      // asserts on it fails describing a cipher choice that was in fact
+      // correct. Everything else stays at info; voice logs nothing per packet.
+      RUST_LOG: process.env.E2E_STARLING_LOG ?? "info,starling_voice=debug",
+      // Both of Starling's log emitters colour by default, and neither asks
+      // whether stderr is a terminal - `docker logs` is not one either. Here
+      // stderr is a pipe into `output`, which tests regex for `conn=N` and
+      // the like; escape codes around the `=` would break every one of them,
+      // and .tmp/starling.log is easier to read without them.
+      NO_COLOR: "1",
+      // The operator API's bearer token, which its config names by
+      // environment variable rather than holding in plaintext. Without it
+      // the API refuses every request, and the suite's SuperUser setup -
+      // which eleven files depend on in `before` - fails against a server
+      // that is otherwise perfectly healthy.
+      STARLING_ADMIN_TOKEN: process.env.E2E_OPERATOR_TOKEN ?? "e2e-token",
+    },
+    stdio: ["ignore", "pipe", "pipe"],
+    detached: process.platform !== "win32",
+  });
+  proc.stdout?.on("data", (chunk) => output.push(String(chunk)));
+  proc.stderr?.on("data", (chunk) => output.push(String(chunk)));
+  return proc;
 }
 
 /**

@@ -30,9 +30,17 @@ const INI = process.env.E2E_SERVER_INI ?? "/config/mumble-server.ini";
  * it never takes effect (SuperUser auth then fails with "Wrong certificate or
  * password"). Running `--set-su-pw` on its own works, and the live server picks
  * the new hash up from the database on the next authentication - no restart.
+ *
+ * # Administering a server the test brought itself
+ *
+ * `operatorApiUrl` overrides where the Starling branch sends its request.
+ * `config.operatorApiUrl` is read at import and names the *shared* server, so
+ * a test holding its own instance that omits this would administer somebody
+ * else's - or, in the private pass where there is no shared server, nothing at
+ * all, and fall through to looking for a Docker container.
  */
-export function setSuperUserPassword(password: string): void {
-  if (setSuperUserPasswordViaOperatorApi(password)) return;
+export function setSuperUserPassword(password: string, operatorApiUrl?: string): void {
+  if (setSuperUserPasswordViaOperatorApi(password, operatorApiUrl)) return;
 
   execFileSync(
     "docker",
@@ -49,7 +57,7 @@ export function setSuperUserPassword(password: string): void {
  * so the request runs in a child Node process that this one waits for - no
  * dependency, and nothing to install on a machine that already runs the suite.
  */
-function setSuperUserPasswordViaOperatorApi(password: string): boolean {
+function setSuperUserPasswordViaOperatorApi(password: string, operatorApiUrl?: string): boolean {
   const request = `
     const [url, token, password] = process.argv.slice(1);
     const response = await fetch(url + "/v1/accounts/0", {
@@ -64,7 +72,14 @@ function setSuperUserPasswordViaOperatorApi(password: string): boolean {
   try {
     execFileSync(
       process.execPath,
-      ["--input-type=module", "-e", request, config.operatorApiUrl, config.operatorToken, password],
+      [
+        "--input-type=module",
+        "-e",
+        request,
+        operatorApiUrl ?? config.operatorApiUrl,
+        config.operatorToken,
+        password,
+      ],
       { stdio: "ignore", timeout: 15000 },
     );
     return true;
