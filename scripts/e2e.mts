@@ -37,6 +37,9 @@ const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), ".."
 const PRIVATE_SERVER = [
   "src/tests/starling-refused-login.multiclient.test.ts",
   "src/tests/starling-voice.multiclient.test.ts",
+  // Restarts its server mid-file, which would pull the floor out from under
+  // every other file sharing one.
+  "src/tests/starling-restart-persistence.multiclient.test.ts",
 ];
 
 /**
