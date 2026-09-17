@@ -161,6 +161,8 @@ export class SidebarPage {
     name: string,
     opts: {
       pchatProtocol?: string;
+      /** A channel that disappears when its last member leaves. */
+      temporary?: boolean;
       hidden?: boolean;
       expiryMode?: 1 | 2;
       expirySeconds?: number;
@@ -180,6 +182,11 @@ export class SidebarPage {
     if (opts.pchatProtocol) {
       const select = await this.d.findElement(By.css("#ch-ed-pchat"));
       await setReactSelectValue(this.d, select, opts.pchatProtocol);
+    }
+
+    if (opts.temporary) {
+      const cb = await this.d.findElement(By.css("#ch-ed-temp"));
+      if (!(await cb.isSelected())) await cb.click();
     }
 
     const wantHidden = opts.hidden || (opts.invitees?.length ?? 0) > 0;
@@ -265,6 +272,36 @@ export class SidebarPage {
       async () => (await this.d.findElements(By.css("#ch-ed-name"))).length === 0,
       10000,
     );
+  }
+
+  /**
+   * Read an existing channel's persistence protocol back out of the editor,
+   * then dismiss it with Cancel so nothing is written.
+   *
+   * Deliberately a *read*: `setChannelPchatProtocol` only ever proves the
+   * select can be written, so a dialog that opens on the wrong value passes
+   * it every time. What the dialog shows is also what a Save sends - the
+   * editor posts `pchat_protocol` on every submit rather than diffing it -
+   * so a wrong read here is a channel about to be de-persisted by a rename.
+   */
+  async channelPchatProtocol(name: string): Promise<string> {
+    const id = Number(await this.channelIdByName(name));
+    await this.channelMenuAction(id, menuLabel("editChannel"));
+
+    const select = await this.d.wait(until.elementLocated(By.css("#ch-ed-pchat")), 10000);
+    await this.d.wait(until.elementIsVisible(select), 5000);
+    const value = await select.getAttribute("value");
+
+    const cancelBtn = await this.d.wait(
+      until.elementLocated(By.xpath("//*[@role='dialog']//button[normalize-space(.)='Cancel']")),
+      10000,
+    );
+    await cancelBtn.click();
+    await this.d.wait(
+      async () => (await this.d.findElements(By.css("#ch-ed-name"))).length === 0,
+      10000,
+    );
+    return value ?? "";
   }
 
   /** Whether a channel with the given name is currently in the sidebar (no wait). */
