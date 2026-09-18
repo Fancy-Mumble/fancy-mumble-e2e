@@ -432,7 +432,12 @@ export class StreamPage {
       await clickPossiblyHidden(this.d, menu);
       const item = await this.d.wait(
         until.elementLocated(
-          By.xpath("//*[self::button or @role='menuitem'][contains(normalize-space(.), 'Stats for Nerds')]"),
+          // Nebula's stage menu is a real menu now, so the row carries the
+          // role its state deserves - a checkbox, not a plain item.
+          By.xpath(
+            "//*[self::button or @role='menuitem' or @role='menuitemcheckbox']" +
+              "[contains(normalize-space(.), 'Stats for Nerds')]",
+          ),
         ),
         timeout,
         "the stream config menu offered no Stats-for-Nerds entry",
