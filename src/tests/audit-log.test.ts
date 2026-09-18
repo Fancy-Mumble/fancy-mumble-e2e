@@ -139,4 +139,19 @@ describe("audit log: ingest + admin viewer", () => {
     assert.ok(status.length > 0, "chain card empty after verify");
     assert.doesNotMatch(status, /invalid|broken|error/i, `chain verify reported a problem: ${status}`);
   });
+
+  it("keeps the loaded results after a chain verification", async () => {
+    // Verification answers on the same query channel but carries no entries;
+    // it must report the chain without emptying the table behind it.
+    await admin.audit.openResults();
+    await admin.audit.runQuery("");
+    const before = await admin.audit.waitForRows(1, 20000);
+
+    await admin.audit.openConfig();
+    await admin.audit.verifyChain();
+
+    await admin.audit.openResults();
+    const after = await admin.audit.rowCount();
+    assert.strictEqual(after, before, `verify chain wiped the results table (${before} -> ${after})`);
+  });
 });

@@ -213,6 +213,18 @@ export class AuditPage {
     await this.d.wait(until.elementLocated(byTid(TID.auditChainCard)), config.waitTimeout);
   }
 
+  /** Switch back to the Results half and wait for the table. */
+  async openResults(): Promise<void> {
+    const btn = await this.d.wait(until.elementLocated(byTid(TID.auditResultsTab)), 10000);
+    await btn.click();
+    await this.d.wait(until.elementLocated(byTid(TID.auditTable)), config.waitTimeout);
+  }
+
+  /** How many result rows are rendered right now. */
+  async rowCount(): Promise<number> {
+    return (await this.d.findElements(byTid(TID.auditRow))).length;
+  }
+
   /** Click "verify chain" and return the chain card's text afterwards. */
   async verifyChain(settleMs = 4000): Promise<string> {
     const btn = await this.d.wait(until.elementLocated(byTid(TID.auditVerifyChain)), 10000);
