@@ -315,6 +315,65 @@ describe("whisper and shout", { concurrency: 1 }, () => {
     }
   });
 
+  it("whispers from a muted mic, and mutes it again on release", async () => {
+    // The press takes push-to-talk here rather than retargeting a live mic,
+    // which is the path every case above skips: their speaker is already on.
+    await speaker.chat.voice.tapMute();
+    await eventually("the speaker to mute", async () => (await speaker.chat.voice.state()) === "muted");
+    const bobBefore = heardFrom(bobStats, speakerSession)?.packets ?? 0;
+
+    try {
+      await tauriInvoke(speaker.driver, "whisper_start", { slot: 1, targets: whisperToBob() });
+      assert.equal(await speaker.chat.voice.state(), "active", "the whisper key did not open the mic");
+
+      const heard = await eventually("Bob to hear a whisper from a muted mic", () => {
+        const stats = heardFrom(bobStats, speakerSession);
+        return stats && stats.packets >= bobBefore + 25 ? stats : null;
+      });
+      assert.equal(heard.last_context, CONTEXT.whisper, "a push-to-talk whisper was not stamped as a whisper");
+      const carolWhile = await packetsHeldStill(carolStats, speakerSession);
+      assert.ok(carolWhile.still, `a push-to-talk whisper reached the channel (${carolWhile.delta} frames)`);
+
+      await tauriInvoke(speaker.driver, "whisper_end");
+      await eventually("the mic to mute again", async () => (await speaker.chat.voice.state()) === "muted");
+      const bobAfter = await packetsHeldStill(bobStats, speakerSession);
+      assert.ok(bobAfter.still, `the mic kept sending after release (${bobAfter.delta} frames)`);
+    } finally {
+      await tauriInvoke(speaker.driver, "whisper_end").catch(() => undefined);
+      await speaker.chat.voice.ensureUnmuted();
+    }
+  });
+
+  it("whispers to several users at once, wherever they stand", async () => {
+    const carolSession = await eventually("Carol's session", () =>
+      tauriInvoke<number | null>(carol.driver, "get_own_session"),
+    );
+    const bobBefore = heardFrom(bobStats, speakerSession)?.packets ?? 0;
+    const carolBefore = heardFrom(carolStats, speakerSession)?.packets ?? 0;
+
+    // Bob in his own channel, Carol in the speaker's: one slot names both.
+    await tauriInvoke(speaker.driver, "whisper_start", {
+      slot: 4,
+      targets: [{ sessions: [bobSession, carolSession], channelId: null, group: null, links: false, children: false }],
+    });
+    try {
+      const [bobHeard, carolHeard] = await Promise.all([
+        eventually("Bob to hear the group whisper", () => {
+          const stats = heardFrom(bobStats, speakerSession);
+          return stats && stats.packets >= bobBefore + 25 ? stats : null;
+        }),
+        eventually("Carol to hear the group whisper", () => {
+          const stats = heardFrom(carolStats, speakerSession);
+          return stats && stats.packets >= carolBefore + 25 && stats.last_context === CONTEXT.whisper ? stats : null;
+        }),
+      ]);
+      assert.equal(bobHeard.last_context, CONTEXT.whisper, "Bob's copy was not stamped as a whisper");
+      assert.equal(carolHeard.last_context, CONTEXT.whisper, "Carol's copy was not stamped as a whisper");
+    } finally {
+      await tauriInvoke(speaker.driver, "whisper_end");
+    }
+  });
+
   it("reports a channel the server refuses whispers into", { skip: refusalSkip }, async () => {
     const closed = await createChannel(`e2e-whisper-closed-${suffix}`);
     await tauriInvoke(carol.driver, "update_acl", {
