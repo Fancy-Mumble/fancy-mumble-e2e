@@ -6,14 +6,16 @@ launch the real packaged desktop client, drive the actual React UI with
 Docker - proving the whole stack (UI → Tauri commands → mumble-protocol →
 server → back to UI) works together.
 
-This repo contains **only** the e2e harness and fixtures. The three projects
-under test are pulled in as git submodules:
+This repo contains the e2e harness and fixtures. Related projects, including
+the documentation site, are pulled in as git submodules:
 
 | Submodule        | Repo                                   | Role |
 |------------------|----------------------------------------|------|
-| `vendor/client`  | `Fancy-Mumble/FancyMumbleNext`         | The desktop client (built to a binary, driven by the tests) |
-| `vendor/server`  | `Fancy-Mumble/mumble-server`           | The Mumble server fork (source/reference) |
-| `vendor/docker`  | `Fancy-Mumble/mumble-docker`           | Builds the server image (file-server, live-doc, pchat, plugins) |
+| `vendor/client`  | `Fancy-Mumble/FancyMumble`             | The desktop and Android client (built to a binary, driven by the tests) |
+| `vendor/starling` | `Fancy-Mumble/starling`              | The current Rust server |
+| `vendor/server`  | `Fancy-Mumble/mumble-server`           | The older C++ server fork used by legacy fixtures |
+| `vendor/docker`  | `Fancy-Mumble/mumble-docker`           | The older server image used by legacy fixtures |
+| `vendor/docs`    | `Fancy-Mumble/docs`                    | The Astro documentation site for the client and Starling |
 
 ```
  ┌─ docker compose (fixtures/docker-compose.e2e.yml) ─┐
@@ -46,7 +48,7 @@ src/
 fixtures/
   docker-compose.e2e.yml   the server under test
   mumble-server.ini        relaxed test config (pchat + file-server on)
-vendor/{client,server,docker}   git submodules (see table above)
+vendor/              git submodules (see table above)
 ```
 
 ## Prerequisites

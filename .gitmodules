@@ -42,3 +42,7 @@
 	path = vendor/fancy-plugin-example
 	url = https://github.com/Fancy-Mumble/fancy-plugin-example.git
 	branch = main
+[submodule "vendor/docs"]
+	path = vendor/docs
+	url = https://github.com/Fancy-Mumble/docs.git
+	branch = main

@@ -5,6 +5,7 @@
   "description": "End-to-end (Selenium + tauri-driver) tests driving the FancyMumble desktop client against a real Fancy Mumble server.",
   "type": "module",
   "scripts": {
+    "assets:sync-docs": "node scripts/sync-sample-assets.mjs",
     "test:e2e": "node --import tsx scripts/e2e.mts",
     "typecheck": "tsc --noEmit",
     "e2e": "node --import tsx scripts/e2e.mts",
