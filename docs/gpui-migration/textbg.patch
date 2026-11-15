@@ -1,0 +1,125 @@
+diff --git a/crates/gpui/src/text_system/line.rs b/crates/gpui/src/text_system/line.rs
+index 59e47a7..a830a67 100644
+--- a/crates/gpui/src/text_system/line.rs
++++ b/crates/gpui/src/text_system/line.rs
+@@ -857,10 +857,7 @@ fn paint_line_background(
+                             },
+                             *background_color,
+                         ));
+-                        if glyph.index < run_end {
+-                            background_origin.x = origin.x;
+-                            background_origin.y += line_height;
+-                        } else {
++                        if glyph.index >= run_end {
+                             current_background = None;
+                         }
+                     }
+@@ -874,6 +871,12 @@ fn paint_line_background(
+                         wraps.peek(),
+                     );
+                     glyph_origin.y += line_height;
++
++                    // The background goes on where the next line starts, which is
++                    // off the left of the box where that line is aligned.
++                    if let Some((background_origin, _)) = current_background.as_mut() {
++                        *background_origin = glyph_origin;
++                    }
+                 }
+                 prev_glyph_position = glyph.position;
+ 
+@@ -925,12 +928,20 @@ fn paint_line_background(
+             }
+         }
+ 
+-        let mut last_line_end_x = origin.x + layout.width;
+-        if let Some(boundary) = wrap_boundaries.last() {
+-            let run = &layout.runs[boundary.run_ix];
+-            let glyph = &run.glyphs[boundary.glyph_ix];
+-            last_line_end_x -= glyph.position.x;
+-        }
++        // Where the last line ends, aligned as its glyphs are.
++        let last_line_start_x = wrap_boundaries.last().map_or(px(0.), |boundary| {
++            layout.runs[boundary.run_ix].glyphs[boundary.glyph_ix]
++                .position
++                .x
++        });
++        let last_line_end_x = aligned_origin_x(
++            origin,
++            align_width.unwrap_or(layout.width),
++            last_line_start_x,
++            &align,
++            layout,
++            None,
++        ) + (layout.width - last_line_start_x);
+ 
+         if let Some((mut background_origin, background_color)) = current_background.take() {
+             if last_line_end_x == background_origin.x {
+@@ -1433,6 +1444,68 @@ mod tests {
+         });
+     }
+ 
++    #[gpui::test]
++    fn test_background_follows_aligned_wrapped_lines(cx: &mut TestAppContext) {
++        test_underline_handler_at_scales(cx, |window, cx| {
++            // "abcd", 8 px a glyph, wrapped after "ab", right-aligned in 40 px: each
++            // line is 16 px wide and stands 24 px in from the left.
++            let line = underline_test_line(
++                "abcd",
++                &[DecorationRun {
++                    len: 4,
++                    color: black(),
++                    background_color: Some(hsla(0.5, 0.5, 0.5, 1.)),
++                    underline: None,
++                    strikethrough: None,
++                }],
++                false,
++                window,
++            );
++            let origin = point(px(10.), px(20.));
++            let line_height = px(20.);
++            window.next_frame.scene.clear();
++            paint_line_background(
++                origin,
++                &line.layout,
++                line_height,
++                TextAlign::Right,
++                Some(px(40.)),
++                &line.decoration_runs,
++                &[WrapBoundary {
++                    run_ix: 0,
++                    glyph_ix: 2,
++                }],
++                window,
++                cx,
++            )
++            .unwrap();
++            let scale = window.scale_factor();
++            let painted: Vec<_> = window
++                .next_frame
++                .scene
++                .quads
++                .iter()
++                .map(|quad| quad.bounds)
++                .collect();
++            let expected = [
++                Bounds::new(point(px(34.), px(20.)), size(px(16.), line_height)).scale(scale),
++                Bounds::new(point(px(34.), px(40.)), size(px(16.), line_height)).scale(scale),
++            ];
++            // Quads are snapped to device pixels, so allow a pixel either way.
++            let near = |a: crate::ScaledPixels, b: crate::ScaledPixels| (a.0 - b.0).abs() <= 1.;
++            assert_eq!(painted.len(), expected.len(), "{painted:?}");
++            for (painted, expected) in painted.iter().zip(&expected) {
++                assert!(
++                    near(painted.origin.x, expected.origin.x)
++                        && near(painted.origin.y, expected.origin.y)
++                        && near(painted.size.width, expected.size.width)
++                        && near(painted.size.height, expected.size.height),
++                    "at scale {scale}: painted {painted:?}, expected {expected:?}"
++                );
++            }
++        });
++    }
++
+     #[test]
+     fn test_split_at_invariants() {
+         // Split "abcdef" at every possible byte index and verify structural invariants.

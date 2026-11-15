@@ -1,0 +1,261 @@
+diff --git a/src/ui/gpui/Cargo.toml b/src/ui/gpui/Cargo.toml
+index 96c3e02..3eda03d 100644
+--- a/src/ui/gpui/Cargo.toml
++++ b/src/ui/gpui/Cargo.toml
+@@ -11,6 +11,12 @@ publish = false
+ description = "Native GPUI view for Fancy Mumble: small memory and CPU footprint"
+ license = "MIT"
+ 
++# The view is a library, so the Android package (a `cdylib` beside this
++# folder) runs the same code the desktop program does.
++[lib]
++name = "fancy_gpui"
++path = "src/lib.rs"
++
+ [[bin]]
+ name = "fancy-gpui"
+ path = "src/main.rs"
+@@ -35,7 +41,6 @@ x11 = ["gpui/x11", "gpui_platform/x11"]
+ # windows): the fork `gpui-next`, branch `fancy`, whose FANCY_CHANGES.md
+ # lists them. `gpui_platform` picks this system's platform.
+ gpui = { path = "../../../../gpui-next/crates/gpui", default-features = false, features = ["font-kit", "windows-manifest", "layout-rounding-0-2"] }
+-gpui_platform = { path = "../../../../gpui-next/crates/gpui_platform", default-features = false, features = ["font-kit"] }
+ # The engine. Still inside the Tauri package, built here without the Tauri
+ # view (`default-features = false`), so none of Tauri is compiled or linked.
+ mumble-tauri = { path = "../../../crates/mumble-tauri", default-features = false, features = ["logs"] }
+@@ -98,7 +103,6 @@ i_overlay = "=9.1.0"
+ # Screen sharing (`src/share/`): the web client's own capture, encoder and
+ # WebRTC peers, used as they are. Nothing of it runs until a share is
+ # started or watched.
+-fancy-screenshare = { path = "../../../crates/fancy-screenshare" }
+ # Decoding a watched share to pixels, and scaling them to the room they are
+ # shown in: the releases that crate already builds.
+ openh264 = "0.8"
+@@ -108,6 +112,15 @@ fast_image_resize = "5"
+ # already builds.
+ opus = "0.3"
+ 
++# Screen sharing's capture, encoder and peers: not on Android, where the
++# crate does not build (its capture library has no Android support);
++# `src/share/real_absent.rs` stands in there.
++[target.'cfg(not(target_os = "android"))'.dependencies]
++# The desktop platforms; on Android the package that loads the view brings
++# gpui_mobile's instead (`F:\fancy-migrate\android-client`).
++gpui_platform = { path = "../../../../gpui-next/crates/gpui_platform", default-features = false, features = ["font-kit"] }
++fancy-screenshare = { path = "../../../crates/fancy-screenshare" }
++
+ # System notifications, where there is no `notify-send` to hand them to.
+ # Linux keeps `notify-send`, which links no D-Bus stack into the view.
+ # Held at the release the web client builds: it speaks to Windows through
+diff --git a/src/ui/gpui/src/share/mod.rs b/src/ui/gpui/src/share/mod.rs
+index bf523d3..929f35a 100644
+--- a/src/ui/gpui/src/share/mod.rs
++++ b/src/ui/gpui/src/share/mod.rs
+@@ -47,6 +47,9 @@ pub(crate) mod fit;
+ pub(crate) mod frame;
+ pub(crate) mod made_up;
+ pub(crate) mod pattern;
++// Android has no capture or peers yet (`fancy-screenshare` does not build
++// there): a stand-in that knows of shares without making them.
++#[cfg_attr(target_os = "android", path = "real_absent.rs")]
+ pub(crate) mod real;
+ pub(crate) mod replay;
+ pub(crate) mod shares;
+diff --git a/src/ui/gpui/src/share/real_absent.rs b/src/ui/gpui/src/share/real_absent.rs
+new file mode 100644
+index 0000000..6bddd03
+--- /dev/null
++++ b/src/ui/gpui/src/share/real_absent.rs
+@@ -0,0 +1,141 @@
++//! Sharing on Android, until it exists there: the web client's capture and
++//! WebRTC crate (`fancy-screenshare`) does not build for Android (its
++//! capture library, xcap, has no Android support, and its viewer is built
++//! for Linux and Windows only), so this stands in for [`RealMedia`] of
++//! `real.rs`. Shares in the channel are still heard of and shown as going
++//! on, strokes still come and go, and starting or watching a share says
++//! that this device cannot yet. Owed: watching (the viewer on Android) and
++//! sharing (MediaProjection).
++
++use std::sync::Arc;
++
++use gpui::SharedString;
++use mumble_tauri_lib::engine_api::EngineHandle;
++
++use super::{Broadcast, Feed, Heard, Media, SignalKind, Source, Start, Stroke, Watch};
++use crate::engine::EngineEvent;
++
++/// What this device says when asked to share or watch.
++const NOT_HERE: &str = "Screen sharing is not available on Android yet";
++
++/// Sharing over the engine, without capture or peers.
++pub(crate) struct RealMedia {
++    engine: EngineHandle,
++    runtime: tokio::runtime::Handle,
++}
++
++impl std::fmt::Debug for RealMedia {
++    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
++        f.debug_struct("RealMedia").finish_non_exhaustive()
++    }
++}
++
++impl RealMedia {
++    pub(crate) fn new(
++        engine: EngineHandle,
++        runtime: tokio::runtime::Handle,
++        _events: async_channel::Sender<EngineEvent>,
++    ) -> Self {
++        Self { engine, runtime }
++    }
++
++    /// What the view is to hear of a signal that came: a START or STOP;
++    /// the rest is for peers this device does not make.
++    pub(crate) fn heard(
++        &self,
++        signal: mumble_tauri_lib::engine_api::media::SignalInfo,
++    ) -> Option<Heard> {
++        let kind = SignalKind::of(signal.kind)?;
++        matches!(kind, SignalKind::Start | SignalKind::Stop).then(|| {
++            Heard::Signal(super::Signal {
++                server: signal.server.map(Into::into),
++                sender: signal.sender,
++                kind,
++                payload: signal.payload,
++            })
++        })
++    }
++}
++
++impl Media for RealMedia {
++    fn sources(&self) -> Result<Vec<Source>, String> {
++        Ok(Vec::new())
++    }
++
++    fn thumbnail(&self, _source: &Source) -> Option<Arc<gpui::Image>> {
++        None
++    }
++
++    fn broadcast(&self, _start: Start) -> Result<Box<dyn Broadcast>, String> {
++        Err(NOT_HERE.to_owned())
++    }
++
++    fn watch(&self, _watch: Watch) -> Result<Box<dyn Feed>, String> {
++        Err(NOT_HERE.to_owned())
++    }
++
++    fn announce(&self, server: Option<SharedString>, kind: SignalKind, payload: String) {
++        let engine = self.engine.clone();
++        let server = server.map(|server| server.to_string());
++        drop(self.runtime.spawn(async move {
++            if let Err(error) = engine.send_webrtc_signal(0, kind.wire(), payload, server).await {
++                tracing::warn!(%error, ?kind, "share: a signal was not sent");
++            }
++        }));
++    }
++
++    fn stroke(&self, stroke: Stroke) {
++        let engine = self.engine.clone();
++        drop(self.runtime.spawn(async move {
++            let sent = engine
++                .send_draw_stroke(mumble_tauri_lib::engine_api::media::StrokeInfo {
++                    sender: stroke.sender,
++                    channel: stroke.channel,
++                    id: stroke.id,
++                    colour: stroke.colour,
++                    width: stroke.width,
++                    width_frac: stroke.width_frac,
++                    points: stroke.points,
++                    end: stroke.end,
++                    clear: stroke.clear,
++                    clear_all: stroke.clear_all,
++                })
++                .await;
++            if let Err(error) = sent {
++                tracing::warn!(%error, "share: a stroke was not sent");
++            }
++        }));
++    }
++
++    fn relays(&self) -> bool {
++        self.engine.relays_media()
++    }
++
++    fn made_up(&self) -> bool {
++        false
++    }
++
++    fn hearing(&self) -> Arc<dyn super::audio::Hearing> {
++        Arc::new(super::audio::Unheard::default())
++    }
++
++    fn whereabouts(&self) -> Arc<dyn super::whereabouts::Whereabouts> {
++        Arc::new(super::whereabouts::System)
++    }
++}
++
++/// What the view is to hear of a stroke that came.
++pub(crate) fn heard_stroke(stroke: mumble_tauri_lib::engine_api::media::StrokeInfo) -> Heard {
++    Heard::Stroke(Stroke {
++        sender: stroke.sender,
++        channel: stroke.channel,
++        id: stroke.id,
++        colour: stroke.colour,
++        width: stroke.width,
++        width_frac: stroke.width_frac,
++        points: stroke.points,
++        end: stroke.end,
++        clear: stroke.clear,
++        clear_all: stroke.clear_all,
++    })
++}
+diff --git a/src/ui/gpui/src/share/replay.rs b/src/ui/gpui/src/share/replay.rs
+index dbebb1a..f54ccb0 100644
+--- a/src/ui/gpui/src/share/replay.rs
++++ b/src/ui/gpui/src/share/replay.rs
+@@ -13,9 +13,11 @@ use std::sync::Arc;
+ use std::sync::atomic::{AtomicBool, Ordering};
+ use std::time::{Duration, Instant};
+ 
++#[cfg(not(target_os = "android"))]
+ use fancy_screenshare::encode::{EncodeSettings, H264Encoder, VideoEncoder};
+ 
+ use super::decode::{Decoding, Unit};
++#[cfg(not(target_os = "android"))]
+ use super::pattern::{Order, Pattern};
+ 
+ /// Whether this run's demo shares go through the codec.
+@@ -90,6 +92,14 @@ fn split_nals(stream: &[u8]) -> Vec<&[u8]> {
+ }
+ 
+ /// The pattern encoded: `frames` of it at `size`, the first a keyframe.
++/// Nothing on Android, which has no encoder yet.
++#[cfg(target_os = "android")]
++pub(crate) fn encoded(_size: (u32, u32), _frames: u32) -> Vec<Unit> {
++    Vec::new()
++}
++
++/// The pattern encoded: `frames` of it at `size`, the first a keyframe.
++#[cfg(not(target_os = "android"))]
+ pub(crate) fn encoded(size: (u32, u32), frames: u32) -> Vec<Unit> {
+     let pattern = Pattern::new(size.0, size.1);
+     let mut encoder = H264Encoder::new(EncodeSettings {
+@@ -132,8 +142,19 @@ pub(crate) fn play(mut decoding: Decoding, stop: &Arc<AtomicBool>) {
+     }
+ }
+ 
++/// Encode the pattern at `size` and `fps` as a broadcaster would, and throw
++/// it away, until `stop`: what sharing costs here. On Android, which has
++/// no encoder yet, it waits for `stop`.
++#[cfg(target_os = "android")]
++pub(crate) fn encode_away(_size: (u32, u32), _fps: u32, stop: &Arc<AtomicBool>) {
++    while !stop.load(Ordering::Relaxed) {
++        std::thread::sleep(Duration::from_millis(100));
++    }
++}
++
+ /// Encode the pattern at `size` and `fps` as a broadcaster would, and throw
+ /// it away, until `stop`: what sharing costs here.
++#[cfg(not(target_os = "android"))]
+ pub(crate) fn encode_away(size: (u32, u32), fps: u32, stop: &Arc<AtomicBool>) {
+     let pattern = Pattern::new(size.0, size.1);
+     let mut encoder = H264Encoder::new(EncodeSettings {
