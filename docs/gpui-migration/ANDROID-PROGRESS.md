@@ -25,6 +25,16 @@ Nothing running. Emulator stopped. Captures/logs: F:\fancy-migrate\notes\android
 - Starts, renders on Mali-G710 via Vulkan (wgpu picked it over GL). 240 MB PSS of which Graphics 139 MB, Native Heap 33 MB. Desktop layout; the title bar sits under the status bar.
 - Pushed (user's request, `develop` only): Fancy-Mumble/gpui (= gpui-next `fancy`), Fancy-Mumble/fancy-android (android-host, android-client, android-hello as subtrees).
 
+## The port landed (15 Nov ~02:30; the port session was shut off, the merge done for it)
+- FancyMumble `develop` = 14f49e29 "gpui: on gpui-next, with the work of 14 November carried over", on top of the rearranged tree 7ecc0387 (develop was fast-forwarded from 6f3544b8 to 7ecc0387 first). Made from client-3 `port-2312` (8b79489, the 23:12 merge) replayed onto e6390c2c (00:57) and carried over the rearrangement; landing clone F:\fancy-build\fm-land.
+- The client now takes GPUI from git: Fancy-Mumble/gpui branch `develop` (Cargo.lock: 1c42c15). Local GPUI work: a `[patch."https://github.com/Fancy-Mumble/gpui"]` in .cargo/config.toml, not a path in Cargo.toml.
+- What the merge carried over (00:57 work vs. the port): player settings/pause/minimise/out-of-sight on the composed player (new player/minimising.rs: one WinEvent hook per thread for all players); flex_shrink_1, paint_image(bounds, bounds, ..), playing.live; build.rs delay-loads uiautomationcore/userenv/winmm (tests/imports.rs).
+- gpui-next commit 1c42c15 (pushed to Fancy-Mumble/gpui develop): the 0.2.2 fork's sized path textures (directx_path_target.rs; fast/frame.rs PathSource Sized/Whole). 21 MB vs 31 MB dedicated GPU at 1394x792. Zero-blur shadows needed nothing (upstream draws them).
+- Checked: cargo check --all-targets; 862 client tests + imports test; gpui_windows 40 tests; a demo window captured (look.ps1) next to the port's exe.
+- Then (~03:00): the library split, the screen-share gate and the engine's try_init landed as FancyMumble `develop` 747b5b08, with what Android (and, for the player page, non-Windows) leaves unused marked `cfg_attr(.., expect(dead_code, reason))` where it is; build.rs delay-loads with rustc-link-arg-bins; the program's own test target is off.
+- android-client takes fancy-gpui from FancyMumble `develop` and gpui/gpui_mobile from Fancy-Mumble/gpui `develop` by git (Cargo.lock: 747b5b08, 1c42c15); android-hello the same for GPUI; android-host's build.gradle no longer names F: (output under `-PfancyBuildDir` when given; set in ~/.gradle/gradle.properties on this machine). All three pushed to Fancy-Mumble/fancy-android `develop` (3332e75). client-android-trial is no longer used.
+- Checked: android-client built for aarch64 in release from the repositories alone, packaged (apk-phone.ps1) and run on the Pixel 7: Mali-G710 via Vulkan, 125 MB PSS at the server list.
+
 ## Remains
 - aarch64 check (skipped for disk): `cargo check --target aarch64-linux-android` in android-hello. (Done on the phone build above.)
 - Phone layout steps; client wiring to services; saving files (ACTION_CREATE_DOCUMENT); OnBackInvokedCallback for targetSdk 36; screen-share viewer on Android (fancy-screenshare gate inside the crate); phone-only checks (voice with screen off, real Gboard, real share sheet apps).
