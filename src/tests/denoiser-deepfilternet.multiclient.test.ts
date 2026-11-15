@@ -41,7 +41,7 @@ import { delay } from "../util/wait";
  * is supposed to remove, and removing it is what the assertion below
  * measures. Perceptual quality on real speech is measured where it can be
  * measured properly, in
- * `vendor/client/crates/mumble-protocol/tests/denoiser_quality.rs`.
+ * `vendor/client/src/crates/mumble-protocol/tests/denoiser_quality.rs`.
  */
 
 /** How long to wait for the first voice packets to reach Bob. */
@@ -256,7 +256,7 @@ describe("DeepFilterNet noise suppression", { concurrency: 1 }, () => {
   //
   // It is measured where it can be measured honestly, against the
   // recorded speech sample:
-  // `vendor/client/crates/mumble-protocol/tests/denoiser_quality.rs`
+  // `vendor/client/src/crates/mumble-protocol/tests/denoiser_quality.rs`
   // asserts speech survives within 6 dB while the noise floor drops by
   // more than 12.
 

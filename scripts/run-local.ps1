@@ -110,7 +110,7 @@ if ($Bin) {
 if ($needBuild) {
   if ($Bin) { throw "Refusing to rebuild over an explicit -Bin binary." }
   Step "Building client frontend (this takes a few minutes)"
-  Push-Location (Join-Path $repo "vendor/client/crates/mumble-tauri/ui")
+  Push-Location (Join-Path $repo "vendor/client/src/ui/tauri/ui")
   try {
     npm ci; if ($LASTEXITCODE) { throw "frontend npm ci failed" }
     npm run build; if ($LASTEXITCODE) { throw "frontend build failed" }

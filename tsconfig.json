@@ -18,6 +18,6 @@
     "src/**/*.ts",
     "botroom/**/*.ts",
     "botroom/**/*.mts",
-    "vendor/client/crates/mumble-tauri/ui/src/testids.ts"
+    "vendor/client/src/ui/tauri/ui/src/testids.ts"
   ]
 }

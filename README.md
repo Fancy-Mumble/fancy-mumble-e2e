@@ -80,13 +80,13 @@ npm install
 
 ```bash
 # Build the client binary with embedded assets (run inside the submodule)
-( cd vendor/client/crates/mumble-tauri/ui && npm ci && npm run build )
+( cd vendor/client/src/ui/tauri/ui && npm ci && npm run build )
 ( cd vendor/client && cargo tauri build )   # or: cargo build --release --features custom-protocol
 ```
 
 > ⚠️ **Client submodule commit.** The `vendor/client` submodule is pinned to the
 > `feature/e2e-testability` branch of FancyMumbleNext, which adds the shared
-> `data-testid` registry (`crates/mumble-tauri/ui/src/testids.ts`) and the
+> `data-testid` registry (`src/ui/tauri/ui/src/testids.ts`) and the
 > localStorage-driven e2e test mode that `src/selectors.ts` imports. **That
 > branch must be pushed to the client's GitHub remote** for a fresh
 > `git submodule update --init` (and CI) to resolve the pinned commit. Until

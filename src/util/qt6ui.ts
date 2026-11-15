@@ -8,8 +8,8 @@ import { killTree } from "./proc";
 import { delay } from "./wait";
 
 /**
- * Launch and drive the minimal native Qt6 client (`vendor/client/crates/
- * qt6ui`). The QML UI is invisible to WebDriver, so the app exposes an
+ * Launch and drive the minimal native Qt6 client (`vendor/client/src/ui/
+ * qt6`). The QML UI is invisible to WebDriver, so the app exposes an
  * env-gated control channel instead: with `FANCY_QT6UI_E2E_PORT` set it
  * listens on localhost and maps line commands onto the *same* `Backend`
  * invokables the QML UI calls (see the crate's `src/e2e.rs`).

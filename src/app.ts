@@ -244,8 +244,13 @@ export class TauriApp {
     const dest = process.env.E2E_LOG_ARCHIVE;
     if (!dest) return;
     try {
-      const logs = path.join(this.dataDir, ".local", "share", "com.fancymumble.app", "logs");
-      if (!existsSync(logs)) return;
+      // An isolated client (FANCY_E2E_DATA_DIR) writes its logs under the
+      // store dir; older builds wrote them under the XDG data dir.
+      const logs = [
+        path.join(this.dataDir, "store", "logs"),
+        path.join(this.dataDir, ".local", "share", "com.fancymumble.app", "logs"),
+      ].find((dir) => existsSync(dir));
+      if (!logs) return;
       const into = path.join(dest, path.basename(this.dataDir));
       mkdirSync(into, { recursive: true });
       cpSync(logs, into, { recursive: true });

@@ -9,7 +9,7 @@
   // Keep the file watcher out of the heavy trees.
   "rust-analyzer.files.excludeDirs": [
     "node_modules",
-    "vendor/client/crates/mumble-tauri/ui/node_modules",
+    "vendor/client/src/ui/tauri/ui/node_modules",
     "target",
     ".tmp"
   ],
@@ -44,7 +44,7 @@
   },
 
   // Prettier owns TS/JS/JSON/CSS formatting. Config lives beside the code it
-  // formats (vendor/client/crates/mumble-tauri/ui/.prettierrc.json) so the CLI
+  // formats (vendor/client/src/ui/tauri/ui/.prettierrc.json) so the CLI
   // and the extension agree; ESLint stays responsible for correctness rules.
   "editor.formatOnSave": true,
   "[typescript]": { "editor.defaultFormatter": "esbenp.prettier-vscode" },

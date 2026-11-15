@@ -9,7 +9,7 @@ import { DiscordIpcClient, FakeDiscord, makeIsolatedRuntimeDir, slotAddress } fr
  * Discord rich presence: the client hosts Discord's own local IPC endpoint so
  * activity published by other applications is visible here too.
  *
- * This is the half no unit test can reach. `crates/fancy-presence` has its own
+ * This is the half no unit test can reach. `src/crates/fancy-presence` has its own
  * integration tests, but they drive the library directly - they cannot show
  * that the *shipped binary* binds the socket, that the Tauri commands are
  * registered, or that preferences reach the listener. Everything here goes

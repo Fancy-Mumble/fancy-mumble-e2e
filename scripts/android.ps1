@@ -65,7 +65,7 @@ param(
 $ErrorActionPreference = 'Stop'
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
-$tauriDir = Join-Path $repoRoot 'vendor/client/crates/mumble-tauri'
+$tauriDir = Join-Path $repoRoot 'vendor/client/src/ui/tauri'
 $appId = 'com.fancymumble.app'
 
 if (-not $env:ANDROID_HOME) { throw 'ANDROID_HOME is not set - see vendor/client/ANDROID_DEV.md' }

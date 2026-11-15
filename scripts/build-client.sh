@@ -55,9 +55,9 @@ if [[ -z "${CROS_LIBVA_H_PATH:-}" ]] && command -v pkg-config >/dev/null; then
 fi
 
 echo "==> signal-bridge (cdylib, separate crate)"
-(cd "$CLIENT/crates/signal-bridge" && cargo build --release)
+(cd "$CLIENT/src/crates/signal-bridge" && cargo build --release)
 mkdir -p "$PROFILE_DIR"
-cp "$CLIENT/crates/signal-bridge/target/release/libsignal_bridge.so" "$PROFILE_DIR/"
+cp "$CLIENT/src/crates/signal-bridge/target/release/libsignal_bridge.so" "$PROFILE_DIR/"
 
 # `cargo tauri build` starts a file watcher, so an exhausted inotify pool makes
 # it abort with a bare "Too many open files" that names no file and looks like a
@@ -76,7 +76,7 @@ fi
 
 echo "==> client (with deepfilternet-denoiser)"
 (
-    cd "$CLIENT/crates/mumble-tauri"
+    cd "$CLIENT/src/ui/tauri"
     export SKIP_QT6UI=$(( want_qt6ui ? 0 : 1 ))
     if [[ -n "${E2E_BUILD_NO_CLI:-}" ]]; then
         # No Tauri CLI: no watcher, and no frontend build either - this reuses
@@ -91,7 +91,7 @@ echo "==> client (with deepfilternet-denoiser)"
 # The bridge must sit next to the binary: the loader searches the exe's own
 # directory first (see load_signal_bridge in state/pchat/signal_bridge.rs).
 # `cargo tauri build` can rewrite target/release, so copy AFTER it, not before.
-cp "$CLIENT/crates/signal-bridge/target/release/libsignal_bridge.so" "$PROFILE_DIR/"
+cp "$CLIENT/src/crates/signal-bridge/target/release/libsignal_bridge.so" "$PROFILE_DIR/"
 
 echo
 echo "==> artifact check"
@@ -101,7 +101,7 @@ bin="$PROFILE_DIR/mumble-tauri"
 [[ -f "$PROFILE_DIR/libsignal_bridge.so" ]] \
     && echo "  ok   libsignal_bridge.so" || { echo "  MISS libsignal_bridge.so"; fail=1; }
 if (( want_qt6ui )); then
-    qt="$CLIENT/crates/qt6ui/target/debug/qt6ui"
+    qt="$CLIENT/src/ui/qt6/target/debug/qt6ui"
     [[ -x "$qt" ]] && echo "  ok   qt6ui" || echo "  WARN qt6ui not built (ghost-session suite will fail)"
 fi
 exit $fail

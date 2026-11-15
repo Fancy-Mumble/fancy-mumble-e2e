@@ -9,7 +9,7 @@ import { qt6uiMissing } from "../util/preconditions";
  * Regression: disconnecting in the minimal Qt UI must actually close the
  * server session - no ghost user left behind.
  *
- * Background (client bug, vendor/client/crates/qt6ui + mumble-protocol):
+ * Background (client bug, vendor/client/src/ui/qt6 + mumble-protocol):
  * qt6ui's `AppCore::disconnect` fired the graceful `Disconnect` command
  * asynchronously and immediately ABORTED the protocol event-loop task. The
  * event loop's sub-tasks (TCP reader/writer, keep-alive ping loop) are

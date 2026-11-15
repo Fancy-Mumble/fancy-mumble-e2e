@@ -7,7 +7,7 @@ import { By } from "selenium-webdriver";
 // NOTE: the registry only exists on the client's `feature/e2e-testability`
 // commit that this submodule is pinned to. If this import fails, run
 // `git submodule update --init --recursive`.
-import { TID as CLIENT_TID } from "../vendor/client/crates/mumble-tauri/ui/src/core/testids";
+import { TID as CLIENT_TID } from "../vendor/client/src/ui/tauri/ui/src/core/testids";
 
 export {
   MEMBER_NAME_ATTR,
@@ -19,7 +19,7 @@ export {
   CALENDAR_VIEW_ATTR,
   STREAM_SOURCE_TITLE_ATTR,
   BROADCASTER_NAME_ATTR,
-} from "../vendor/client/crates/mumble-tauri/ui/src/core/testids";
+} from "../vendor/client/src/ui/tauri/ui/src/core/testids";
 
 // Forum / kebab attribute keys, declared locally (NOT re-exported from the
 // client) so this module keeps loading when the checked-out client branch

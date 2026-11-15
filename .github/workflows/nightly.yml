@@ -198,7 +198,7 @@ jobs:
 
       # tauri.conf.json's beforeBuildCommand runs `npm run build`, not `npm ci`.
       - name: Install client UI dependencies
-        working-directory: vendor/client/crates/mumble-tauri/ui
+        working-directory: vendor/client/src/ui/tauri/ui
         run: npm ci
 
       # Not a bare `cargo tauri build`: that omits libsignal_bridge.so and the

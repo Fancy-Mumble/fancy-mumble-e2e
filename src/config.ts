@@ -56,13 +56,13 @@ export const config = {
 
   /**
    * Path to the built minimal native Qt6 client (workspace-excluded crate;
-   * see vendor/client/crates/qt6ui/README + build.ps1). Defaults to that
+   * see vendor/client/src/ui/qt6/README + build.ps1). Defaults to that
    * crate's debug output - it is built with its own `build.ps1`, not the
    * workspace `cargo build`.
    */
   qt6uiBin: process.env.E2E_QT6UI_BIN ??
     path.join(
-      repoRoot, "vendor", "client", "crates", "qt6ui", "target", "debug",
+      repoRoot, "vendor", "client", "src", "ui", "qt6", "target", "debug",
       process.platform === "win32" ? "qt6ui.exe" : "qt6ui",
     ),
 

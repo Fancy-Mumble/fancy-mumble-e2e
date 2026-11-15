@@ -11,7 +11,7 @@
 set -euo pipefail
 
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-src="$root/vendor/client/crates/mumble-tauri/ui/src/shared/profilecard"
+src="$root/vendor/client/src/ui/tauri/ui/src/shared/profilecard"
 dst="$root/vendor/channelviewer-frontend/src/shared/profilecard"
 
 if [[ ! -d "$src" ]]; then

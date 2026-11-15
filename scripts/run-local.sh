@@ -41,7 +41,7 @@ bin_path="${BIN:-$repo/vendor/client/target/release/mumble-tauri}"
 if [ "$BUILD" = 1 ] || [ ! -x "$bin_path" ]; then
   [ -n "$BIN" ] && { echo "No binary at --bin path: $BIN" >&2; exit 1; }
   step "Building client frontend (a few minutes)"
-  ( cd vendor/client/crates/mumble-tauri/ui && npm ci && npm run build )
+  ( cd vendor/client/src/ui/tauri/ui && npm ci && npm run build )
   step "Building client binary (cargo tauri build --no-bundle)"
   ( cd vendor/client && cargo tauri build --no-bundle )
 fi
